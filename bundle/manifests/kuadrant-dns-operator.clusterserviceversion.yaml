@@ -32,7 +32,22 @@ metadata:
             },
             "name": "dnsrecord-sample"
           },
-          "spec": null
+          "spec": {
+            "endpoints": [
+              {
+                "dnsName": "dnsrecord-simple.example.com",
+                "recordTTL": 60,
+                "recordType": "A",
+                "targets": [
+                  "52.215.108.61",
+                  "52.30.101.221"
+                ]
+              }
+            ],
+            "managedZone": {
+              "name": "managedzone-sample"
+            }
+          }
         },
         {
           "apiVersion": "kuadrant.io/v1alpha1",
@@ -47,11 +62,14 @@ metadata:
             },
             "name": "managedzone-sample"
           },
-          "spec": null
+          "spec": {
+            "description": "My managed domain",
+            "domainName": "example.com"
+          }
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-02-01T15:06:38Z"
+    createdAt: "2024-02-02T21:32:57Z"
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: kuadrant-dns-operator.v0.0.1

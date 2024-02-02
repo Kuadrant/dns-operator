@@ -9,4 +9,12 @@ metadata:
     app.kubernetes.io/created-by: kuadrant-dns-operator
   name: dnsrecord-sample
 spec:
-  # TODO(user): Add fields here
+  managedZone:
+    name: managedzone-sample
+  endpoints:
+    - dnsName: dnsrecord-simple.example.com
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 52.215.108.61
+        - 52.30.101.221
