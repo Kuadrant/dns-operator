@@ -20,26 +20,44 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // DNSHealthCheckProbeSpec defines the desired state of DNSHealthCheckProbe
 type DNSHealthCheckProbeSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Port                     int                   `json:"port,omitempty"`
+	Host                     string                `json:"host,omitempty"`
+	Address                  string                `json:"address,omitempty"`
+	Path                     string                `json:"path,omitempty"`
+	Protocol                 HealthProtocol        `json:"protocol,omitempty"`
+	Interval                 metav1.Duration       `json:"interval,omitempty"`
+	AdditionalHeadersRef     *AdditionalHeadersRef `json:"additionalHeadersRef,omitempty"`
+	FailureThreshold         *int                  `json:"failureThreshold,omitempty"`
+	ExpectedResponses        []int                 `json:"expectedResponses,omitempty"`
+	AllowInsecureCertificate bool                  `json:"allowInsecureCertificate,omitempty"`
+}
 
-	// Foo is an example field of DNSHealthCheckProbe. Edit dnshealthcheckprobe_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+type AdditionalHeadersRef struct {
+	Name string `json:"name"`
+}
+
+type AdditionalHeaders []AdditionalHeader
+
+type AdditionalHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 // DNSHealthCheckProbeStatus defines the observed state of DNSHealthCheckProbe
 type DNSHealthCheckProbeStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	LastCheckedAt       metav1.Time `json:"lastCheckedAt"`
+	ConsecutiveFailures int         `json:"consecutiveFailures,omitempty"`
+	Reason              string      `json:"reason,omitempty"`
+	Status              int         `json:"status,omitempty"`
+	Healthy             *bool       `json:"healthy"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Healthy",type="boolean",JSONPath=".status.healthy",description="DNSHealthCheckProbe healthy."
+//+kubebuilder:printcolumn:name="Last Checked",type="date",JSONPath=".status.lastCheckedAt",description="Last checked at."
 
 // DNSHealthCheckProbe is the Schema for the dnshealthcheckprobes API
 type DNSHealthCheckProbe struct {
@@ -57,6 +75,12 @@ type DNSHealthCheckProbeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []DNSHealthCheckProbe `json:"items"`
+}
+
+func (p *DNSHealthCheckProbe) Default() {
+	if p.Spec.Protocol == "" {
+		p.Spec.Protocol = HttpProtocol
+	}
 }
 
 func init() {

@@ -51,7 +51,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-01-31T14:13:25Z"
+    createdAt: "2024-02-01T15:06:38Z"
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: kuadrant-dns-operator.v0.0.1
@@ -102,6 +102,8 @@ spec:
           resources:
           - dnshealthcheckprobes/finalizers
           verbs:
+          - get
+          - patch
           - update
         - apiGroups:
           - kuadrant.io
