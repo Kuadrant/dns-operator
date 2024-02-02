@@ -1,0 +1,5 @@
+# https://golangci-lint.run/usage/linters/
+linters:
+  enable:
+    - gofmt
+    - misspell
