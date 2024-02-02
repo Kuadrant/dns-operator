@@ -120,8 +120,15 @@ imports: openshift-goimports ## Run openshift goimports against code.
 	$(OPENSHIFT_GOIMPORTS) -m github.com/kuadrant/kuadrant-dns-operator -i github.com/kuadrant/kuadrant-operator
 
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
+test: test-unit test-integration ## Run tests.
+
+.PHONY: test-unit
+test-unit: manifests generate fmt vet ## Run unit tests.
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -tags=unit -coverprofile cover-unit.out
+
+.PHONY: test-integration
+test-integration: manifests generate fmt vet envtest ## Run integration tests.
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./internal/controller... -tags=integration -coverprofile cover-integration.out
 
 .PHONY: local-setup
 local-setup: $(KIND) ## Setup local development kind cluster and dependencies
@@ -206,12 +213,14 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 OPENSHIFT_GOIMPORTS ?= $(LOCALBIN)/openshift-goimports
 KIND = $(LOCALBIN)/kind
+ACT = $(LOCALBIN)/act
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
 CONTROLLER_TOOLS_VERSION ?= v0.12.0
 OPENSHIFT_GOIMPORTS_VERSION ?= c70783e636f2213cac683f6865d88c5edace3157
 KIND_VERSION = v0.20.0
+ACT_VERSION = latest
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -260,12 +269,29 @@ kind: $(KIND) ## Download kind locally if necessary.
 $(KIND): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kind@$(KIND_VERSION)
 
+.PHONY: act
+act: $(ACT)
+$(ACT): $(LOCALBIN) ## Download act locally if necessary.
+	GOBIN=$(LOCALBIN) go install github.com/nektos/act@$(ACT_VERSION)
+
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
 	$(OPERATOR_SDK) bundle validate ./bundle
+	$(MAKE) bundle-ignore-createdAt
+
+# Since operator-sdk 1.26.0, `make bundle` changes the `createdAt` field from the bundle
+# even if it is patched:
+#   https://github.com/operator-framework/operator-sdk/pull/6136
+# This code checks if only the createdAt field. If is the only change, it is ignored.
+# Else, it will do nothing.
+# https://github.com/operator-framework/operator-sdk/issues/6285#issuecomment-1415350333
+# https://github.com/operator-framework/operator-sdk/issues/6285#issuecomment-1532150678
+.PHONY: bundle-ignore-createdAt
+bundle-ignore-createdAt:
+	git diff --quiet -I'^    createdAt: ' ./bundle && git checkout ./bundle || true
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
