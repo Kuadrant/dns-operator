@@ -1,0 +1,12 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: ManagedZone
+metadata:
+  labels:
+    app.kubernetes.io/name: managedzone
+    app.kubernetes.io/instance: managedzone-sample
+    app.kubernetes.io/part-of: kuadrant-dns-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kuadrant-dns-operator
+  name: managedzone-sample
+spec:
+  # TODO(user): Add fields here

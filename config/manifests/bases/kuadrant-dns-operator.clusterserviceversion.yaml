@@ -1,0 +1,60 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: kuadrant-dns-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: DNSHealthCheckProbe is the Schema for the dnshealthcheckprobes
+        API
+      displayName: DNSHealth Check Probe
+      kind: DNSHealthCheckProbe
+      name: dnshealthcheckprobes.kuadrant.io
+      version: v1alpha1
+    - description: DNSRecord is the Schema for the dnsrecords API
+      displayName: DNSRecord
+      kind: DNSRecord
+      name: dnsrecords.kuadrant.io
+      version: v1alpha1
+    - description: ManagedZone is the Schema for the managedzones API
+      displayName: Managed Zone
+      kind: ManagedZone
+      name: managedzones.kuadrant.io
+      version: v1alpha1
+  description: Kuadrant DNS Operator
+  displayName: Kuadrant DNS Operator
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - dns
+  links:
+  - name: Kuadrant DNS Operator
+    url: https://kuadrant-dns-operator.domain
+  maintainers:
+  - email: mnairn@redhat.com
+    name: Michael Nairn
+  - email: pbrookes@redhat.com
+    name: Phil Brookes
+  maturity: alpha
+  provider:
+    name: Red Hat
+  version: 0.0.0
