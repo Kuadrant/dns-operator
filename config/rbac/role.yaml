@@ -1,0 +1,84 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - kuadrant.io
+  resources:
+  - dnshealthcheckprobes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kuadrant.io
+  resources:
+  - dnshealthcheckprobes/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kuadrant.io
+  resources:
+  - dnshealthcheckprobes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kuadrant.io
+  resources:
+  - dnsrecords
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kuadrant.io
+  resources:
+  - dnsrecords/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kuadrant.io
+  resources:
+  - dnsrecords/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kuadrant.io
+  resources:
+  - managedzones
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kuadrant.io
+  resources:
+  - managedzones/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kuadrant.io
+  resources:
+  - managedzones/status
+  verbs:
+  - get
+  - patch
+  - update
