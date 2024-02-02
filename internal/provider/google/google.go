@@ -423,8 +423,8 @@ func toResourceRecordSets(allEndpoints []*v1alpha1.Endpoint) []*dnsv1.ResourceRe
 		// and contain the same rrdata (weighted or geo), so we can just get that from the first endpoint in the list.
 		ttl := int64(endpoints[0].RecordTTL)
 		recordType := endpoints[0].RecordType
-		_, weighted := endpoints[0].GetProviderSpecificProperty(provider.ProviderSpecificWeight)
-		_, geoCode := endpoints[0].GetProviderSpecificProperty(provider.ProviderSpecificGeoCode)
+		_, weighted := endpoints[0].GetProviderSpecificProperty(v1alpha1.ProviderSpecificWeight)
+		_, geoCode := endpoints[0].GetProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode)
 
 		record := &dnsv1.ResourceRecordSet{
 			Name: ensureTrailingDot(dnsName),
@@ -452,7 +452,7 @@ func toResourceRecordSets(allEndpoints []*v1alpha1.Endpoint) []*dnsv1.ResourceRe
 				record.Rrdatas = targets
 			}
 			if weighted {
-				weightProp, _ := ep.GetProviderSpecificProperty(provider.ProviderSpecificWeight)
+				weightProp, _ := ep.GetProviderSpecificProperty(v1alpha1.ProviderSpecificWeight)
 				weight, err := strconv.ParseFloat(weightProp.Value, 64)
 				if err != nil {
 					weight = 0
@@ -464,7 +464,7 @@ func toResourceRecordSets(allEndpoints []*v1alpha1.Endpoint) []*dnsv1.ResourceRe
 				record.RoutingPolicy.Wrr.Items = append(record.RoutingPolicy.Wrr.Items, item)
 			}
 			if geoCode {
-				geoCodeProp, _ := ep.GetProviderSpecificProperty(provider.ProviderSpecificGeoCode)
+				geoCodeProp, _ := ep.GetProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode)
 				geoCodeValue := geoCodeProp.Value
 				targetIsDefaultGroup := strings.HasPrefix(ep.Targets[0], v1alpha1.DefaultGeo)
 				// GCP doesn't accept * as value for default geolocations like AWS does.
