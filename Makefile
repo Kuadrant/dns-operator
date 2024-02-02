@@ -111,6 +111,10 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: lint
+lint: ## Run golangci-lint against code.
+	golangci-lint run ./...
+
 .PHONY: imports
 imports: openshift-goimports ## Run openshift goimports against code.
 	$(OPENSHIFT_GOIMPORTS) -m github.com/kuadrant/kuadrant-dns-operator -i github.com/kuadrant/kuadrant-operator
@@ -118,6 +122,14 @@ imports: openshift-goimports ## Run openshift goimports against code.
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
+
+.PHONY: local-setup
+local-setup: $(KIND) ## Setup local development kind cluster and dependencies
+	$(MAKE) kind-delete-cluster
+	$(MAKE) kind-create-cluster
+
+.PHONY: local-deploy
+local-deploy: docker-build kind-load-image deploy ## Deploy the dns operator into local kind cluster from the current code
 
 ##@ Build
 
@@ -174,11 +186,11 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
+	$(KUSTOMIZE) build config/deploy/local | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+	$(KUSTOMIZE) build config/deploy/local | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Build Dependencies
 
@@ -193,11 +205,13 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 OPENSHIFT_GOIMPORTS ?= $(LOCALBIN)/openshift-goimports
+KIND = $(LOCALBIN)/kind
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
 CONTROLLER_TOOLS_VERSION ?= v0.12.0
 OPENSHIFT_GOIMPORTS_VERSION ?= c70783e636f2213cac683f6865d88c5edace3157
+KIND_VERSION = v0.20.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -238,8 +252,13 @@ endif
 
 .PHONY: openshift-goimports
 openshift-goimports: $(OPENSHIFT_GOIMPORTS) ## Download openshift-goimports locally if necessary
-$(OPENSHIFT_GOIMPORTS):
+$(OPENSHIFT_GOIMPORTS): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/openshift-eng/openshift-goimports@$(OPENSHIFT_GOIMPORTS_VERSION)
+
+.PHONY: kind
+kind: $(KIND) ## Download kind locally if necessary.
+$(KIND): $(LOCALBIN)
+	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kind@$(KIND_VERSION)
 
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
@@ -296,3 +315,6 @@ catalog-build: opm ## Build a catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+
+# Include last to avoid changing MAKEFILE_LIST used above
+include ./make/*.mk

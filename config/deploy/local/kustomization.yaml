@@ -1,0 +1,10 @@
+# Local deployment overlay.
+#
+# Set the deployment imagePullPolicy to IfNotPresent. This is required if you are using a local image loaded into kind i.e. make kind-load-image
+#
+
+resources:
+  - ../../default
+
+patchesStrategicMerge:
+- manager_config_patch.yaml
