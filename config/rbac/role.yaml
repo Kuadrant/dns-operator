@@ -21,6 +21,8 @@ rules:
   resources:
   - dnshealthcheckprobes/finalizers
   verbs:
+  - get
+  - patch
   - update
 - apiGroups:
   - kuadrant.io

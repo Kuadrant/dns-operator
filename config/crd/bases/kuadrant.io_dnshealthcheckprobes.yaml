@@ -14,7 +14,16 @@ spec:
     singular: dnshealthcheckprobe
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: DNSHealthCheckProbe healthy.
+      jsonPath: .status.healthy
+      name: Healthy
+      type: boolean
+    - description: Last checked at.
+      jsonPath: .status.lastCheckedAt
+      name: Last Checked
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: DNSHealthCheckProbe is the Schema for the dnshealthcheckprobes
@@ -35,13 +44,53 @@ spec:
           spec:
             description: DNSHealthCheckProbeSpec defines the desired state of DNSHealthCheckProbe
             properties:
-              foo:
-                description: Foo is an example field of DNSHealthCheckProbe. Edit
-                  dnshealthcheckprobe_types.go to remove/update
+              additionalHeadersRef:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+              address:
+                type: string
+              allowInsecureCertificate:
+                type: boolean
+              expectedResponses:
+                items:
+                  type: integer
+                type: array
+              failureThreshold:
+                type: integer
+              host:
+                type: string
+              interval:
+                type: string
+              path:
+                type: string
+              port:
+                type: integer
+              protocol:
+                description: HealthProtocol represents the protocol to use when making
+                  a health check request
                 type: string
             type: object
           status:
             description: DNSHealthCheckProbeStatus defines the observed state of DNSHealthCheckProbe
+            properties:
+              consecutiveFailures:
+                type: integer
+              healthy:
+                type: boolean
+              lastCheckedAt:
+                format: date-time
+                type: string
+              reason:
+                type: string
+              status:
+                type: integer
+            required:
+            - healthy
+            - lastCheckedAt
             type: object
         type: object
     served: true

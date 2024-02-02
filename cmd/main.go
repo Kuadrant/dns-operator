@@ -19,20 +19,24 @@ package main
 import (
 	"flag"
 	"os"
-
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	// to ensure that exec-entrypoint and run can make use of them.
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	kuadrantiov1alpha1 "github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1"
 	"github.com/kuadrant/kuadrant-dns-operator/internal/controller"
+	"github.com/kuadrant/kuadrant-dns-operator/internal/health"
+	"github.com/kuadrant/kuadrant-dns-operator/internal/provider"
+	_ "github.com/kuadrant/kuadrant-dns-operator/internal/provider/aws"
+	_ "github.com/kuadrant/kuadrant-dns-operator/internal/provider/google"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -67,45 +71,53 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
+		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
+		WebhookServer:          webhook.NewServer(webhook.Options{Port: 9443}),
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "a3f98d6c.kuadrant.io",
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
+	providerFactory := provider.NewFactory(mgr.GetClient())
+
+	healthMonitor := health.NewMonitor()
+	healthCheckQueue := health.NewRequestQueue(time.Second * 5)
+
+	if err := mgr.Add(healthMonitor); err != nil {
+		setupLog.Error(err, "unable to start health monitor")
+		os.Exit(1)
+	}
+
+	if err := mgr.Add(healthCheckQueue); err != nil {
+		setupLog.Error(err, "unable to start health check queue")
+		os.Exit(1)
+	}
+
 	if err = (&controller.ManagedZoneReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		ProviderFactory: providerFactory,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ManagedZone")
 		os.Exit(1)
 	}
 	if err = (&controller.DNSRecordReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		ProviderFactory: providerFactory,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSRecord")
 		os.Exit(1)
 	}
 	if err = (&controller.DNSHealthCheckProbeReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		HealthMonitor: healthMonitor,
+		Queue:         healthCheckQueue,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSHealthCheckProbe")
 		os.Exit(1)
