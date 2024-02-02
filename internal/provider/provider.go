@@ -7,11 +7,6 @@ import (
 	"github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1"
 )
 
-const (
-	ProviderSpecificWeight  = "weight"
-	ProviderSpecificGeoCode = "geo-code"
-)
-
 // Provider knows how to manage DNS zones only as pertains to routing.
 type Provider interface {
 
