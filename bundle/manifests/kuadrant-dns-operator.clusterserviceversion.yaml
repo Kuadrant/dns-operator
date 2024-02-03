@@ -69,7 +69,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-02-02T21:32:57Z"
+    createdAt: "2024-02-03T00:24:09Z"
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: kuadrant-dns-operator.v0.0.1
@@ -249,7 +249,7 @@ spec:
                 - --leader-elect
                 command:
                 - /manager
-                image: controller:latest
+                image: quay.io/kuadrant/kuadrant-dns-operator:latest
                 livenessProbe:
                   httpGet:
                     path: /healthz
