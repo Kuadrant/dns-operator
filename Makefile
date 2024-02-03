@@ -28,8 +28,8 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 # This variable is used to construct full image tags for bundle and catalog images.
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
-# kuadrant.io/kuadrant-dns-operator-bundle:$VERSION and kuadrant.io/kuadrant-dns-operator-catalog:$VERSION.
-IMAGE_TAG_BASE ?= kuadrant.io/kuadrant-dns-operator
+# quay.io/kuadrant/kuadrant-dns-operator-bundle:$VERSION and quay.io/kuadrant/kuadrant-dns-operator-catalog:$VERSION.
+IMAGE_TAG_BASE ?= quay.io/kuadrant/kuadrant-dns-operator
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
@@ -51,7 +51,8 @@ endif
 OPERATOR_SDK_VERSION ?= v1.33.0
 
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+DEFAULT_IMG ?= $(IMAGE_TAG_BASE):latest
+IMG ?= $(DEFAULT_IMG)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.27.1
 
