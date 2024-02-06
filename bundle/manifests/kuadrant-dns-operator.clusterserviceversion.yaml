@@ -69,10 +69,10 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-02-05T13:50:08Z"
+    createdAt: "2024-02-06T14:17:34Z"
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
-  name: kuadrant-dns-operator.v0.0.1
+  name: kuadrant-dns-operator.v0.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -344,4 +344,4 @@ spec:
   maturity: alpha
   provider:
     name: Red Hat
-  version: 0.0.1
+  version: 0.0.0
