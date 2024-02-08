@@ -94,7 +94,7 @@ jobs:
         id: go
       - name: Check out code
         uses: actions/checkout@v4
-      - name: Run make verify-manifests
+      - name: Run make verify-imports
         run: |
           make verify-imports
   unit_test_suite:

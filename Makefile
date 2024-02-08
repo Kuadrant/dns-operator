@@ -3,7 +3,7 @@
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.0.1
+VERSION ?= 0.0.0
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
@@ -118,7 +118,7 @@ lint: ## Run golangci-lint against code.
 
 .PHONY: imports
 imports: openshift-goimports ## Run openshift goimports against code.
-	$(OPENSHIFT_GOIMPORTS) -m github.com/kuadrant/kuadrant-dns-operator -i github.com/kuadrant/kuadrant-operator
+	$(OPENSHIFT_GOIMPORTS) -m github.com/kuadrant/kuadrant-dns-operator -i github.com/kuadrant
 
 .PHONY: test
 test: test-unit test-integration ## Run tests.

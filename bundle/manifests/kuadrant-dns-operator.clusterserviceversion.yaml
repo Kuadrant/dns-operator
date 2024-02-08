@@ -69,10 +69,10 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-02-03T00:24:09Z"
+    createdAt: "2024-02-08T09:42:33Z"
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
-  name: kuadrant-dns-operator.v0.0.1
+  name: kuadrant-dns-operator.v0.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -103,6 +103,14 @@ spec:
     spec:
       clusterPermissions:
       - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - secrets
+          verbs:
+          - get
+          - list
+          - watch
         - apiGroups:
           - kuadrant.io
           resources:
@@ -204,20 +212,20 @@ spec:
           app.kubernetes.io/managed-by: kustomize
           app.kubernetes.io/name: deployment
           app.kubernetes.io/part-of: kuadrant-dns-operator
-          control-plane: controller-manager
+          control-plane: kuadrant-dns-operator-controller-manager
         name: kuadrant-dns-operator-controller-manager
         spec:
           replicas: 1
           selector:
             matchLabels:
-              control-plane: controller-manager
+              control-plane: kuadrant-dns-operator-controller-manager
           strategy: {}
           template:
             metadata:
               annotations:
                 kubectl.kubernetes.io/default-container: manager
               labels:
-                control-plane: controller-manager
+                control-plane: kuadrant-dns-operator-controller-manager
             spec:
               containers:
               - args:
@@ -336,4 +344,4 @@ spec:
   maturity: alpha
   provider:
     name: Red Hat
-  version: 0.0.1
+  version: 0.0.0

@@ -12,6 +12,8 @@ import (
 	"github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1"
 )
 
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+
 var errUnsupportedProvider = fmt.Errorf("provider type given is not supported")
 
 // ProviderConstructor constructs a provider given a Secret resource and a Context.
