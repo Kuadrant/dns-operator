@@ -118,7 +118,7 @@ lint: ## Run golangci-lint against code.
 
 .PHONY: imports
 imports: openshift-goimports ## Run openshift goimports against code.
-	$(OPENSHIFT_GOIMPORTS) -m github.com/kuadrant/kuadrant-dns-operator -i github.com/kuadrant/kuadrant-operator
+	$(OPENSHIFT_GOIMPORTS) -m github.com/kuadrant/kuadrant-dns-operator -i github.com/kuadrant
 
 .PHONY: test
 test: test-unit test-integration ## Run tests.

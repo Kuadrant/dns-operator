@@ -69,7 +69,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-02-06T14:17:34Z"
+    createdAt: "2024-02-08T09:42:33Z"
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: kuadrant-dns-operator.v0.0.0
@@ -212,20 +212,20 @@ spec:
           app.kubernetes.io/managed-by: kustomize
           app.kubernetes.io/name: deployment
           app.kubernetes.io/part-of: kuadrant-dns-operator
-          control-plane: controller-manager
+          control-plane: kuadrant-dns-operator-controller-manager
         name: kuadrant-dns-operator-controller-manager
         spec:
           replicas: 1
           selector:
             matchLabels:
-              control-plane: controller-manager
+              control-plane: kuadrant-dns-operator-controller-manager
           strategy: {}
           template:
             metadata:
               annotations:
                 kubectl.kubernetes.io/default-container: manager
               labels:
-                control-plane: controller-manager
+                control-plane: kuadrant-dns-operator-controller-manager
             spec:
               containers:
               - args:
