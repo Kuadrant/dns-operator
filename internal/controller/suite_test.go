@@ -36,12 +36,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	kuadrantiov1alpha1 "github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1"
-	"github.com/kuadrant/kuadrant-dns-operator/internal/health"
-	"github.com/kuadrant/kuadrant-dns-operator/internal/provider"
-	_ "github.com/kuadrant/kuadrant-dns-operator/internal/provider/aws"
-	providerFake "github.com/kuadrant/kuadrant-dns-operator/internal/provider/fake"
-	_ "github.com/kuadrant/kuadrant-dns-operator/internal/provider/google"
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/health"
+	"github.com/kuadrant/dns-operator/internal/provider"
+	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
+	providerFake "github.com/kuadrant/dns-operator/internal/provider/fake"
+	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -54,18 +54,18 @@ var testEnv *envtest.Environment
 var ctx context.Context
 var cancel context.CancelFunc
 var dnsProviderFactory = &providerFake.Factory{
-	ProviderForFunc: func(ctx context.Context, pa kuadrantiov1alpha1.ProviderAccessor) (provider.Provider, error) {
+	ProviderForFunc: func(ctx context.Context, pa v1alpha1.ProviderAccessor) (provider.Provider, error) {
 		return &providerFake.Provider{
-			EnsureFunc: func(record *kuadrantiov1alpha1.DNSRecord, zone *kuadrantiov1alpha1.ManagedZone) error {
+			EnsureFunc: func(record *v1alpha1.DNSRecord, zone *v1alpha1.ManagedZone) error {
 				return nil
 			},
-			DeleteFunc: func(record *kuadrantiov1alpha1.DNSRecord, zone *kuadrantiov1alpha1.ManagedZone) error {
+			DeleteFunc: func(record *v1alpha1.DNSRecord, zone *v1alpha1.ManagedZone) error {
 				return nil
 			},
-			EnsureManagedZoneFunc: func(zone *kuadrantiov1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
+			EnsureManagedZoneFunc: func(zone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
 				return provider.ManagedZoneOutput{}, nil
 			},
-			DeleteManagedZoneFunc: func(zone *kuadrantiov1alpha1.ManagedZone) error {
+			DeleteManagedZoneFunc: func(zone *v1alpha1.ManagedZone) error {
 				return nil
 			},
 		}, nil
@@ -94,7 +94,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	err = kuadrantiov1alpha1.AddToScheme(scheme.Scheme)
+	err = v1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme

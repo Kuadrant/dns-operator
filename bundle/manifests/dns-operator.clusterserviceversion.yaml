@@ -9,11 +9,11 @@ metadata:
           "kind": "DNSHealthCheckProbe",
           "metadata": {
             "labels": {
-              "app.kubernetes.io/created-by": "kuadrant-dns-operator",
+              "app.kubernetes.io/created-by": "dns-operator",
               "app.kubernetes.io/instance": "dnshealthcheckprobe-sample",
               "app.kubernetes.io/managed-by": "kustomize",
               "app.kubernetes.io/name": "dnshealthcheckprobe",
-              "app.kubernetes.io/part-of": "kuadrant-dns-operator"
+              "app.kubernetes.io/part-of": "dns-operator"
             },
             "name": "dnshealthcheckprobe-sample"
           },
@@ -24,11 +24,11 @@ metadata:
           "kind": "DNSRecord",
           "metadata": {
             "labels": {
-              "app.kubernetes.io/created-by": "kuadrant-dns-operator",
+              "app.kubernetes.io/created-by": "dns-operator",
               "app.kubernetes.io/instance": "dnsrecord-sample",
               "app.kubernetes.io/managed-by": "kustomize",
               "app.kubernetes.io/name": "dnsrecord",
-              "app.kubernetes.io/part-of": "kuadrant-dns-operator"
+              "app.kubernetes.io/part-of": "dns-operator"
             },
             "name": "dnsrecord-sample"
           },
@@ -54,11 +54,11 @@ metadata:
           "kind": "ManagedZone",
           "metadata": {
             "labels": {
-              "app.kubernetes.io/created-by": "kuadrant-dns-operator",
+              "app.kubernetes.io/created-by": "dns-operator",
               "app.kubernetes.io/instance": "managedzone-sample",
               "app.kubernetes.io/managed-by": "kustomize",
               "app.kubernetes.io/name": "managedzone",
-              "app.kubernetes.io/part-of": "kuadrant-dns-operator"
+              "app.kubernetes.io/part-of": "dns-operator"
             },
             "name": "managedzone-sample"
           },
@@ -69,10 +69,10 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2024-02-08T09:42:33Z"
+    createdAt: "2024-02-12T11:25:42Z"
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
-  name: kuadrant-dns-operator.v0.0.0
+  name: dns-operator.v0.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -94,8 +94,8 @@ spec:
       kind: ManagedZone
       name: managedzones.kuadrant.io
       version: v1alpha1
-  description: Kuadrant DNS Operator
-  displayName: Kuadrant DNS Operator
+  description: DNS Operator
+  displayName: DNS Operator
   icon:
   - base64data: ""
     mediatype: ""
@@ -203,29 +203,29 @@ spec:
           - subjectaccessreviews
           verbs:
           - create
-        serviceAccountName: kuadrant-dns-operator-controller-manager
+        serviceAccountName: dns-operator-controller-manager
       deployments:
       - label:
           app.kubernetes.io/component: manager
-          app.kubernetes.io/created-by: kuadrant-dns-operator
+          app.kubernetes.io/created-by: dns-operator
           app.kubernetes.io/instance: controller-manager
           app.kubernetes.io/managed-by: kustomize
           app.kubernetes.io/name: deployment
-          app.kubernetes.io/part-of: kuadrant-dns-operator
-          control-plane: kuadrant-dns-operator-controller-manager
-        name: kuadrant-dns-operator-controller-manager
+          app.kubernetes.io/part-of: dns-operator
+          control-plane: dns-operator-controller-manager
+        name: dns-operator-controller-manager
         spec:
           replicas: 1
           selector:
             matchLabels:
-              control-plane: kuadrant-dns-operator-controller-manager
+              control-plane: dns-operator-controller-manager
           strategy: {}
           template:
             metadata:
               annotations:
                 kubectl.kubernetes.io/default-container: manager
               labels:
-                control-plane: kuadrant-dns-operator-controller-manager
+                control-plane: dns-operator-controller-manager
             spec:
               containers:
               - args:
@@ -257,7 +257,7 @@ spec:
                 - --leader-elect
                 command:
                 - /manager
-                image: quay.io/kuadrant/kuadrant-dns-operator:latest
+                image: quay.io/kuadrant/dns-operator:latest
                 livenessProbe:
                   httpGet:
                     path: /healthz
@@ -285,7 +285,7 @@ spec:
                     - ALL
               securityContext:
                 runAsNonRoot: true
-              serviceAccountName: kuadrant-dns-operator-controller-manager
+              serviceAccountName: dns-operator-controller-manager
               terminationGracePeriodSeconds: 10
       permissions:
       - rules:
@@ -320,7 +320,7 @@ spec:
           verbs:
           - create
           - patch
-        serviceAccountName: kuadrant-dns-operator-controller-manager
+        serviceAccountName: dns-operator-controller-manager
     strategy: deployment
   installModes:
   - supported: false
@@ -334,13 +334,15 @@ spec:
   keywords:
   - dns
   links:
-  - name: Kuadrant DNS Operator
-    url: https://kuadrant-dns-operator.domain
+  - name: DNS Operator
+    url: https://dns-operator.domain
   maintainers:
   - email: mnairn@redhat.com
     name: Michael Nairn
   - email: pbrookes@redhat.com
     name: Phil Brookes
+  - email: cbrookes@redhat.com
+    name: Craig Brookes
   maturity: alpha
   provider:
     name: Red Hat

@@ -30,9 +30,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1"
-	"github.com/kuadrant/kuadrant-dns-operator/internal/common/conditions"
-	"github.com/kuadrant/kuadrant-dns-operator/internal/provider"
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common/conditions"
+	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
 const (

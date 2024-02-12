@@ -32,8 +32,8 @@ import (
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1"
-	"github.com/kuadrant/kuadrant-dns-operator/internal/provider"
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
 const (

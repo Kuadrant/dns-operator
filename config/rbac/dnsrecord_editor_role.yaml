@@ -6,8 +6,8 @@ metadata:
     app.kubernetes.io/name: clusterrole
     app.kubernetes.io/instance: dnsrecord-editor-role
     app.kubernetes.io/component: rbac
-    app.kubernetes.io/created-by: kuadrant-dns-operator
-    app.kubernetes.io/part-of: kuadrant-dns-operator
+    app.kubernetes.io/created-by: dns-operator
+    app.kubernetes.io/part-of: dns-operator
     app.kubernetes.io/managed-by: kustomize
   name: dnsrecord-editor-role
 rules:

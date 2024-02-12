@@ -12,8 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	dnsv1 "google.golang.org/api/dns/v1"
 
-	"github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1"
-	"github.com/kuadrant/kuadrant-dns-operator/internal/provider"
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
 func TestGoogleDNSProvider_toManagedZoneOutput(t *testing.T) {

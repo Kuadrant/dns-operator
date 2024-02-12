@@ -1,4 +1,4 @@
-# kuadrant-dns-operator
+# dns-operator
 // TODO(user): Add simple overview of use/purpose
 
 ## Description
@@ -18,13 +18,13 @@ kubectl apply -f config/samples/
 2. Build and push your image to the location specified by `IMG`:
 
 ```sh
-make docker-build docker-push IMG=<some-registry>/kuadrant-dns-operator:tag
+make docker-build docker-push IMG=<some-registry>/dns-operator:tag
 ```
 
 3. Deploy the controller to the cluster with the image specified by `IMG`:
 
 ```sh
-make deploy IMG=<some-registry>/kuadrant-dns-operator:tag
+make deploy IMG=<some-registry>/dns-operator:tag
 ```
 
 ### Uninstall CRDs

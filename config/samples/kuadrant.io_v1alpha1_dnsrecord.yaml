@@ -4,9 +4,9 @@ metadata:
   labels:
     app.kubernetes.io/name: dnsrecord
     app.kubernetes.io/instance: dnsrecord-sample
-    app.kubernetes.io/part-of: kuadrant-dns-operator
+    app.kubernetes.io/part-of: dns-operator
     app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/created-by: kuadrant-dns-operator
+    app.kubernetes.io/created-by: dns-operator
   name: dnsrecord-sample
 spec:
   managedZone:

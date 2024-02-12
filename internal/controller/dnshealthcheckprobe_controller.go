@@ -17,9 +17,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	gatewayapiv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	"github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1"
-	"github.com/kuadrant/kuadrant-dns-operator/internal/common/slice"
-	"github.com/kuadrant/kuadrant-dns-operator/internal/health"
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common/slice"
+	"github.com/kuadrant/dns-operator/internal/health"
 )
 
 //ToDO This should not require sigs.k8s.io/gateway-api/apis/v1
