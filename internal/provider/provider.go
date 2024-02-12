@@ -4,7 +4,7 @@ import (
 	"errors"
 	"regexp"
 
-	"github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
 // Provider knows how to manage DNS zones only as pertains to routing.

@@ -1,4 +1,4 @@
-module github.com/kuadrant/kuadrant-dns-operator
+module github.com/kuadrant/dns-operator
 
 go 1.21
 

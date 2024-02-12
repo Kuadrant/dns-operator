@@ -28,8 +28,8 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 # This variable is used to construct full image tags for bundle and catalog images.
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
-# quay.io/kuadrant/kuadrant-dns-operator-bundle:$VERSION and quay.io/kuadrant/kuadrant-dns-operator-catalog:$VERSION.
-IMAGE_TAG_BASE ?= quay.io/kuadrant/kuadrant-dns-operator
+# quay.io/kuadrant/dns-operator-bundle:$VERSION and quay.io/kuadrant/dns-operator-catalog:$VERSION.
+IMAGE_TAG_BASE ?= quay.io/kuadrant/dns-operator
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
@@ -118,7 +118,7 @@ lint: ## Run golangci-lint against code.
 
 .PHONY: imports
 imports: openshift-goimports ## Run openshift goimports against code.
-	$(OPENSHIFT_GOIMPORTS) -m github.com/kuadrant/kuadrant-dns-operator -i github.com/kuadrant
+	$(OPENSHIFT_GOIMPORTS) -m github.com/kuadrant/dns-operator -i github.com/kuadrant
 
 .PHONY: test
 test: test-unit test-integration ## Run tests.

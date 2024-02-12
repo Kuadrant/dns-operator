@@ -2,12 +2,12 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    control-plane: kuadrant-dns-operator-controller-manager
+    control-plane: dns-operator-controller-manager
     app.kubernetes.io/name: namespace
     app.kubernetes.io/instance: system
     app.kubernetes.io/component: manager
-    app.kubernetes.io/created-by: kuadrant-dns-operator
-    app.kubernetes.io/part-of: kuadrant-dns-operator
+    app.kubernetes.io/created-by: dns-operator
+    app.kubernetes.io/part-of: dns-operator
     app.kubernetes.io/managed-by: kustomize
   name: system
 ---
@@ -17,24 +17,24 @@ metadata:
   name: controller-manager
   namespace: system
   labels:
-    control-plane: kuadrant-dns-operator-controller-manager
+    control-plane: dns-operator-controller-manager
     app.kubernetes.io/name: deployment
     app.kubernetes.io/instance: controller-manager
     app.kubernetes.io/component: manager
-    app.kubernetes.io/created-by: kuadrant-dns-operator
-    app.kubernetes.io/part-of: kuadrant-dns-operator
+    app.kubernetes.io/created-by: dns-operator
+    app.kubernetes.io/part-of: dns-operator
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
     matchLabels:
-      control-plane: kuadrant-dns-operator-controller-manager
+      control-plane: dns-operator-controller-manager
   replicas: 1
   template:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
-        control-plane: kuadrant-dns-operator-controller-manager
+        control-plane: dns-operator-controller-manager
     spec:
       securityContext:
         runAsNonRoot: true

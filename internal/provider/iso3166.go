@@ -1,6 +1,6 @@
 package provider
 
-import "github.com/kuadrant/kuadrant-dns-operator/internal/common/slice"
+import "github.com/kuadrant/dns-operator/internal/common/slice"
 
 // nolint
 type countryCodes struct {

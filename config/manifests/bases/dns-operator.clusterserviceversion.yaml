@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-  name: kuadrant-dns-operator.v0.0.0
+  name: dns-operator.v0.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -26,8 +26,8 @@ spec:
       kind: ManagedZone
       name: managedzones.kuadrant.io
       version: v1alpha1
-  description: Kuadrant DNS Operator
-  displayName: Kuadrant DNS Operator
+  description: DNS Operator
+  displayName: DNS Operator
   icon:
   - base64data: ""
     mediatype: ""
@@ -47,13 +47,15 @@ spec:
   keywords:
   - dns
   links:
-  - name: Kuadrant DNS Operator
-    url: https://kuadrant-dns-operator.domain
+  - name: DNS Operator
+    url: https://dns-operator.domain
   maintainers:
   - email: mnairn@redhat.com
     name: Michael Nairn
   - email: pbrookes@redhat.com
     name: Phil Brookes
+  - email: cbrookes@redhat.com
+    name: Craig Brookes
   maturity: alpha
   provider:
     name: Red Hat

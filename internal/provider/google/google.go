@@ -33,8 +33,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1"
-	"github.com/kuadrant/kuadrant-dns-operator/internal/provider"
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
 type action string

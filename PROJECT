@@ -8,8 +8,8 @@ layout:
 plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
-projectName: kuadrant-dns-operator
-repo: github.com/kuadrant/kuadrant-dns-operator
+projectName: dns-operator
+repo: github.com/kuadrant/dns-operator
 resources:
 - api:
     crdVersion: v1
@@ -17,7 +17,7 @@ resources:
   controller: true
   domain: kuadrant.io
   kind: ManagedZone
-  path: github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1
+  path: github.com/kuadrant/dns-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -25,7 +25,7 @@ resources:
   controller: true
   domain: kuadrant.io
   kind: DNSRecord
-  path: github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1
+  path: github.com/kuadrant/dns-operator/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -33,6 +33,6 @@ resources:
   controller: true
   domain: kuadrant.io
   kind: DNSHealthCheckProbe
-  path: github.com/kuadrant/kuadrant-dns-operator/api/v1alpha1
+  path: github.com/kuadrant/dns-operator/api/v1alpha1
   version: v1alpha1
 version: "3"
