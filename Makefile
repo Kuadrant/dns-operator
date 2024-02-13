@@ -100,6 +100,18 @@ help: ## Display this help.
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
+.PHONY: manifests-gen-base-csv
+REPLACES_VERSION ?= ""
+manifests-gen-base-csv: yq ## Generate base CSV for the current configuration (VERSION, IMG, CHANNELS etc..)
+	$(YQ) -i '.metadata.annotations.containerImage = "$(IMG)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml
+	$(YQ) -i '.metadata.name = "dns-operator.v$(VERSION)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml
+	$(YQ) -i '.spec.version = "$(VERSION)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml
+	@if [ "$(REPLACES_VERSION)" != "" ]; then\
+		$(YQ) -i '.spec.replaces = "dns-operator.v$(REPLACES_VERSION)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml; \
+	 else \
+		$(YQ) -i 'del(.spec.replaces)' config/manifests/bases/dns-operator.clusterserviceversion.yaml; \
+	fi
+
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
@@ -215,6 +227,7 @@ ENVTEST ?= $(LOCALBIN)/setup-envtest
 OPENSHIFT_GOIMPORTS ?= $(LOCALBIN)/openshift-goimports
 KIND = $(LOCALBIN)/kind
 ACT = $(LOCALBIN)/act
+YQ = $(LOCALBIN)/yq
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
@@ -222,6 +235,7 @@ CONTROLLER_TOOLS_VERSION ?= v0.12.0
 OPENSHIFT_GOIMPORTS_VERSION ?= c70783e636f2213cac683f6865d88c5edace3157
 KIND_VERSION = v0.20.0
 ACT_VERSION = latest
+YQ_VERSION := v4.34.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -271,15 +285,21 @@ $(KIND): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kind@$(KIND_VERSION)
 
 .PHONY: act
-act: $(ACT)
-$(ACT): $(LOCALBIN) ## Download act locally if necessary.
+act: $(ACT) ## Download act locally if necessary.
+$(ACT): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/nektos/act@$(ACT_VERSION)
 
+.PHONY: yq
+yq: $(YQ) ## Download yq locally if necessary.
+$(YQ): $(LOCALBIN)
+	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@$(YQ_VERSION)
+
 .PHONY: bundle
-bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
+bundle: manifests manifests-gen-base-csv kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
+	$(MAKE) bundle-post-generate
 	$(OPERATOR_SDK) bundle validate ./bundle
 	$(MAKE) bundle-ignore-createdAt
 
@@ -293,6 +313,10 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 .PHONY: bundle-ignore-createdAt
 bundle-ignore-createdAt:
 	git diff --quiet -I'^    createdAt: ' ./bundle && git checkout ./bundle || true
+
+.PHONY: bundle-post-generate
+bundle-post-generate:
+	$(YQ) -i '.annotations."com.redhat.openshift.versions" = "v4.12-v4.14"' bundle/metadata/annotations.yaml
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
@@ -344,6 +368,14 @@ catalog-build: opm ## Build a catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+
+##@ Release
+
+.PHONY: prepare-release
+RELEASE_FILE = $(shell pwd)/make/release.mk
+prepare-release: ## Generates a makefile that will override environment variables for a specific release and runs bundle.
+	echo -e "#Release default values\\nIMG=$(IMG)\nCHANNELS=$(CHANNELS)\nVERSION=$(VERSION)\nREPLACES_VERSION=$(REPLACES_VERSION)" > $(RELEASE_FILE)
+	$(MAKE) bundle
 
 # Include last to avoid changing MAKEFILE_LIST used above
 include ./make/*.mk
