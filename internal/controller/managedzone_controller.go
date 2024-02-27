@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/conditions"
@@ -162,7 +163,7 @@ func (r *ManagedZoneReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (r *ManagedZoneReconciler) publishManagedZone(ctx context.Context, managedZone *v1alpha1.ManagedZone) error {
 
-	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone)
+	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone, provider.Config{})
 	if err != nil {
 		return err
 	}
@@ -184,7 +185,7 @@ func (r *ManagedZoneReconciler) deleteManagedZone(ctx context.Context, managedZo
 		return nil
 	}
 
-	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone)
+	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone, provider.Config{})
 	if err != nil {
 		var reason, message string
 		status := metav1.ConditionFalse
@@ -263,7 +264,7 @@ func (r *ManagedZoneReconciler) createParentZoneNSRecord(ctx context.Context, ma
 			ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 				Name: parentZone.Name,
 			},
-			Endpoints: []*v1alpha1.Endpoint{
+			Endpoints: []*externaldns.Endpoint{
 				{
 					DNSName:    recordName,
 					Targets:    recordTargets,

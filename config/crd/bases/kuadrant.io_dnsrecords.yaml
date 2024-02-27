@@ -69,8 +69,8 @@ spec:
                       format: int64
                       type: integer
                     recordType:
-                      description: RecordType type of record, e.g. CNAME, A, SRV,
-                        TXT etc
+                      description: RecordType type of record, e.g. CNAME, A, AAAA,
+                        SRV, TXT etc
                       type: string
                     setIdentifier:
                       description: Identifier to distinguish multiple records with
@@ -206,8 +206,8 @@ spec:
                       format: int64
                       type: integer
                     recordType:
-                      description: RecordType type of record, e.g. CNAME, A, SRV,
-                        TXT etc
+                      description: RecordType type of record, e.g. CNAME, A, AAAA,
+                        SRV, TXT etc
                       type: string
                     setIdentifier:
                       description: Identifier to distinguish multiple records with

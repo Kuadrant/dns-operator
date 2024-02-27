@@ -4,23 +4,30 @@ import (
 	"errors"
 	"regexp"
 
+	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
+	externaldnsprovider "sigs.k8s.io/external-dns/provider"
+
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
 // Provider knows how to manage DNS zones only as pertains to routing.
 type Provider interface {
-
-	// Ensure will create or update record.
-	Ensure(record *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone) error
-
-	// Delete will delete record.
-	Delete(record *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone) error
+	externaldnsprovider.Provider
 
 	// Ensure will create or update a managed zone, returns an array of NameServers for that zone.
 	EnsureManagedZone(managedZone *v1alpha1.ManagedZone) (ManagedZoneOutput, error)
 
 	// Delete will delete a managed zone.
 	DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error
+}
+
+type Config struct {
+	// only consider hosted zones managing domains ending in this suffix
+	DomainFilter externaldnsendpoint.DomainFilter
+	// filter for zones based on visibility
+	ZoneTypeFilter externaldnsprovider.ZoneTypeFilter
+	// only consider hosted zones ending with this zone id
+	ZoneIDFilter externaldnsprovider.ZoneIDFilter
 }
 
 type ProviderSpecificLabels struct {

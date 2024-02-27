@@ -18,92 +18,11 @@ package v1alpha1
 
 import (
 	"fmt"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	externaldns "sigs.k8s.io/external-dns/endpoint"
 )
-
-// ProviderSpecificProperty holds the name and value of a configuration which is specific to individual DNS providers
-type ProviderSpecificProperty struct {
-	Name  string `json:"name,omitempty"`
-	Value string `json:"value,omitempty"`
-}
-
-// Targets is a representation of a list of targets for an endpoint.
-type Targets []string
-
-// TTL is a structure defining the TTL of a DNS record
-type TTL int64
-
-// Labels store metadata related to the endpoint
-// it is then stored in a persistent storage via serialization
-type Labels map[string]string
-
-// ProviderSpecific holds configuration which is specific to individual DNS providers
-type ProviderSpecific []ProviderSpecificProperty
-
-// Endpoint is a high-level way of a connection between a service and an IP
-type Endpoint struct {
-	// The hostname of the DNS record
-	DNSName string `json:"dnsName,omitempty"`
-	// The targets the DNS record points to
-	Targets Targets `json:"targets,omitempty"`
-	// RecordType type of record, e.g. CNAME, A, SRV, TXT etc
-	RecordType string `json:"recordType,omitempty"`
-	// Identifier to distinguish multiple records with the same name and type (e.g. Route53 records with routing policies other than 'simple')
-	SetIdentifier string `json:"setIdentifier,omitempty"`
-	// TTL for the record
-	RecordTTL TTL `json:"recordTTL,omitempty"`
-	// Labels stores labels defined for the Endpoint
-	// +optional
-	Labels Labels `json:"labels,omitempty"`
-	// ProviderSpecific stores provider specific config
-	// +optional
-	ProviderSpecific ProviderSpecific `json:"providerSpecific,omitempty"`
-}
-
-// SetID returns an id that should be unique across a set of endpoints
-func (e *Endpoint) SetID() string {
-	return e.DNSName + e.SetIdentifier
-}
-
-// WithSetIdentifier applies the given set identifier to the endpoint.
-func (e *Endpoint) WithSetIdentifier(setIdentifier string) *Endpoint {
-	e.SetIdentifier = setIdentifier
-	return e
-}
-
-// GetProviderSpecificProperty returns a ProviderSpecificProperty if the property exists.
-func (e *Endpoint) GetProviderSpecificProperty(key string) (ProviderSpecificProperty, bool) {
-	for _, providerSpecific := range e.ProviderSpecific {
-		if providerSpecific.Name == key {
-			return providerSpecific, true
-		}
-	}
-	return ProviderSpecificProperty{}, false
-}
-
-// SetProviderSpecific sets a provider specific key/value pair.
-func (e *Endpoint) SetProviderSpecific(name, value string) {
-	if e.ProviderSpecific == nil {
-		e.ProviderSpecific = ProviderSpecific{}
-	}
-
-	for i, pair := range e.ProviderSpecific {
-		if pair.Name == name {
-			e.ProviderSpecific[i].Value = value
-			return
-		}
-	}
-
-	e.ProviderSpecific = append(e.ProviderSpecific, ProviderSpecificProperty{
-		Name:  name,
-		Value: value,
-	})
-}
-
-func (e *Endpoint) String() string {
-	return fmt.Sprintf("%s %d IN %s %s %s %s", e.DNSName, e.RecordTTL, e.RecordType, e.SetIdentifier, e.Targets, e.ProviderSpecific)
-}
 
 // DNSRecordSpec defines the desired state of DNSRecord
 type DNSRecordSpec struct {
@@ -112,7 +31,7 @@ type DNSRecordSpec struct {
 	ManagedZoneRef *ManagedZoneReference `json:"managedZone,omitempty"`
 	// +kubebuilder:validation:MinItems=1
 	// +optional
-	Endpoints []*Endpoint `json:"endpoints,omitempty"`
+	Endpoints []*externaldns.Endpoint `json:"endpoints,omitempty"`
 }
 
 // DNSRecordStatus defines the observed state of DNSRecord
@@ -140,7 +59,7 @@ type DNSRecordStatus struct {
 	//
 	// Note: This will not be required if/when we switch to using external-dns since when
 	// running with a "sync" policy it will clean up unused records automatically.
-	Endpoints []*Endpoint `json:"endpoints,omitempty"`
+	Endpoints []*externaldns.Endpoint `json:"endpoints,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -181,6 +100,37 @@ const (
 
 	DefaultGeo string = "default"
 )
+
+// GetRootDomain returns the shortest domain that is shared across all spec.Endpoints dns names.
+// Validates that all endpoints share an equal root domain and returns an error if they don't.
+func (s *DNSRecord) GetRootDomain() (string, error) {
+	domain := ""
+	dnsNames := []string{}
+	for idx := range s.Spec.Endpoints {
+		dnsNames = append(dnsNames, s.Spec.Endpoints[idx].DNSName)
+	}
+	for idx := range dnsNames {
+		if domain == "" {
+			domain = dnsNames[0]
+			continue
+		}
+		if len(domain) > len(dnsNames[idx]) {
+			domain = dnsNames[idx]
+		}
+	}
+
+	if domain == "" {
+		return "", fmt.Errorf("unable to determine root domain from %v", dnsNames)
+	}
+
+	for idx := range dnsNames {
+		if !strings.HasSuffix(dnsNames[idx], domain) {
+			return "", fmt.Errorf("inconsitent domains, got %s, expected suffix %s", dnsNames[idx], domain)
+		}
+	}
+
+	return domain, nil
+}
 
 func init() {
 	SchemeBuilder.Register(&DNSRecord{}, &DNSRecordList{})

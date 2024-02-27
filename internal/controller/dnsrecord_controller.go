@@ -31,6 +31,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
+	externaldnsplan "sigs.k8s.io/external-dns/plan"
+	externaldnsprovider "sigs.k8s.io/external-dns/provider"
+	externaldnsregistry "sigs.k8s.io/external-dns/registry"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/conditions"
@@ -55,7 +59,7 @@ type DNSRecordReconciler struct {
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/finalizers,verbs=update
 
 func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	previous := &v1alpha1.DNSRecord{}
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, previous)
@@ -68,23 +72,21 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	dnsRecord := previous.DeepCopy()
 
-	log.Log.V(3).Info("DNSRecordReconciler Reconcile", "dnsRecord", dnsRecord)
-
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
 		if err := r.deleteRecord(ctx, dnsRecord); err != nil {
-			log.Log.Error(err, "Failed to delete DNSRecord", "record", dnsRecord)
+			logger.Error(err, "Failed to delete DNSRecord")
 			return ctrl.Result{}, err
 		}
+		logger.Info("Removing Finalizer", "name", DNSRecordFinalizer)
 		controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
-
-		err = r.Update(ctx, dnsRecord)
-		if err != nil {
+		if err = r.Update(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
 	if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
+		logger.Info("Adding Finalizer", "name", DNSRecordFinalizer)
 		controllerutil.AddFinalizer(dnsRecord, DNSRecordFinalizer)
 		err = r.Update(ctx, dnsRecord)
 		if err != nil {
@@ -96,7 +98,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	var reason, message string
 	status := metav1.ConditionTrue
 	reason = "ProviderSuccess"
-	message = "Provider ensured the managed zone"
+	message = "Provider ensured the dns record"
 
 	// Publish the record
 	err = r.publishRecord(ctx, dnsRecord)
@@ -134,6 +136,8 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // deleteRecord deletes record(s) in the DNSPRovider(i.e. route53) configured by the ManagedZone assigned to this
 // DNSRecord (dnsRecord.Status.ParentManagedZone).
 func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord) error {
+	logger := log.FromContext(ctx)
+
 	managedZone := &v1alpha1.ManagedZone{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dnsRecord.Spec.ManagedZoneRef.Name,
@@ -151,23 +155,18 @@ func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alp
 		return fmt.Errorf("the managed zone is not in a ready state : %s", managedZone.Name)
 	}
 
-	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone)
-	if err != nil {
-		return err
-	}
-
-	err = dnsProvider.Delete(dnsRecord, managedZone)
+	err = r.applyChanges(ctx, dnsRecord, managedZone, true)
 	if err != nil {
 		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
-			log.Log.Info("Record not found in managed zone, continuing", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+			logger.Info("Record not found in managed zone, continuing", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
 			return nil
 		} else if strings.Contains(err.Error(), "no endpoints") {
-			log.Log.Info("DNS record had no endpoint, continuing", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+			logger.Info("DNS record had no endpoint, continuing", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
 			return nil
 		}
 		return err
 	}
-	log.Log.Info("Deleted DNSRecord in manage zone", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+	logger.Info("Deleted DNSRecord in manage zone", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
 
 	return nil
 }
@@ -175,6 +174,7 @@ func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alp
 // publishRecord publishes record(s) to the DNSPRovider(i.e. route53) configured by the ManagedZone assigned to this
 // DNSRecord (dnsRecord.Status.ParentManagedZone).
 func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord) error {
+	logger := log.FromContext(ctx)
 
 	managedZone := &v1alpha1.ManagedZone{
 		ObjectMeta: metav1.ObjectMeta{
@@ -193,19 +193,15 @@ func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1al
 	}
 
 	if dnsRecord.Generation == dnsRecord.Status.ObservedGeneration {
-		log.Log.V(3).Info("Skipping managed zone to which the DNS dnsRecord is already published", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+		logger.V(3).Info("Skipping managed zone to which the DNS dnsRecord is already published", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
 		return nil
 	}
-	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone)
-	if err != nil {
-		return err
-	}
 
-	err = dnsProvider.Ensure(dnsRecord, managedZone)
+	err = r.applyChanges(ctx, dnsRecord, managedZone, false)
 	if err != nil {
 		return err
 	}
-	log.Log.Info("Published DNSRecord to manage zone", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+	logger.Info("Published DNSRecord to manage zone", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
 
 	return nil
 }
@@ -220,4 +216,95 @@ func setDNSRecordCondition(dnsRecord *v1alpha1.DNSRecord, conditionType string, 
 		ObservedGeneration: dnsRecord.Generation,
 	}
 	meta.SetStatusCondition(&dnsRecord.Status.Conditions, cond)
+}
+
+func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone, isDelete bool) error {
+	logger := log.FromContext(ctx)
+
+	rootDomain, err := dnsRecord.GetRootDomain()
+	if err != nil {
+		return err
+	}
+	if !strings.HasSuffix(rootDomain, managedZone.Spec.DomainName) {
+		return fmt.Errorf("inconsitent domains, does not match managedzone, got %s, expected suffix %s", rootDomain, managedZone.Spec.DomainName)
+	}
+	rootDomainFilter := externaldnsendpoint.NewDomainFilter([]string{rootDomain})
+
+	providerConfig := provider.Config{
+		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{managedZone.Spec.DomainName}),
+		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),
+		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{managedZone.Status.ID}),
+	}
+	logger.V(3).Info("applyChanges", "rootDomain", rootDomain, "rootDomainFilter", rootDomainFilter, "providerConfig", providerConfig)
+	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone, providerConfig)
+	if err != nil {
+		return err
+	}
+
+	registry, err := externaldnsregistry.NewNoopRegistry(dnsProvider)
+	if err != nil {
+		return err
+	}
+
+	policyID := "sync"
+	policy, exists := externaldnsplan.Policies[policyID]
+	if !exists {
+		return fmt.Errorf("unknown policy: %s", policyID)
+	}
+
+	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
+	excludeDNSRecordTypes := []string{}
+
+	//If we are deleting set the expected endpoints to an empty array
+	if isDelete {
+		dnsRecord.Spec.Endpoints = []*externaldnsendpoint.Endpoint{}
+	}
+
+	//zoneEndpoints = Records in the current dns provider zone
+	zoneEndpoints, err := registry.Records(ctx)
+	if err != nil {
+		return err
+	}
+
+	//specEndpoints = Records that this DNSRecord expects to exist
+	specEndpoints, err := registry.AdjustEndpoints(dnsRecord.Spec.Endpoints)
+	if err != nil {
+		return fmt.Errorf("adjusting specEndpoints: %w", err)
+	}
+
+	//statusEndpoints = Records that were created/updated by this DNSRecord last
+	statusEndpoints, err := registry.AdjustEndpoints(dnsRecord.Status.Endpoints)
+	if err != nil {
+		return fmt.Errorf("adjusting statusEndpoints: %w", err)
+	}
+
+	//Note: All endpoint lists should be in the same provider specific format at this point
+	logger.V(3).Info("applyChanges", "zoneEndpoints", zoneEndpoints)
+	logger.V(3).Info("applyChanges", "specEndpoints", specEndpoints)
+	logger.V(3).Info("applyChanges", "statusEndpoints", statusEndpoints)
+
+	plan := &externaldnsplan.Plan{
+		Policies: []externaldnsplan.Policy{policy},
+		Current:  zoneEndpoints,
+		Desired:  specEndpoints,
+		//Note: We can't just filter domains by `managedZone.Spec.DomainName` it needs to be the exact root domain for this particular record
+		DomainFilter:   externaldnsendpoint.MatchAllDomainFilters{&rootDomainFilter},
+		ManagedRecords: managedDNSRecordTypes,
+		ExcludeRecords: excludeDNSRecordTypes,
+		OwnerID:        registry.OwnerID(),
+	}
+
+	plan = plan.Calculate()
+
+	if plan.Changes.HasChanges() {
+		logger.Info("Applying changes")
+		err = registry.ApplyChanges(ctx, plan.Changes)
+		if err != nil {
+			return err
+		}
+	} else {
+		logger.Info("All records are already up to date")
+	}
+
+	return nil
 }
