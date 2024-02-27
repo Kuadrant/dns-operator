@@ -27,3 +27,5 @@ Dockerfile.cross
 
 # Temporary files and directories
 tmp
+
+config/local-setup/**/*.env

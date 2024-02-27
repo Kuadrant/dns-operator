@@ -149,7 +149,9 @@ local-setup: $(KIND) ## Setup local development kind cluster and dependencies
 	$(MAKE) kind-create-cluster
 
 .PHONY: local-deploy
-local-deploy: docker-build kind-load-image deploy ## Deploy the dns operator into local kind cluster from the current code
+local-deploy: docker-build kind-load-image ## Deploy the dns operator into local kind cluster from the current code
+	$(KUBECTL) config use-context kind-$(KIND_CLUSTER_NAME)
+	$(MAKE) deploy
 
 ##@ Build
 
@@ -165,7 +167,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: test ## Build docker image with the manager.
+docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG} .
 
 .PHONY: docker-push

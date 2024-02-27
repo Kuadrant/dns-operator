@@ -1,0 +1,40 @@
+resources:
+  - managed_zone.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: gcp-managed-zone-config
+    envs:
+      - managed-zone-config.env
+
+secretGenerator:
+  - name: gcp-credentials
+    envs:
+      - gcp-credentials.env
+    type: "kuadrant.io/gcp"
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: gcp-managed-zone-config
+      version: v1
+      fieldPath: data.ZONE_NAME
+    targets:
+      - select:
+          kind: ManagedZone
+          name: dev-mz-gcp
+        fieldPaths:
+          - spec.id
+  - source:
+      kind: ConfigMap
+      name: gcp-managed-zone-config
+      version: v1
+      fieldPath: data.ZONE_DNS_NAME
+    targets:
+      - select:
+          kind: ManagedZone
+          name: dev-mz-gcp
+        fieldPaths:
+          - spec.domainName
