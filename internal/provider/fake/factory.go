@@ -8,11 +8,11 @@ import (
 )
 
 type Factory struct {
-	ProviderForFunc func(ctx context.Context, pa v1alpha1.ProviderAccessor) (provider.Provider, error)
+	ProviderForFunc func(ctx context.Context, pa v1alpha1.ProviderAccessor, c provider.Config) (provider.Provider, error)
 }
 
 var _ provider.Factory = &Factory{}
 
-func (f *Factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor) (provider.Provider, error) {
-	return f.ProviderForFunc(ctx, pa)
+func (f *Factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor, c provider.Config) (provider.Provider, error) {
+	return f.ProviderForFunc(ctx, pa, c)
 }

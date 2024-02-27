@@ -35,6 +35,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
+	externaldnsplan "sigs.k8s.io/external-dns/plan"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/health"
@@ -54,13 +56,19 @@ var testEnv *envtest.Environment
 var ctx context.Context
 var cancel context.CancelFunc
 var dnsProviderFactory = &providerFake.Factory{
-	ProviderForFunc: func(ctx context.Context, pa v1alpha1.ProviderAccessor) (provider.Provider, error) {
+	ProviderForFunc: func(ctx context.Context, pa v1alpha1.ProviderAccessor, c provider.Config) (provider.Provider, error) {
 		return &providerFake.Provider{
-			EnsureFunc: func(record *v1alpha1.DNSRecord, zone *v1alpha1.ManagedZone) error {
+			RecordsFunc: func(context.Context) ([]*externaldnsendpoint.Endpoint, error) {
+				return []*externaldnsendpoint.Endpoint{}, nil
+			},
+			ApplyChangesFunc: func(context.Context, *externaldnsplan.Changes) error {
 				return nil
 			},
-			DeleteFunc: func(record *v1alpha1.DNSRecord, zone *v1alpha1.ManagedZone) error {
-				return nil
+			AdjustEndpointsFunc: func(eps []*externaldnsendpoint.Endpoint) ([]*externaldnsendpoint.Endpoint, error) {
+				return eps, nil
+			},
+			GetDomainFilterFunc: func() externaldnsendpoint.DomainFilter {
+				return externaldnsendpoint.DomainFilter{}
 			},
 			EnsureManagedZoneFunc: func(zone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
 				return provider.ManagedZoneOutput{}, nil
