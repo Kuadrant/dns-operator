@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -155,7 +156,11 @@ func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alp
 		return fmt.Errorf("the managed zone is not in a ready state : %s", managedZone.Name)
 	}
 
-	err = r.applyChanges(ctx, dnsRecord, managedZone, true)
+	//ToDo Hack to get a unique string for the clusterID
+	parts := strings.Split(dnsRecord.Name, "-")
+	clusterID := parts[len(parts)-1]
+
+	err = r.applyChanges(ctx, dnsRecord, managedZone, true, clusterID)
 	if err != nil {
 		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
 			logger.Info("Record not found in managed zone, continuing", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
@@ -197,7 +202,11 @@ func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1al
 		return nil
 	}
 
-	err = r.applyChanges(ctx, dnsRecord, managedZone, false)
+	//ToDo Hack to get a unique string for the clusterID
+	parts := strings.Split(dnsRecord.Name, "-")
+	clusterID := parts[len(parts)-1]
+
+	err = r.applyChanges(ctx, dnsRecord, managedZone, false, clusterID)
 	if err != nil {
 		return err
 	}
@@ -218,7 +227,7 @@ func setDNSRecordCondition(dnsRecord *v1alpha1.DNSRecord, conditionType string, 
 	meta.SetStatusCondition(&dnsRecord.Status.Conditions, cond)
 }
 
-func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone, isDelete bool) error {
+func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone, isDelete bool, clusterID string) error {
 	logger := log.FromContext(ctx)
 
 	rootDomain, err := dnsRecord.GetRootDomain()
@@ -241,7 +250,17 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return err
 	}
 
-	registry, err := externaldnsregistry.NewNoopRegistry(dnsProvider)
+	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
+	excludeDNSRecordTypes := []string{}
+
+	txtOwnerID := clusterID
+	txtPrefix := "kuadrant-"
+	txtSuffix := ""
+	txtWildcardReplacement := "wildcard"
+	txtEncryptEnabled := false
+	txtEncryptAESKey := ""
+	txtCacheInterval := 0
+	registry, err := externaldnsregistry.NewTXTRegistry(dnsProvider, txtPrefix, txtSuffix, txtOwnerID, time.Duration(txtCacheInterval), txtWildcardReplacement, managedDNSRecordTypes, excludeDNSRecordTypes, txtEncryptEnabled, []byte(txtEncryptAESKey))
 	if err != nil {
 		return err
 	}
@@ -251,9 +270,6 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	if !exists {
 		return fmt.Errorf("unknown policy: %s", policyID)
 	}
-
-	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
-	excludeDNSRecordTypes := []string{}
 
 	//If we are deleting set the expected endpoints to an empty array
 	if isDelete {
@@ -284,9 +300,10 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	logger.V(3).Info("applyChanges", "statusEndpoints", statusEndpoints)
 
 	plan := &externaldnsplan.Plan{
-		Policies: []externaldnsplan.Policy{policy},
-		Current:  zoneEndpoints,
-		Desired:  specEndpoints,
+		Policies:     []externaldnsplan.Policy{policy},
+		Current:      zoneEndpoints,
+		Desired:      specEndpoints,
+		CurrentLocal: statusEndpoints,
 		//Note: We can't just filter domains by `managedZone.Spec.DomainName` it needs to be the exact root domain for this particular record
 		DomainFilter:   externaldnsendpoint.MatchAllDomainFilters{&rootDomainFilter},
 		ManagedRecords: managedDNSRecordTypes,

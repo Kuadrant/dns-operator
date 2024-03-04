@@ -102,3 +102,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.3.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+replace sigs.k8s.io/external-dns => github.com/kuadrant/external-dns v0.0.0-20240305202501-8a7ade1dfd21
