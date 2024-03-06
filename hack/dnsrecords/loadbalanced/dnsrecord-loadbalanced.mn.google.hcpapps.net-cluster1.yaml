@@ -1,0 +1,45 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced.mn.google.hcpapps.net-cluster1
+spec:
+  endpoints:
+    - dnsName: cluster1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.1
+    - dnsName: loadbalanced.mn.google.hcpapps.net
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+    - dnsName: europe-west1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      providerSpecific:
+        - name: weight
+          value: "200"
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      targets:
+        - cluster1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+    - dnsName: lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      providerSpecific:
+        - name: geo-code
+          value: europe-west1
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: IE
+      targets:
+        - europe-west1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+    - dnsName: lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      providerSpecific:
+        - name: geo-code
+          value: '*'
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: default
+      targets:
+        - europe-west1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+  managedZone:
+    name: dev-mz-gcp

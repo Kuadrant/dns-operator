@@ -1,0 +1,13 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-conflicting.mn.google.hcpapps.net-cluster2
+spec:
+  endpoints:
+  - dnsName: conflicting.mn.google.hcpapps.net
+    recordTTL: 60
+    recordType: A
+    targets:
+    - 172.18.200.2
+  managedZone:
+    name: dev-mz-gcp

@@ -1,0 +1,15 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-simple.mn.google.hcpapps.net-clusters-combined
+spec:
+  endpoints:
+  - dnsName: simple.mn.google.hcpapps.net
+    recordTTL: 60
+    recordType: A
+    targets:
+    - 172.18.200.1
+    - 172.18.200.2
+    - 172.18.200.3
+  managedZone:
+    name: dev-mz-gcp

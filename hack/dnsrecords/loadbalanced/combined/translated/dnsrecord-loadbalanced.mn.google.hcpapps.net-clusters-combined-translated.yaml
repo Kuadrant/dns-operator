@@ -1,0 +1,64 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced.mn.google.hcpapps.net-clusters-combined-translated
+spec:
+  endpoints:
+    - dnsName: cluster1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.1
+    - dnsName: cluster2.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.2
+    - dnsName: cluster3.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.3
+    - dnsName: loadbalanced.mn.google.hcpapps.net
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+    - dnsName: europe-west1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      providerSpecific:
+        - name: routingpolicy
+          value: weighted
+        - name: cluster1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+          value: "200"
+        - name: cluster2.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+          value: "100"
+      recordTTL: 60
+      recordType: CNAME
+      targets:
+        - cluster1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+        - cluster2.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+    - dnsName: us-east1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      providerSpecific:
+        - name: routingpolicy
+          value: weighted
+        - name: cluster3.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+          value: "100"
+      recordTTL: 60
+      recordType: CNAME
+      targets:
+        - cluster3.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+    - dnsName: lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+      providerSpecific:
+        - name: routingpolicy
+          value: geo
+        - name: europe-west1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+          value: europe-west1
+        - name: us-east1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+          value: us-east1
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - europe-west1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+        - us-east1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net
+  managedZone:
+    name: dev-mz-gcp
