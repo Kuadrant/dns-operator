@@ -143,6 +143,10 @@ test-unit: manifests generate fmt vet ## Run unit tests.
 test-integration: manifests generate fmt vet envtest ## Run integration tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./internal/controller... -tags=integration -coverprofile cover-integration.out
 
+.PHONY: test-e2e
+test-e2e: ginkgo
+	$(GINKGO) -tags=e2e -v ./test/e2e
+
 .PHONY: local-setup
 local-setup: DEPLOY=false
 local-setup: TEST_NAMESPACE=dnstest
@@ -247,6 +251,7 @@ OPENSHIFT_GOIMPORTS ?= $(LOCALBIN)/openshift-goimports
 KIND = $(LOCALBIN)/kind
 ACT = $(LOCALBIN)/act
 YQ = $(LOCALBIN)/yq
+GINKGO ?= $(LOCALBIN)/ginkgo
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
@@ -255,6 +260,7 @@ OPENSHIFT_GOIMPORTS_VERSION ?= c70783e636f2213cac683f6865d88c5edace3157
 KIND_VERSION = v0.20.0
 ACT_VERSION = latest
 YQ_VERSION := v4.34.2
+GINKGO_VERSION ?= v2.13.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -312,6 +318,11 @@ $(ACT): $(LOCALBIN)
 yq: $(YQ) ## Download yq locally if necessary.
 $(YQ): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@$(YQ_VERSION)
+
+.PHONY: ginkgo
+ginkgo: $(GINKGO) ## Download ginkgo locally if necessary
+$(GINKGO): $(LOCALBIN)
+	GOBIN=$(LOCALBIN) go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@$(GINKGO_VERSION)
 
 .PHONY: bundle
 bundle: manifests manifests-gen-base-csv kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
