@@ -56,7 +56,7 @@ $(LOCAL_SETUP_GCP_MZ_CONFIG):
 .PHONY: local-setup-gcp-mz-credentials
 local-setup-gcp-mz-credentials: $(LOCAL_SETUP_GCP_MZ_CREDS)
 $(LOCAL_SETUP_GCP_MZ_CREDS):
-	$(call ndef,GCP_GOOGLE)
+	$(call ndef,GCP_GOOGLE_CREDENTIALS)
 	$(call ndef,GCP_PROJECT_ID)
 	$(call patch-config,${LOCAL_SETUP_GCP_MZ_CREDS}.template,${LOCAL_SETUP_GCP_MZ_CREDS})
 

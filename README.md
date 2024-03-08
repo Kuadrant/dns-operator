@@ -20,7 +20,7 @@ More details about the AWS provider can be found [here](./docs/provider.md#aws-r
 ##### GCP Provider
 
 ```bash
-make local-setup-gcp-mz-clean local-setup-gcp-mz-generate GCP_ZONE_NAME=<My GCP ZONE Name> GCP_ZONE_DNS_NAME=<My Zone DNS Name> GCP_GOOGLE='<My GCP Credentials.json>' GCP_PROJECT_ID=<My GCP PROJECT ID>
+make local-setup-gcp-mz-clean local-setup-gcp-mz-generate GCP_ZONE_NAME=<My GCP ZONE Name> GCP_ZONE_DNS_NAME=<My Zone DNS Name> GCP_GOOGLE_CREDENTIALS='<My GCP Credentials.json>' GCP_PROJECT_ID=<My GCP PROJECT ID>
 ```
 More details about the GCP provider can be found [here](./docs/provider.md#google-cloud-dns-provider)
 
@@ -78,7 +78,7 @@ make test-e2e TEST_DNS_MANAGED_ZONE_NAME=<My managed zone name> TEST_DNS_ZONE_DO
 |----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
 | TEST_DNS_MANAGED_ZONE_NAME | Name of the managed zone relevant for the test domain (TEST_DNS_ZONE_DOMAIN_NAME). If using local-setup Managed zones, one of [dev-mz-aws; dev-mz-gcp] | 
 | TEST_DNS_ZONE_DOMAIN_NAME  | Domain name being used for the test, must match the domain of the managed zone (TEST_DNS_MANAGED_ZONE_NAME)                                            | 
-| TEST_DNS_NAMESPACE         | The namesapce to run the test in, must be the same namesapce as the TEST_DNS_MANAGED_ZONE_NAME                                                         | 
+| TEST_DNS_NAMESPACE         | The namespace to run the test in, must be the same namespace as the TEST_DNS_MANAGED_ZONE_NAME                                                         | 
 | TEST_DNS_PROVIDER          | DNS Provider currently being tested, one of [aws; gcp]                                                                                                 | 
 
 ### Modifying the API definitions
