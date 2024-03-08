@@ -20,7 +20,7 @@ replacements:
       kind: ConfigMap
       name: gcp-managed-zone-config
       version: v1
-      fieldPath: data.ZONE_NAME
+      fieldPath: data.GCP_ZONE_NAME
     targets:
       - select:
           kind: ManagedZone
@@ -31,7 +31,7 @@ replacements:
       kind: ConfigMap
       name: gcp-managed-zone-config
       version: v1
-      fieldPath: data.ZONE_DNS_NAME
+      fieldPath: data.GCP_ZONE_DNS_NAME
     targets:
       - select:
           kind: ManagedZone

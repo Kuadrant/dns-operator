@@ -144,9 +144,26 @@ test-integration: manifests generate fmt vet envtest ## Run integration tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./internal/controller... -tags=integration -coverprofile cover-integration.out
 
 .PHONY: local-setup
-local-setup: $(KIND) ## Setup local development kind cluster and dependencies
-	$(MAKE) kind-delete-cluster
-	$(MAKE) kind-create-cluster
+local-setup: DEPLOY=false
+local-setup: TEST_NAMESPACE=dnstest
+local-setup: $(KIND) ## Setup local development kind cluster, dependencies and optionally deploy the dns operator DEPLOY=false|true
+	@echo "local-setup: KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOY=${DEPLOY} TEST_NAMESPACE=${TEST_NAMESPACE} "
+	@$(MAKE) -s kind-delete-cluster
+	@$(MAKE) -s kind-create-cluster
+	@$(MAKE) -s install
+	@$(KUBECTL) create namespace ${TEST_NAMESPACE} --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	@$(MAKE) -s local-setup-managedzones TARGET_NAMESPACE=${TEST_NAMESPACE}
+	@if [ ${DEPLOY} = "true" ]; then\
+		echo "local-setup: deploying operator to ${KIND_CLUSTER_NAME}";\
+    	$(MAKE) -s local-deploy;\
+    	echo "local-setup: waiting for dns operator deployments in namespace 'dns-operator-system'";\
+    	$(KUBECTL) -n dns-operator-system wait --timeout=60s --for=condition=Available deployments --all;\
+    fi
+	@echo "local-setup: Check dns operator deployments"
+	$(KUBECTL) -n dns-operator-system get deployments
+	@echo "local-setup: Check managedzones"
+	$(KUBECTL) -n ${TEST_NAMESPACE} get managedzones
+	@echo "local-setup: Complete!!"
 
 .PHONY: local-deploy
 local-deploy: docker-build kind-load-image ## Deploy the dns operator into local kind cluster from the current code
