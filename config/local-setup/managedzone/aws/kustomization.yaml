@@ -31,7 +31,7 @@ replacements:
       kind: ConfigMap
       name: aws-managed-zone-config
       version: v1
-      fieldPath: data.ZONE_ROOT_DOMAIN
+      fieldPath: data.AWS_ZONE_ROOT_DOMAIN
     targets:
       - select:
           kind: ManagedZone

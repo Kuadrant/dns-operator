@@ -143,10 +143,31 @@ test-unit: manifests generate fmt vet ## Run unit tests.
 test-integration: manifests generate fmt vet envtest ## Run integration tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./internal/controller... -tags=integration -coverprofile cover-integration.out
 
+.PHONY: test-e2e
+test-e2e: ginkgo
+	$(GINKGO) -tags=e2e -v ./test/e2e
+
 .PHONY: local-setup
-local-setup: $(KIND) ## Setup local development kind cluster and dependencies
-	$(MAKE) kind-delete-cluster
-	$(MAKE) kind-create-cluster
+local-setup: DEPLOY=false
+local-setup: TEST_NAMESPACE=dnstest
+local-setup: $(KIND) ## Setup local development kind cluster, dependencies and optionally deploy the dns operator DEPLOY=false|true
+	@echo "local-setup: KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOY=${DEPLOY} TEST_NAMESPACE=${TEST_NAMESPACE} "
+	@$(MAKE) -s kind-delete-cluster
+	@$(MAKE) -s kind-create-cluster
+	@$(MAKE) -s install
+	@$(KUBECTL) create namespace ${TEST_NAMESPACE} --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	@$(MAKE) -s local-setup-managedzones TARGET_NAMESPACE=${TEST_NAMESPACE}
+	@if [ ${DEPLOY} = "true" ]; then\
+		echo "local-setup: deploying operator to ${KIND_CLUSTER_NAME}";\
+    	$(MAKE) -s local-deploy;\
+    	echo "local-setup: waiting for dns operator deployments in namespace 'dns-operator-system'";\
+    	$(KUBECTL) -n dns-operator-system wait --timeout=60s --for=condition=Available deployments --all;\
+    fi
+	@echo "local-setup: Check dns operator deployments"
+	$(KUBECTL) -n dns-operator-system get deployments
+	@echo "local-setup: Check managedzones"
+	$(KUBECTL) -n ${TEST_NAMESPACE} get managedzones
+	@echo "local-setup: Complete!!"
 
 .PHONY: local-deploy
 local-deploy: docker-build kind-load-image ## Deploy the dns operator into local kind cluster from the current code
@@ -230,6 +251,7 @@ OPENSHIFT_GOIMPORTS ?= $(LOCALBIN)/openshift-goimports
 KIND = $(LOCALBIN)/kind
 ACT = $(LOCALBIN)/act
 YQ = $(LOCALBIN)/yq
+GINKGO ?= $(LOCALBIN)/ginkgo
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
@@ -238,6 +260,7 @@ OPENSHIFT_GOIMPORTS_VERSION ?= c70783e636f2213cac683f6865d88c5edace3157
 KIND_VERSION = v0.20.0
 ACT_VERSION = latest
 YQ_VERSION := v4.34.2
+GINKGO_VERSION ?= v2.13.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -295,6 +318,11 @@ $(ACT): $(LOCALBIN)
 yq: $(YQ) ## Download yq locally if necessary.
 $(YQ): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@$(YQ_VERSION)
+
+.PHONY: ginkgo
+ginkgo: $(GINKGO) ## Download ginkgo locally if necessary
+$(GINKGO): $(LOCALBIN)
+	GOBIN=$(LOCALBIN) go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@$(GINKGO_VERSION)
 
 .PHONY: bundle
 bundle: manifests manifests-gen-base-csv kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.

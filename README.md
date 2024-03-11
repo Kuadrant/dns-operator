@@ -1,67 +1,85 @@
-# dns-operator
-The DNS Operator is a kubernetes based controller responsible for reconciling DNS Record and Managed Zone custom resources. It interfaces with cloud DNS providers such as AWS and Google to bring the DNS zone into the state declared in these CRDs. 
+# DNS Operator
+
+The DNS Operator is a kubernetes based controller responsible for reconciling DNS Record and Managed Zone custom resources. It interfaces with cloud DNS providers such as AWS and Google to bring the DNS zone into the state declared in these CRDs.
 One of the key use cases the DNS operator solves, is allowing complex DNS routing strategies such as Geo and Weighted to be expressed allowing you to leverage DNS as the first layer of traffic management. In order to make these strategies valuable, it also works across multiple clusters allowing you to use a shared domain name balance traffic based on your requirements.
 
 ## Getting Started
-You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
-**Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
 
-### Running on the cluster
-1. Install Instances of Custom Resources:
+### Pre Setup
 
+#### Add DNS provider configuration
+
+**NOTE:** You can optionally skip this step but at least one ManagedZone will need to be configured and have valid credentials linked to use the DNS Operator.
+
+##### AWS Provider (Route53)
+```bash
+make local-setup-aws-mz-clean local-setup-aws-mz-generate AWS_ZONE_ROOT_DOMAIN=<MY AWS Zone Root Domain> AWS_DNS_PUBLIC_ZONE_ID=<My AWS DNS Public Zone ID> AWS_ACCESS_KEY_ID=<My AWS ACCESS KEY> AWS_SECRET_ACCESS_KEY=<My AWS Secret Access Key>
+```
+More details about the AWS provider can be found [here](./docs/provider.md#aws-route-53-provider)
+
+##### GCP Provider
+
+```bash
+make local-setup-gcp-mz-clean local-setup-gcp-mz-generate GCP_ZONE_NAME=<My GCP ZONE Name> GCP_ZONE_DNS_NAME=<My Zone DNS Name> GCP_GOOGLE_CREDENTIALS='<My GCP Credentials.json>' GCP_PROJECT_ID=<My GCP PROJECT ID>
+```
+More details about the GCP provider can be found [here](./docs/provider.md#google-cloud-dns-provider)
+
+### Running controller locally (default)
+
+1. Create local environment(creates kind cluster)
 ```sh
-kubectl apply -f config/samples/
+make local-setup
 ```
 
-2. Build and push your image to the location specified by `IMG`:
-
-```sh
-make docker-build docker-push IMG=<some-registry>/dns-operator:tag
-```
-
-3. Deploy the controller to the cluster with the image specified by `IMG`:
-
-```sh
-make deploy IMG=<some-registry>/dns-operator:tag
-```
-
-### Uninstall CRDs
-To delete the CRDs from the cluster:
-
-```sh
-make uninstall
-```
-
-### Undeploy controller
-UnDeploy the controller from the cluster:
-
-```sh
-make undeploy
-```
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-### How it works
-This project aims to follow the Kubernetes [Operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
-
-It uses [Controllers](https://kubernetes.io/docs/concepts/architecture/controller/),
-which provide a reconcile function responsible for synchronizing resources until the desired state is reached on the cluster.
-
-### Test It Out
-1. Install the CRDs into the cluster:
-
-```sh
-make install
-```
-
-2. Run your controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):
+1. Run your controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):
 
 ```sh
 make run
 ```
 
-**NOTE:** You can also run this in one step by running: `make install run`
+### Running controller on the cluster
+
+1. Create local environment(creates kind cluster)
+```sh
+make local-setup DEPLOY=true
+```
+
+1. Verify controller deployment
+```sh
+kubectl logs -f deployments/dns-operator-controller-manager -n dns-operator-system
+```
+
+### Running controller on existing cluster
+
+You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
+**Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
+
+1. Apply Operator manifests
+```sh
+kustomize build config/default | kubectl apply -f -
+```
+
+1. Verify controller deployment
+```sh
+kubectl logs -f deployments/dns-operator-controller-manager -n dns-operator-system
+```
+
+## Development
+
+### E2E Test Suite
+
+The e2e test suite can be executed against any cluster running the DNS Operator with configuration added for any supported provider.
+
+```
+make test-e2e TEST_DNS_MANAGED_ZONE_NAME=<My managed zone name> TEST_DNS_ZONE_DOMAIN_NAME=<My domain name> TEST_DNS_NAMESPACE=<My test namesapace> TEST_DNS_PROVIDER=<aws|gcp>
+```
+
+| Environment Variable       | Description                                                                                                                                            |
+|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| TEST_DNS_MANAGED_ZONE_NAME | Name of the managed zone relevant for the test domain (TEST_DNS_ZONE_DOMAIN_NAME). If using local-setup Managed zones, one of [dev-mz-aws; dev-mz-gcp] | 
+| TEST_DNS_ZONE_DOMAIN_NAME  | Domain name being used for the test, must match the domain of the managed zone (TEST_DNS_MANAGED_ZONE_NAME)                                            | 
+| TEST_DNS_NAMESPACE         | The namespace to run the test in, must be the same namespace as the TEST_DNS_MANAGED_ZONE_NAME                                                         | 
+| TEST_DNS_PROVIDER          | DNS Provider currently being tested, one of [aws; gcp]                                                                                                 | 
 
 ### Modifying the API definitions
 If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
@@ -89,4 +107,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-
