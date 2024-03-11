@@ -1,0 +1,40 @@
+resources:
+  - managed_zone.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: aws-managed-zone-config
+    envs:
+      - managed-zone-config.env
+
+secretGenerator:
+  - name: aws-credentials
+    envs:
+      - aws-credentials.env
+    type: "kuadrant.io/aws"
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: aws-managed-zone-config
+      version: v1
+      fieldPath: data.AWS_DNS_PUBLIC_ZONE_ID
+    targets:
+      - select:
+          kind: ManagedZone
+          name: dev-mz-aws
+        fieldPaths:
+          - spec.id
+  - source:
+      kind: ConfigMap
+      name: aws-managed-zone-config
+      version: v1
+      fieldPath: data.ZONE_ROOT_DOMAIN
+    targets:
+      - select:
+          kind: ManagedZone
+          name: dev-mz-aws
+        fieldPaths:
+          - spec.domainName

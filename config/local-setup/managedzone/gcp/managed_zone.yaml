@@ -1,0 +1,10 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: ManagedZone
+metadata:
+  name: dev-mz-gcp
+spec:
+  id: DUMMY_ID
+  domainName: DUMMY_DOMAIN_NAME
+  description: "Dev Managed Zone"
+  dnsProviderSecretRef:
+    name: gcp-credentials

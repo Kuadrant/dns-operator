@@ -18,7 +18,7 @@ var errUnsupportedProvider = fmt.Errorf("provider type given is not supported")
 
 // ProviderConstructor constructs a provider given a Secret resource and a Context.
 // An error will be returned if the appropriate provider is not registered.
-type ProviderConstructor func(context.Context, *v1.Secret) (Provider, error)
+type ProviderConstructor func(context.Context, *v1.Secret, Config) (Provider, error)
 
 var (
 	constructors     = make(map[string]ProviderConstructor)
@@ -36,7 +36,7 @@ func RegisterProvider(name string, c ProviderConstructor) {
 // Factory is an interface that can be used to obtain Provider implementations.
 // It determines which provider implementation to use by introspecting the given ProviderAccessor resource.
 type Factory interface {
-	ProviderFor(context.Context, v1alpha1.ProviderAccessor) (Provider, error)
+	ProviderFor(context.Context, v1alpha1.ProviderAccessor, Config) (Provider, error)
 }
 
 // factory is the default Factory implementation
@@ -51,7 +51,7 @@ func NewFactory(c client.Client) Factory {
 
 // ProviderFor will return a Provider interface for the given ProviderAccessor secret.
 // If the requested ProviderAccessor secret does not exist, an error will be returned.
-func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor) (Provider, error) {
+func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor, c Config) (Provider, error) {
 	providerSecret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pa.GetProviderRef().Name,
@@ -70,7 +70,7 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor)
 	constructorsLock.RLock()
 	defer constructorsLock.RUnlock()
 	if constructor, ok := constructors[providerType]; ok {
-		return constructor(ctx, providerSecret)
+		return constructor(ctx, providerSecret, c)
 	}
 
 	return nil, fmt.Errorf("provider '%s' not registered", providerType)

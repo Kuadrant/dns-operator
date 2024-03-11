@@ -149,7 +149,9 @@ local-setup: $(KIND) ## Setup local development kind cluster and dependencies
 	$(MAKE) kind-create-cluster
 
 .PHONY: local-deploy
-local-deploy: docker-build kind-load-image deploy ## Deploy the dns operator into local kind cluster from the current code
+local-deploy: docker-build kind-load-image ## Deploy the dns operator into local kind cluster from the current code
+	$(KUBECTL) config use-context kind-$(KIND_CLUSTER_NAME)
+	$(MAKE) deploy
 
 ##@ Build
 
@@ -159,13 +161,13 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+	go run ./cmd/main.go --zap-log-level=3
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: test ## Build docker image with the manager.
+docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG} .
 
 .PHONY: docker-push
