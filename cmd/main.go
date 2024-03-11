@@ -19,7 +19,6 @@ package main
 import (
 	"flag"
 	"os"
-	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -33,7 +32,6 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/controller"
-	"github.com/kuadrant/dns-operator/internal/health"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
@@ -84,19 +82,6 @@ func main() {
 
 	providerFactory := provider.NewFactory(mgr.GetClient())
 
-	healthMonitor := health.NewMonitor()
-	healthCheckQueue := health.NewRequestQueue(time.Second * 5)
-
-	if err := mgr.Add(healthMonitor); err != nil {
-		setupLog.Error(err, "unable to start health monitor")
-		os.Exit(1)
-	}
-
-	if err := mgr.Add(healthCheckQueue); err != nil {
-		setupLog.Error(err, "unable to start health check queue")
-		os.Exit(1)
-	}
-
 	if err = (&controller.ManagedZoneReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
@@ -113,15 +98,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSRecord")
 		os.Exit(1)
 	}
-	if err = (&controller.DNSHealthCheckProbeReconciler{
-		Client:        mgr.GetClient(),
-		Scheme:        mgr.GetScheme(),
-		HealthMonitor: healthMonitor,
-		Queue:         healthCheckQueue,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "DNSHealthCheckProbe")
-		os.Exit(1)
-	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

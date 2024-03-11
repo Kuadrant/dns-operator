@@ -22,7 +22,6 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,7 +38,6 @@ import (
 	externaldnsplan "sigs.k8s.io/external-dns/plan"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
-	"github.com/kuadrant/dns-operator/internal/health"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	providerFake "github.com/kuadrant/dns-operator/internal/provider/fake"
@@ -118,20 +116,6 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	healthQueue := health.NewRequestQueue(1 * time.Second)
-	err = mgr.Add(healthQueue)
-	Expect(err).ToNot(HaveOccurred())
-
-	monitor := health.NewMonitor()
-	err = mgr.Add(monitor)
-	Expect(err).ToNot(HaveOccurred())
-
-	healthServer := &testHealthServer{
-		Port: 3333,
-	}
-	err = mgr.Add(healthServer)
-	Expect(err).ToNot(HaveOccurred())
-
 	err = (&ManagedZoneReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
@@ -143,13 +127,6 @@ var _ = BeforeSuite(func() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: dnsProviderFactory,
-	}).SetupWithManager(mgr)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&DNSHealthCheckProbeReconciler{
-		Client:        mgr.GetClient(),
-		HealthMonitor: monitor,
-		Queue:         healthQueue,
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 
