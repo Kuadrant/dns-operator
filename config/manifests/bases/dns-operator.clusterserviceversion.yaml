@@ -15,12 +15,6 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
-    - description: DNSHealthCheckProbe is the Schema for the dnshealthcheckprobes
-        API
-      displayName: DNSHealth Check Probe
-      kind: DNSHealthCheckProbe
-      name: dnshealthcheckprobes.kuadrant.io
-      version: v1alpha1
     - description: DNSRecord is the Schema for the dnsrecords API
       displayName: DNSRecord
       kind: DNSRecord
