@@ -3,10 +3,11 @@
 package controller
 
 import (
-	"context"
-	"fmt"
-	"net/http"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	kuadrantdnsv1alpha1 "github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
 const (
@@ -17,32 +18,19 @@ const (
 	providerCredential      = "secretname"
 )
 
-type testHealthServer struct {
-	Port int
-}
-
-func (s *testHealthServer) Start(ctx context.Context) error {
-	mux := http.NewServeMux()
-
-	endpoint := func(expectedCode int) func(http.ResponseWriter, *http.Request) {
-		return func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(expectedCode)
-		}
-	}
-
-	mux.HandleFunc("/healthy", endpoint(200))
-	mux.HandleFunc("/unhealthy", endpoint(500))
-
-	errCh := make(chan error)
-
-	go func() {
-		errCh <- http.ListenAndServe(fmt.Sprintf(":%d", s.Port), mux)
-	}()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-errCh:
-		return err
+func testBuildManagedZone(name, ns, domainName string) *kuadrantdnsv1alpha1.ManagedZone {
+	return &kuadrantdnsv1alpha1.ManagedZone{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Spec: kuadrantdnsv1alpha1.ManagedZoneSpec{
+			ID:          "1234",
+			DomainName:  domainName,
+			Description: domainName,
+			SecretRef: kuadrantdnsv1alpha1.ProviderRef{
+				Name: "secretname",
+			},
+		},
 	}
 }

@@ -19,14 +19,16 @@ package v1alpha1
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
+	externaldnsprovider "sigs.k8s.io/external-dns/provider"
+	externaldnsregistry "sigs.k8s.io/external-dns/registry"
 )
 
 // DNSRecordSpec defines the desired state of DNSRecord
 type DNSRecordSpec struct {
-
 	// OwnerID is a unique string used to identify all endpoints created by this kuadrant
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="OwnerID is immutable"
 	// +optional
@@ -108,6 +110,13 @@ const (
 	NSRecordType DNSRecordType = "NS"
 
 	DefaultGeo string = "default"
+
+	txtRegistryPrefix              = "kuadrant-"
+	txtRegistrySuffix              = ""
+	txtRegistryWildcardReplacement = "wildcard"
+	txtRegistryEncryptEnabled      = false
+	txtRegistryEncryptAESKey       = ""
+	txtRegistryCacheInterval       = time.Duration(0)
 )
 
 const WildcardPrefix = "*."
@@ -141,6 +150,15 @@ func (s *DNSRecord) Validate() error {
 		}
 	}
 	return nil
+}
+
+func (s *DNSRecord) GetRegistry(provider externaldnsprovider.Provider, managedDNSRecordTypes, excludeDNSRecordTypes []string) (externaldnsregistry.Registry, error) {
+	if s.Spec.OwnerID != nil {
+		return externaldnsregistry.NewTXTRegistry(provider, txtRegistryPrefix, txtRegistrySuffix, *s.Spec.OwnerID, txtRegistryCacheInterval,
+			txtRegistryWildcardReplacement, managedDNSRecordTypes, excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
+	} else {
+		return externaldnsregistry.NewNoopRegistry(provider)
+	}
 }
 
 func init() {
