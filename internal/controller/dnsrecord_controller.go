@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsplan "sigs.k8s.io/external-dns/plan"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
@@ -99,31 +100,39 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	status := metav1.ConditionTrue
 	reason = "ProviderSuccess"
 	message = "Provider ensured the dns record"
-
+	err = dnsRecord.Validate()
+	if err != nil {
+		status = metav1.ConditionFalse
+		reason = "ValidationError"
+		message = fmt.Sprintf("validation of DNSRecord failed: %v", err)
+		setDNSRecordCondition(dnsRecord, string(conditions.ConditionTypeReady), status, reason, message)
+		return r.updateStatus(ctx, previous, dnsRecord)
+	}
 	// Publish the record
 	err = r.publishRecord(ctx, dnsRecord)
 	if err != nil {
 		status = metav1.ConditionFalse
 		reason = "ProviderError"
 		message = fmt.Sprintf("The DNS provider failed to ensure the record: %v", provider.SanitizeError(err))
-	} else {
-		dnsRecord.Status.ObservedGeneration = dnsRecord.Generation
-		dnsRecord.Status.Endpoints = dnsRecord.Spec.Endpoints
+		setDNSRecordCondition(dnsRecord, string(conditions.ConditionTypeReady), status, reason, message)
+		return r.updateStatus(ctx, previous, dnsRecord)
 	}
+	// success
 	setDNSRecordCondition(dnsRecord, string(conditions.ConditionTypeReady), status, reason, message)
+	dnsRecord.Status.ObservedGeneration = dnsRecord.Generation
+	dnsRecord.Status.Endpoints = dnsRecord.Spec.Endpoints
+	return r.updateStatus(ctx, previous, dnsRecord)
+}
 
-	if !equality.Semantic.DeepEqual(previous.Status, dnsRecord.Status) {
-		updateErr := r.Status().Update(ctx, dnsRecord)
-		if updateErr != nil {
-			// Ignore conflicts, resource might just be outdated.
-			if apierrors.IsConflict(updateErr) {
-				return ctrl.Result{Requeue: true}, nil
-			}
-			return ctrl.Result{}, updateErr
+func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, current *v1alpha1.DNSRecord) (reconcile.Result, error) {
+	if !equality.Semantic.DeepEqual(previous.Status, current.Status) {
+		updateError := r.Status().Update(ctx, current)
+		if apierrors.IsConflict(updateError) {
+			return ctrl.Result{Requeue: true}, nil
 		}
+		return ctrl.Result{}, updateError
 	}
-
-	return ctrl.Result{}, err
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -175,7 +184,6 @@ func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alp
 // DNSRecord (dnsRecord.Status.ParentManagedZone).
 func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord) error {
 	logger := log.FromContext(ctx)
-
 	managedZone := &v1alpha1.ManagedZone{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dnsRecord.Spec.ManagedZoneRef.Name,
@@ -220,22 +228,18 @@ func setDNSRecordCondition(dnsRecord *v1alpha1.DNSRecord, conditionType string, 
 
 func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone, isDelete bool) error {
 	logger := log.FromContext(ctx)
-
-	rootDomain, err := dnsRecord.GetRootDomain()
-	if err != nil {
-		return err
+	filterDomain, _ := strings.CutPrefix(managedZone.Spec.DomainName, v1alpha1.WildcardPrefix)
+	if dnsRecord.Spec.RootHost != nil {
+		filterDomain = *dnsRecord.Spec.RootHost
 	}
-	if !strings.HasSuffix(rootDomain, managedZone.Spec.DomainName) {
-		return fmt.Errorf("inconsitent domains, does not match managedzone, got %s, expected suffix %s", rootDomain, managedZone.Spec.DomainName)
-	}
-	rootDomainFilter := externaldnsendpoint.NewDomainFilter([]string{rootDomain})
+	rootDomainFilter := externaldnsendpoint.NewDomainFilter([]string{filterDomain})
 
 	providerConfig := provider.Config{
 		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{managedZone.Spec.DomainName}),
 		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),
 		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{managedZone.Status.ID}),
 	}
-	logger.V(3).Info("applyChanges", "rootDomain", rootDomain, "rootDomainFilter", rootDomainFilter, "providerConfig", providerConfig)
+	logger.V(3).Info("applyChanges", "zone", managedZone.Spec.DomainName, "rootDomainFilter", rootDomainFilter, "providerConfig", providerConfig)
 	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone, providerConfig)
 	if err != nil {
 		return err

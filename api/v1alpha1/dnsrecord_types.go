@@ -26,6 +26,11 @@ import (
 
 // DNSRecordSpec defines the desired state of DNSRecord
 type DNSRecordSpec struct {
+
+	// rootHost is the single root for all endpoints in a DNSRecord.
+	//If rootHost is set, it is expected all defined endpoints are children 	of or equal to this rootHost
+	// +optional
+	RootHost *string `json:"rootHost,omitempty"`
 	// +kubebuilder:validation:Required
 	// +required
 	ManagedZoneRef *ManagedZoneReference `json:"managedZone,omitempty"`
@@ -101,31 +106,37 @@ const (
 	DefaultGeo string = "default"
 )
 
-// GetRootDomain returns the shortest domain that is shared across all spec.Endpoints dns names.
-// Validates that all endpoints share an equal root domain and returns an error if they don't.
-func (s *DNSRecord) GetRootDomain() (string, error) {
-	domain := ""
-	dnsNames := []string{}
-	for idx := range s.Spec.Endpoints {
-		dnsNames = append(dnsNames, s.Spec.Endpoints[idx].DNSName)
-	}
-	for idx := range dnsNames {
-		if domain == "" || len(domain) > len(dnsNames[idx]) {
-			domain = dnsNames[idx]
+const WildcardPrefix = "*."
+
+func (s *DNSRecord) Validate() error {
+	if s.Spec.RootHost != nil {
+		root := *s.Spec.RootHost
+		if len(strings.Split(root, ".")) <= 1 {
+			return fmt.Errorf("invalid domain format no tld discovered")
+		}
+		if len(s.Spec.Endpoints) == 0 {
+			return fmt.Errorf("no endpoints defined for DNSRecord. Nothing to do.")
+		}
+
+		root, _ = strings.CutPrefix(root, WildcardPrefix)
+
+		rootEndpointFound := false
+		for _, ep := range s.Spec.Endpoints {
+			if !strings.HasSuffix(ep.DNSName, root) {
+				return fmt.Errorf("invalid endpoint discovered %s all endpoints should be equal to or end with the rootHost %s", ep.DNSName, root)
+			}
+			if !rootEndpointFound {
+				//check original root
+				if ep.DNSName == *s.Spec.RootHost {
+					rootEndpointFound = true
+				}
+			}
+		}
+		if !rootEndpointFound {
+			return fmt.Errorf("invalid endpoint set. rootHost is set but found no endpoint defining a record for the rootHost %s", root)
 		}
 	}
-
-	if domain == "" {
-		return "", fmt.Errorf("unable to determine root domain from %v", dnsNames)
-	}
-
-	for idx := range dnsNames {
-		if !strings.HasSuffix(dnsNames[idx], domain) {
-			return "", fmt.Errorf("inconsitent domains, got %s, expected suffix %s", dnsNames[idx], domain)
-		}
-	}
-
-	return domain, nil
+	return nil
 }
 
 func init() {
