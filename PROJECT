@@ -27,3 +27,4 @@ resources:
   kind: DNSRecord
   path: github.com/kuadrant/dns-operator/api/v1alpha1
   version: v1alpha1
+version: "3"
