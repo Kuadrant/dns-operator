@@ -94,6 +94,11 @@ spec:
                 required:
                 - name
                 type: object
+              rootHost:
+                description: "rootHost is the single root for all endpoints in a DNSRecord.
+                  If rootHost is set, it is expected all defined endpoints are children
+                  \tof or equal to this rootHost"
+                type: string
             type: object
           status:
             description: DNSRecordStatus defines the observed state of DNSRecord
