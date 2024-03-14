@@ -1,0 +1,9 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: dns-operator
+spec:
+  source: dns-operator-catalog
+  sourceNamespace: dns-operator-system
+  name: dns-operator
+  channel: "alpha"
