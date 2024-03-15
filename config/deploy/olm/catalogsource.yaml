@@ -1,0 +1,9 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: dns-operator-catalog
+spec:
+  sourceType: grpc
+  image: quay.io/kuadrant/dns-operator-catalog:latest
+  displayName: DNS Operators
+  publisher: grpc

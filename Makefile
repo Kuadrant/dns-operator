@@ -33,7 +33,7 @@ IMAGE_TAG_BASE ?= quay.io/kuadrant/dns-operator
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(VERSION)
+BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:latest
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
 BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
@@ -235,6 +235,20 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/deploy/local | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
+.PHONY: install-olm
+install-olm: operator-sdk
+	$(OPERATOR_SDK) olm install
+
+.PHONY: uninstall-olm
+uninstall-olm: operator-sdk
+	$(OPERATOR_SDK) olm uninstall
+
+deploy-catalog: kustomize yq ## Deploy operator to the K8s cluster specified in ~/.kube/config using OLM catalog image.
+	$(KUSTOMIZE) build config/deploy/olm | $(KUBECTL) apply -f -
+
+undeploy-catalog: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config using OLM catalog image.
+	$(KUSTOMIZE) build config/deploy/olm | $(KUBECTL) delete -f -
+
 ##@ Build Dependencies
 
 ## Location to install dependencies to
@@ -347,6 +361,10 @@ bundle-ignore-createdAt:
 .PHONY: bundle-post-generate
 bundle-post-generate:
 	$(YQ) -i '.annotations."com.redhat.openshift.versions" = "v4.12-v4.14"' bundle/metadata/annotations.yaml
+	V="$(CATALOG_IMG)" $(YQ) eval '.spec.image = strenv(V)' -i config/deploy/olm/catalogsource.yaml
+	@if [ "$(CHANNELS)" != "" ]; then\
+		V="$(CHANNELS)" $(YQ) eval '.spec.channel = strenv(V)' -i config/deploy/olm/subscription.yaml; \
+	fi
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
@@ -378,7 +396,7 @@ endif
 BUNDLE_IMGS ?= $(BUNDLE_IMG)
 
 # The image tag given to the resulting catalog image (e.g. make catalog-build CATALOG_IMG=example.com/operator-catalog:v0.2.0).
-CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:v$(VERSION)
+CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:latest
 
 # Set CATALOG_BASE_IMG to an existing catalog image tag to add $BUNDLE_IMGS to that image.
 ifneq ($(origin CATALOG_BASE_IMG), undefined)
@@ -403,8 +421,11 @@ catalog-push: ## Push a catalog image.
 
 .PHONY: prepare-release
 RELEASE_FILE = $(shell pwd)/make/release.mk
+prepare-release: IMG_TAG=v$(VERSION)
 prepare-release: ## Generates a makefile that will override environment variables for a specific release and runs bundle.
-	echo -e "#Release default values\\nIMG=$(IMG)\nCHANNELS=$(CHANNELS)\nVERSION=$(VERSION)\nREPLACES_VERSION=$(REPLACES_VERSION)" > $(RELEASE_FILE)
+	echo -e "#Release default values\\nIMG=$(IMAGE_TAG_BASE):$(IMG_TAG)\nBUNDLE_IMG=$(IMAGE_TAG_BASE)-bundle:$(IMG_TAG)\n\
+	CATALOG_IMG=$(IMAGE_TAG_BASE)-catalog:$(IMG_TAG)\nCHANNELS=$(CHANNELS)\nBUNDLE_CHANNELS=--channels=$(CHANNELS)\n\
+	VERSION=$(VERSION)\nREPLACES_VERSION=$(REPLACES_VERSION)" > $(RELEASE_FILE)
 	$(MAKE) bundle
 
 # Include last to avoid changing MAKEFILE_LIST used above
