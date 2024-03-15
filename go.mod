@@ -103,3 +103,12 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.3.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+replace sigs.k8s.io/external-dns => github.com/kuadrant/external-dns v0.0.0-20240315162317-073094ed9bea
+
+// To Update with changes from v0.14.0_kuadrant run:
+// go mod edit --replace sigs.k8s.io/external-dns=github.com/kuadrant/external-dns@v0.14.0_kuadrant
+// go mod tidy
+
+// To Update for local development
+// go mod edit --replace sigs.k8s.io/external-dns=/home/mnairn/go/src/github.com/kubernetes-sigs/external-dns
