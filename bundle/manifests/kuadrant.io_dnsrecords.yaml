@@ -94,6 +94,13 @@ spec:
                 required:
                 - name
                 type: object
+              ownerID:
+                description: OwnerID is a unique string used to identify all endpoints
+                  created by this kuadrant
+                type: string
+                x-kubernetes-validations:
+                - message: OwnerID is immutable
+                  rule: self == oldSelf
               rootHost:
                 description: "rootHost is the single root for all endpoints in a DNSRecord.
                   If rootHost is set, it is expected all defined endpoints are children
