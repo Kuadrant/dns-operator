@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -19,12 +20,18 @@ import (
 	. "github.com/onsi/gomega"
 
 	"k8s.io/client-go/kubernetes/scheme"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
+	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/provider"
+	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
+	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 )
 
 const (
@@ -45,6 +52,7 @@ var (
 	testNamespace       string
 	testDNSProvider     string
 	supportedProviders  = []string{"aws", "gcp"}
+	testManagedZone     *v1alpha1.ManagedZone
 )
 
 func TestAPIs(t *testing.T) {
@@ -70,6 +78,10 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
+
+	testManagedZone = &v1alpha1.ManagedZone{}
+	err = k8sClient.Get(ctx, client.ObjectKey{Namespace: testNamespace, Name: testManagedZoneName}, testManagedZone)
+	Expect(err).NotTo(HaveOccurred())
 
 	testSuiteID = "dns-op-e2e-" + GenerateName()
 })
@@ -112,4 +124,40 @@ func setConfigFromEnvVars() error {
 func GenerateName() string {
 	nBig, _ := rand.Int(rand.Reader, big.NewInt(1000000))
 	return namegenerator.NewNameGenerator(nBig.Int64()).Generate()
+}
+
+func EndpointsForHost(ctx context.Context, provider provider.Provider, host string) ([]*externaldnsendpoint.Endpoint, error) {
+	filtered := []*externaldnsendpoint.Endpoint{}
+
+	records, err := provider.Records(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	hostRegexp, err := regexp.Compile(host)
+	if err != nil {
+		return nil, err
+	}
+
+	domainFilter := externaldnsendpoint.NewRegexDomainFilter(hostRegexp, nil)
+
+	for _, record := range records {
+		// Ignore records that do not match the domain filter provided
+		if !domainFilter.Match(record.DNSName) {
+			GinkgoWriter.Printf("[debug] ignoring record %s that does not match domain filter %s\n", record.DNSName, host)
+			continue
+		}
+		filtered = append(filtered, record)
+	}
+	return filtered, nil
+}
+
+func providerForManagedZone(ctx context.Context, mz *v1alpha1.ManagedZone) (provider.Provider, error) {
+	providerFactory := provider.NewFactory(k8sClient)
+	providerConfig := provider.Config{
+		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{mz.Spec.DomainName}),
+		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),
+		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{mz.Status.ID}),
+	}
+	return providerFactory.ProviderFor(ctx, mz, providerConfig)
 }

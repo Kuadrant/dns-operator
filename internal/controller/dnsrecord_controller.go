@@ -35,7 +35,6 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsplan "sigs.k8s.io/external-dns/plan"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
-	externaldnsregistry "sigs.k8s.io/external-dns/registry"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/conditions"
@@ -81,6 +80,9 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		logger.Info("Removing Finalizer", "name", DNSRecordFinalizer)
 		controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
 		if err = r.Update(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -245,7 +247,10 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return err
 	}
 
-	registry, err := externaldnsregistry.NewNoopRegistry(dnsProvider)
+	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
+	excludeDNSRecordTypes := []string{}
+
+	registry, err := dnsRecord.GetRegistry(dnsProvider, managedDNSRecordTypes, excludeDNSRecordTypes)
 	if err != nil {
 		return err
 	}
@@ -255,9 +260,6 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	if !exists {
 		return fmt.Errorf("unknown policy: %s", policyID)
 	}
-
-	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
-	excludeDNSRecordTypes := []string{}
 
 	//If we are deleting set the expected endpoints to an empty array
 	if isDelete {

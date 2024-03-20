@@ -22,10 +22,15 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -144,3 +149,22 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
+
+func CreateNamespace(namespace *string) {
+	var generatedTestNamespace = "test-namespace-" + uuid.New().String()
+
+	nsObject := &v1.Namespace{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},
+		ObjectMeta: metav1.ObjectMeta{Name: generatedTestNamespace},
+	}
+
+	err := k8sClient.Create(context.Background(), nsObject)
+	Expect(err).ToNot(HaveOccurred())
+
+	existingNamespace := &v1.Namespace{}
+	Eventually(func() error {
+		return k8sClient.Get(context.Background(), types.NamespacedName{Name: generatedTestNamespace}, existingNamespace)
+	}, time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
+
+	*namespace = existingNamespace.Name
+}

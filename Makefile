@@ -169,6 +169,10 @@ local-setup: $(KIND) ## Setup local development kind cluster, dependencies and o
 	$(KUBECTL) -n ${TEST_NAMESPACE} get managedzones
 	@echo "local-setup: Complete!!"
 
+.PHONY: local-cleanup
+local-cleanup: ## Delete local cluster
+	$(MAKE) kind-delete-cluster
+
 .PHONY: local-deploy
 local-deploy: docker-build kind-load-image ## Deploy the dns operator into local kind cluster from the current code
 	$(KUBECTL) config use-context kind-$(KIND_CLUSTER_NAME)
