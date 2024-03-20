@@ -22,6 +22,7 @@ on:
       - 'samples/**'
       - 'LICENSE'
   workflow_dispatch:
+  merge_group:
 
 env:
   TEST_NAMESPACE: e2e-test
