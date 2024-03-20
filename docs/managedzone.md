@@ -12,6 +12,10 @@ A gateway's host will be matched to any ManagedZone that the host is a subdomain
 When MGC wants to create the DNS Records for a host, it will create them in the most exactly matching ManagedZone.
 e.g. given the zones `hcpapps.net` and `api.hcpapps.net` the DNS Records for the host `test.api.hcpapps.net` will be created in the `api.hcpapps.net` zone.
 
+### Private and Public Zones
+
+Some DNS providers offer private zones. While this is something we will want to support in the future, we currently only support public zones.
+
 ### Delegation
 Delegation allows you to give control of a subdomain of a root domain to MGC while the root domain has it's DNS zone elsewhere.
 
