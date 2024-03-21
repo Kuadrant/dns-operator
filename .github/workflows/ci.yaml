@@ -21,6 +21,7 @@ on:
       - '**.md'
       - 'samples/**'
       - 'LICENSE'
+  merge_group:
 
 jobs:
   lint:
