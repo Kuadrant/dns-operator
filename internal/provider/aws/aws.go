@@ -161,14 +161,28 @@ func (p *Route53DNSProvider) EnsureManagedZone(zone *v1alpha1.ManagedZone) (prov
 		if err != nil {
 			log.Log.Error(err, "failed to update hosted zone comment")
 		}
+		if getResp.HostedZone == nil {
+			err = fmt.Errorf("aws zone issue. No hosted zone info in response")
+			log.Log.Error(err, "unexpected response")
+			return managedZoneOutput, err
+		}
+		if getResp.HostedZone.Id == nil {
+			err = fmt.Errorf("aws zone issue. No hosted zone id in response")
+			return managedZoneOutput, err
+		}
 
 		managedZoneOutput.ID = *getResp.HostedZone.Id
-		managedZoneOutput.RecordCount = *getResp.HostedZone.ResourceRecordSetCount
-		managedZoneOutput.NameServers = getResp.DelegationSet.NameServers
+		if getResp.HostedZone.ResourceRecordSetCount != nil {
+			managedZoneOutput.RecordCount = *getResp.HostedZone.ResourceRecordSetCount
+		}
+
+		managedZoneOutput.NameServers = []*string{}
+		if getResp.DelegationSet != nil {
+			managedZoneOutput.NameServers = getResp.DelegationSet.NameServers
+		}
 
 		return managedZoneOutput, nil
 	}
-
 	//ToDo callerRef must be unique, but this can cause duplicates if the status can't be written back during a
 	//reconciliation that successfully created a new hosted zone i.e. the object has been modified; please apply your
 	//changes to the latest version and try again
@@ -186,9 +200,23 @@ func (p *Route53DNSProvider) EnsureManagedZone(zone *v1alpha1.ManagedZone) (prov
 		log.Log.Error(err, "failed to create hosted zone")
 		return managedZoneOutput, err
 	}
+	if createResp.HostedZone == nil {
+		err = fmt.Errorf("aws zone creation issue. No hosted zone info in response")
+		log.Log.Error(err, "unexpected response")
+		return managedZoneOutput, err
+	}
+	if createResp.HostedZone.Id == nil {
+		err = fmt.Errorf("aws zone creation issue. No hosted zone id in response")
+		return managedZoneOutput, err
+	}
 	managedZoneOutput.ID = *createResp.HostedZone.Id
-	managedZoneOutput.RecordCount = *createResp.HostedZone.ResourceRecordSetCount
-	managedZoneOutput.NameServers = createResp.DelegationSet.NameServers
+
+	if createResp.HostedZone.ResourceRecordSetCount != nil {
+		managedZoneOutput.RecordCount = *createResp.HostedZone.ResourceRecordSetCount
+	}
+	if createResp.DelegationSet != nil {
+		managedZoneOutput.NameServers = createResp.DelegationSet.NameServers
+	}
 	return managedZoneOutput, nil
 }
 
