@@ -53,6 +53,11 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
+const (
+	RequeueDuration  = time.Minute * 1
+	ValidityDuration = time.Second * 30
+)
+
 var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
@@ -132,7 +137,7 @@ var _ = BeforeSuite(func() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: dnsProviderFactory,
-	}).SetupWithManager(mgr)
+	}).SetupWithManager(mgr, RequeueDuration, ValidityDuration)
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {
