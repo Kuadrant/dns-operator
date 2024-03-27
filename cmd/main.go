@@ -43,6 +43,11 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+const (
+	RequeueDuration  = "15m"
+	ValidityDuration = "14m"
+)
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
@@ -54,11 +59,20 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
+	var requeueTime string
+	var validFor string
+	// TODO use duration type vars
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.StringVar(&requeueTime, "requeue-time", RequeueDuration,
+		"Duration for the validation reconciliation loop. "+
+			"Controls how ofter record is reconciled")
+	flag.StringVar(&validFor, "valid-for", ValidityDuration,
+		"Duration when the record is considered to hold valid information"+
+			"Controls if we commit to the full reconcile loop")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -94,7 +108,7 @@ func main() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, requeueTime, validFor); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSRecord")
 		os.Exit(1)
 	}

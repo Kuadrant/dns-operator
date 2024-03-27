@@ -63,6 +63,12 @@ type DNSRecordStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
+	//
+	QueuedAt     time.Time     `json:"queuedAt,omitempty"`
+	QueuedFor    time.Time     `json:"queuedFor,omitempty"`
+	ValidFor     time.Duration `json:"validFor,omitempty"`
+	WriteCounter int64         `json:"failCounter,omitempty"`
+
 	// endpoints are the last endpoints that were successfully published by the provider
 	//
 	// Provides a simple mechanism to store the current provider records in order to
