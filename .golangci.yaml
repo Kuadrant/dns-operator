@@ -3,3 +3,7 @@ linters:
   enable:
     - gofmt
     - misspell
+
+run:
+  skip-dirs:
+    - internal/external-dns

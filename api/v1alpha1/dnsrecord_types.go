@@ -25,6 +25,8 @@ import (
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 	externaldnsregistry "sigs.k8s.io/external-dns/registry"
+
+	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 )
 
 // DNSRecordSpec defines the desired state of DNSRecord
@@ -154,7 +156,7 @@ func (s *DNSRecord) Validate() error {
 
 func (s *DNSRecord) GetRegistry(provider externaldnsprovider.Provider, managedDNSRecordTypes, excludeDNSRecordTypes []string) (externaldnsregistry.Registry, error) {
 	if s.Spec.OwnerID != nil {
-		return externaldnsregistry.NewTXTRegistry(provider, txtRegistryPrefix, txtRegistrySuffix, *s.Spec.OwnerID, txtRegistryCacheInterval,
+		return registry.NewTXTRegistry(provider, txtRegistryPrefix, txtRegistrySuffix, *s.Spec.OwnerID, txtRegistryCacheInterval,
 			txtRegistryWildcardReplacement, managedDNSRecordTypes, excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
 	} else {
 		return externaldnsregistry.NewNoopRegistry(provider)
