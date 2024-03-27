@@ -214,16 +214,17 @@ func (im *TXTRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, error
 func (im *TXTRegistry) generateTXTRecord(r *endpoint.Endpoint) []*endpoint.Endpoint {
 	endpoints := make([]*endpoint.Endpoint, 0)
 
-	if !im.txtEncryptEnabled && !im.mapper.recordTypeInAffix() && r.RecordType != endpoint.RecordTypeAAAA {
-		// old TXT record format
-		txt := endpoint.NewEndpoint(im.mapper.toTXTName(r.DNSName), endpoint.RecordTypeTXT, r.Labels.Serialize(true, im.txtEncryptEnabled, im.txtEncryptAESKey))
-		if txt != nil {
-			txt.WithSetIdentifier(r.SetIdentifier)
-			txt.Labels[endpoint.OwnedRecordLabelKey] = r.DNSName
-			txt.ProviderSpecific = r.ProviderSpecific
-			endpoints = append(endpoints, txt)
-		}
-	}
+	//mnairn: Seems to be no way to prevent the creation of the old format TXT records other than removing the code
+	//if !im.txtEncryptEnabled && !im.mapper.recordTypeInAffix() && r.RecordType != endpoint.RecordTypeAAAA {
+	//	// old TXT record format
+	//	txt := endpoint.NewEndpoint(im.mapper.toTXTName(r.DNSName), endpoint.RecordTypeTXT, r.Labels.Serialize(true, im.txtEncryptEnabled, im.txtEncryptAESKey))
+	//	if txt != nil {
+	//		txt.WithSetIdentifier(r.SetIdentifier)
+	//		txt.Labels[endpoint.OwnedRecordLabelKey] = r.DNSName
+	//		txt.ProviderSpecific = r.ProviderSpecific
+	//		endpoints = append(endpoints, txt)
+	//	}
+	//}
 	// new TXT record format (containing record type)
 	recordType := r.RecordType
 	// AWS Alias records are encoded as type "cname"
