@@ -87,6 +87,19 @@ type DNSRecordStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
+	// QueuedAt is a time when DNS record was received for the reconciliation
+	QueuedAt metav1.Time `json:"queuedAt,omitempty"`
+
+	// QueuedFor is a time when we expect a DNS record to be reconciled again
+	QueuedFor metav1.Time `json:"queuedFor,omitempty"`
+
+	// ValidFor indicates duration since the last reconciliation we consider data in the record to be valid
+	ValidFor string `json:"validFor,omitempty"`
+
+	// WriteCounter represent a number of consecutive write attempts on the same generation of the record.
+	// It is being reset to 0 when the generation changes or there are no changes to write.
+	WriteCounter int64 `json:"writeCounter,omitempty"`
+
 	// endpoints are the last endpoints that were successfully published by the provider
 	//
 	// Provides a simple mechanism to store the current provider records in order to

@@ -1,4 +1,4 @@
-package conditions
+package v1alpha1
 
 type ConditionType string
 type ConditionReason string

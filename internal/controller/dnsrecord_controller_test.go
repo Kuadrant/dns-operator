@@ -31,7 +31,6 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
-	"github.com/kuadrant/dns-operator/internal/common/conditions"
 )
 
 var _ = Describe("DNSRecordReconciler", func() {
@@ -89,7 +88,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(conditions.ConditionTypeReady)),
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":             Equal(metav1.ConditionTrue),
 					"Reason":             Equal("ProviderSuccess"),
 					"Message":            Equal("Provider ensured the dns record"),
@@ -108,7 +107,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(conditions.ConditionTypeReady)),
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":             Equal(metav1.ConditionTrue),
 					"Reason":             Equal("ProviderSuccess"),
 					"Message":            Equal("Provider ensured the dns record"),
