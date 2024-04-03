@@ -149,6 +149,14 @@ type GoogleDNSProvider struct {
 	ctx context.Context
 }
 
+func (p *GoogleDNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
+	return NewGCPHealthCheckReconciler()
+}
+
+func (p *GoogleDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
+	return provider.ProviderSpecificLabels{}
+}
+
 var _ provider.Provider = &GoogleDNSProvider{}
 
 func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {

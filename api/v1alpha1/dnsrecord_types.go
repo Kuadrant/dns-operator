@@ -45,7 +45,15 @@ type HealthCheckSpec struct {
 }
 
 type HealthCheckStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition       `json:"conditions,omitempty"`
+	Probes     []HealthCheckStatusProbe `json:"probes,omitempty"`
+}
+
+type HealthCheckStatusProbe struct {
+	ID        string `json:"id"`
+	IPAddress string `json:"ipAddress"`
+	Host      string `json:"host"`
+	Synced    bool   `json:"synced,omitempty"`
 }
 
 // DNSRecordSpec defines the desired state of DNSRecord

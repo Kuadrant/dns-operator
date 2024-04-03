@@ -48,3 +48,12 @@ func (p Provider) EnsureManagedZone(managedZone *v1alpha1.ManagedZone) (provider
 func (p Provider) DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error {
 	return p.DeleteManagedZoneFunc(managedZone)
 }
+func (p Provider) HealthCheckReconciler() provider.HealthCheckReconciler {
+	return &provider.FakeHealthCheckReconciler{}
+}
+func (p Provider) ProviderSpecific() provider.ProviderSpecificLabels {
+	return provider.ProviderSpecificLabels{
+		Weight:        "fake/weight",
+		HealthCheckID: "fake/health-check-id",
+	}
+}

@@ -89,6 +89,9 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	dnsRecord := previous.DeepCopy()
 
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
+		if err := r.ReconcileHealthChecks(ctx, dnsRecord); err != nil {
+			return ctrl.Result{}, err
+		}
 		requeueTime, err := r.deleteRecord(ctx, dnsRecord)
 		if err != nil {
 			logger.Error(err, "Failed to delete DNSRecord")
@@ -100,6 +103,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if requeueTime == validationRequeueTime {
 			return ctrl.Result{RequeueAfter: requeueTime}, nil
 		}
+
 		logger.Info("Removing Finalizer", "name", DNSRecordFinalizer)
 		controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
 		if err = r.Update(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
@@ -142,6 +146,11 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// success
 	dnsRecord.Status.ObservedGeneration = dnsRecord.Generation
 	dnsRecord.Status.Endpoints = dnsRecord.Spec.Endpoints
+
+	if err := r.ReconcileHealthChecks(ctx, dnsRecord); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	return r.updateStatus(ctx, previous, dnsRecord, requeueAfter)
 }
 
@@ -266,6 +275,27 @@ func setDNSRecordCondition(dnsRecord *v1alpha1.DNSRecord, conditionType string, 
 	meta.SetStatusCondition(&dnsRecord.Status.Conditions, cond)
 }
 
+func (r *DNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord *v1alpha1.DNSRecord) (provider.Provider, error) {
+	managedZone := &v1alpha1.ManagedZone{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      dnsRecord.Spec.ManagedZoneRef.Name,
+			Namespace: dnsRecord.Namespace,
+		},
+	}
+	err := r.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone, &client.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	providerConfig := provider.Config{
+		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{managedZone.Spec.DomainName}),
+		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),
+		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{managedZone.Status.ID}),
+	}
+
+	return r.ProviderFactory.ProviderFor(ctx, managedZone, providerConfig)
+}
+
 func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone, isDelete bool) (time.Duration, error) {
 	logger := log.FromContext(ctx)
 	filterDomain, _ := strings.CutPrefix(managedZone.Spec.DomainName, v1alpha1.WildcardPrefix)
@@ -274,13 +304,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	}
 	rootDomainFilter := externaldnsendpoint.NewDomainFilter([]string{filterDomain})
 
-	providerConfig := provider.Config{
-		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{managedZone.Spec.DomainName}),
-		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),
-		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{managedZone.Status.ID}),
-	}
-	logger.V(3).Info("applyChanges", "zone", managedZone.Spec.DomainName, "rootDomainFilter", rootDomainFilter, "providerConfig", providerConfig)
-	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone, providerConfig)
+	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
 	if err != nil {
 		return noRequeueDuration, err
 	}

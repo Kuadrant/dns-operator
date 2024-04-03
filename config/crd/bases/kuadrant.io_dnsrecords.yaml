@@ -320,6 +320,23 @@ spec:
                       - type
                       type: object
                     type: array
+                  probes:
+                    items:
+                      properties:
+                        host:
+                          type: string
+                        id:
+                          type: string
+                        ipAddress:
+                          type: string
+                        synced:
+                          type: boolean
+                      required:
+                      - host
+                      - id
+                      - ipAddress
+                      type: object
+                    type: array
                 type: object
               observedGeneration:
                 description: observedGeneration is the most recently observed generation
