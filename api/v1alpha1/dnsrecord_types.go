@@ -29,6 +29,25 @@ import (
 	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 )
 
+type HealthProtocol string
+
+const HttpProtocol HealthProtocol = "HTTP"
+const HttpsProtocol HealthProtocol = "HTTPS"
+
+// HealthCheckSpec configures health checks in the DNS provider.
+// By default this health check will be applied to each unique DNS A Record for
+// the listeners assigned to the target gateway
+type HealthCheckSpec struct {
+	Endpoint         string          `json:"endpoint,omitempty"`
+	Port             *int            `json:"port,omitempty"`
+	Protocol         *HealthProtocol `json:"protocol,omitempty"`
+	FailureThreshold *int            `json:"failureThreshold,omitempty"`
+}
+
+type HealthCheckStatus struct {
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
 // DNSRecordSpec defines the desired state of DNSRecord
 type DNSRecordSpec struct {
 	// OwnerID is a unique string used to identify all endpoints created by this kuadrant
@@ -45,6 +64,9 @@ type DNSRecordSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	// +optional
 	Endpoints []*externaldns.Endpoint `json:"endpoints,omitempty"`
+
+	// +optional
+	HealthCheck *HealthCheckSpec `json:"healthCheck,omitempty"`
 }
 
 // DNSRecordStatus defines the observed state of DNSRecord
@@ -73,6 +95,8 @@ type DNSRecordStatus struct {
 	// Note: This will not be required if/when we switch to using external-dns since when
 	// running with a "sync" policy it will clean up unused records automatically.
 	Endpoints []*externaldns.Endpoint `json:"endpoints,omitempty"`
+
+	HealthCheck *HealthCheckStatus `json:"healthCheck,omitempty"`
 }
 
 //+kubebuilder:object:root=true
