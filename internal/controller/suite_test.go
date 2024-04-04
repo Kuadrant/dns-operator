@@ -53,11 +53,6 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-const (
-	RequeueDuration  = time.Minute * 1
-	ValidityDuration = time.Second * 30
-)
-
 var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
@@ -67,7 +62,7 @@ var dnsProviderFactory = &providerFake.Factory{
 	ProviderForFunc: func(ctx context.Context, pa v1alpha1.ProviderAccessor, c provider.Config) (provider.Provider, error) {
 		return &providerFake.Provider{
 			RecordsFunc: func(context.Context) ([]*externaldnsendpoint.Endpoint, error) {
-				return []*externaldnsendpoint.Endpoint{}, nil
+				return getTestEndpoints(), nil
 			},
 			ApplyChangesFunc: func(context.Context, *externaldnsplan.Changes) error {
 				return nil

@@ -79,7 +79,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 	dnsRecord := previous.DeepCopy()
-	dnsRecord.Status.QueuedAt = reconcileStart
 
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
 		if err = r.deleteRecord(ctx, dnsRecord); err != nil {
@@ -217,10 +216,14 @@ func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1al
 	}
 
 	// cut off here for the short reconcile loop
-	expiryTime := metav1.NewTime(dnsRecord.Status.QueuedAt.Add(validFor))
+	requeueIn := validFor
+	if dnsRecord.Status.ValidFor != "" {
+		requeueIn, _ = time.ParseDuration(dnsRecord.Status.ValidFor)
+	}
+	expiryTime := metav1.NewTime(dnsRecord.Status.QueuedAt.Add(requeueIn))
 	if !generationChanged(dnsRecord) && reconcileStart.Before(&expiryTime) {
-		logger.V(3).Info("Skipping managed zone to which the DNS dnsRecord is already published", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
-		return validFor.String(), nil
+		logger.V(3).Info("Skipping managed zone to which the DNS dnsRecord is already published and is still valid", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+		return requeueIn.String(), nil
 	}
 	if generationChanged(dnsRecord) {
 		dnsRecord.Status.WriteCounter = 0
@@ -326,6 +329,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	plan = plan.Calculate()
 
 	dnsRecord.Status.ValidFor = defaultRequeueTime.String()
+	dnsRecord.Status.QueuedAt = reconcileStart
 	if plan.Changes.HasChanges() {
 		// generation has not changed but there are changes.
 		// implies that they were overridden - bump write counter
@@ -333,7 +337,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 			dnsRecord.Status.WriteCounter++
 		}
 		dnsRecord.Status.ValidFor = validationRequeueTime.String()
-		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "Awaiting validation", "Awaiting validation")
+		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "AwaitingValidation", "Awaiting validation")
 		logger.Info("Applying changes")
 		err = registry.ApplyChanges(ctx, plan.Changes)
 		if err != nil {
