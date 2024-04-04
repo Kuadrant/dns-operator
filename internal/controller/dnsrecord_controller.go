@@ -69,6 +69,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	logger := log.FromContext(ctx)
 
 	reconcileStart = metav1.Now()
+	logger.Info("BOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOP new reconcile loop")
 	previous := &v1alpha1.DNSRecord{}
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, previous)
 	if err != nil {
@@ -79,7 +80,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 	dnsRecord := previous.DeepCopy()
-	dnsRecord.Status.QueuedAt = reconcileStart
 
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
 		if err = r.deleteRecord(ctx, dnsRecord); err != nil {
@@ -326,6 +326,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	plan = plan.Calculate()
 
 	dnsRecord.Status.ValidFor = defaultRequeueTime.String()
+	dnsRecord.Status.QueuedAt = reconcileStart
 	if plan.Changes.HasChanges() {
 		// generation has not changed but there are changes.
 		// implies that they were overridden - bump write counter
@@ -333,7 +334,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 			dnsRecord.Status.WriteCounter++
 		}
 		dnsRecord.Status.ValidFor = validationRequeueTime.String()
-		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "Awaiting validation", "Awaiting validation")
+		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "AwaitingValidation", "Awaiting validation")
 		logger.Info("Applying changes")
 		err = registry.ApplyChanges(ctx, plan.Changes)
 		if err != nil {
@@ -345,5 +346,6 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, "ProviderSuccess", "Provider ensured the dns record")
 	}
 
+	logger.Info("Finished the loop, requeue in " + dnsRecord.Status.ValidFor)
 	return dnsRecord.Status.ValidFor, nil
 }

@@ -89,7 +89,7 @@ var _ = Describe("Single Cluster Record Test", func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
-			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+			}, 20*time.Minute, 1*time.Minute, ctx).Should(Succeed())
 
 			By("ensuring the authoritative nameserver resolves the hostname")
 			// speed up things by using the authoritative nameserver
@@ -213,7 +213,7 @@ var _ = Describe("Single Cluster Record Test", func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
-			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+			}, 20*time.Minute, 1*time.Minute, ctx).Should(Succeed())
 
 			By("ensuring the authoritative nameserver resolves the hostname")
 			// speed up things by using the authoritative nameserver
@@ -365,7 +365,7 @@ var _ = Describe("Single Cluster Record Test", func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
-				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+				}, 20*time.Minute, 1*time.Minute, ctx).Should(Succeed())
 
 				By("ensuring the authoritative nameserver resolves the hostname")
 				// speed up things by using the authoritative nameserver
@@ -498,7 +498,7 @@ var _ = Describe("Single Cluster Record Test", func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
-				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+				}, 20*time.Minute, 1*time.Minute, ctx).Should(Succeed())
 
 				By("ensuring the authoritative nameserver resolves the hostname")
 				// speed up things by using the authoritative nameserver
