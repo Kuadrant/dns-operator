@@ -278,7 +278,7 @@ OPENSHIFT_GOIMPORTS_VERSION ?= c70783e636f2213cac683f6865d88c5edace3157
 KIND_VERSION = v0.20.0
 ACT_VERSION = latest
 YQ_VERSION := v4.34.2
-GINKGO_VERSION ?= v2.15.0
+GINKGO_VERSION ?= v2.13.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
