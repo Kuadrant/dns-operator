@@ -42,8 +42,6 @@ const (
 	providerSpecificGeolocationCountryCode   = "aws/geolocation-country-code"
 	providerSpecificGeolocationContinentCode = "aws/geolocation-continent-code"
 	awsBatchChangeSize                       = 1000
-	awsBatchChangeSizeBytes                  = 32000
-	awsBatchChangeSizeValues                 = 1000
 	awsBatchChangeInterval                   = time.Second
 	awsEvaluateTargetHealth                  = true
 	awsPreferCNAME                           = false
@@ -82,19 +80,16 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 	route53Client := route53.New(sess, config)
 
 	awsConfig := externaldnsprovideraws.AWSConfig{
-		DomainFilter:          c.DomainFilter,
-		ZoneIDFilter:          c.ZoneIDFilter,
-		ZoneTypeFilter:        c.ZoneTypeFilter,
-		ZoneTagFilter:         externaldnsprovider.NewZoneTagFilter([]string{}),
-		ZoneMatchParent:       false,
-		BatchChangeSize:       awsBatchChangeSize,
-		BatchChangeSizeBytes:  awsBatchChangeSizeBytes,
-		BatchChangeSizeValues: awsBatchChangeSizeValues,
-		BatchChangeInterval:   awsBatchChangeInterval,
-		EvaluateTargetHealth:  awsEvaluateTargetHealth,
-		PreferCNAME:           awsPreferCNAME,
-		DryRun:                false,
-		ZoneCacheDuration:     awsZoneCacheDuration,
+		DomainFilter:         c.DomainFilter,
+		ZoneIDFilter:         c.ZoneIDFilter,
+		ZoneTypeFilter:       c.ZoneTypeFilter,
+		ZoneTagFilter:        externaldnsprovider.NewZoneTagFilter([]string{}),
+		BatchChangeSize:      awsBatchChangeSize,
+		BatchChangeInterval:  awsBatchChangeInterval,
+		EvaluateTargetHealth: awsEvaluateTargetHealth,
+		PreferCNAME:          awsPreferCNAME,
+		DryRun:               false,
+		ZoneCacheDuration:    awsZoneCacheDuration,
 	}
 
 	awsProvider, err := externaldnsprovideraws.NewAWSProvider(awsConfig, route53Client)
