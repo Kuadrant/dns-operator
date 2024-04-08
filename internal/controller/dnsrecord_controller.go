@@ -356,6 +356,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		Policies: []externaldnsplan.Policy{policy},
 		Current:  zoneEndpoints,
 		Desired:  specEndpoints,
+		Previous: statusEndpoints,
 		//Note: We can't just filter domains by `managedZone.Spec.DomainName` it needs to be the exact root domain for this particular record
 		DomainFilter:   externaldnsendpoint.MatchAllDomainFilters{&rootDomainFilter},
 		ManagedRecords: managedDNSRecordTypes,
