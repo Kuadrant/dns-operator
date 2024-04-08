@@ -37,17 +37,19 @@ import (
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
 const (
-	DNSRecordFinalizer = "kuadrant.io/dns-record"
+	DNSRecordFinalizer        = "kuadrant.io/dns-record"
+	validationRequeueVariance = 0.5
 )
 
 var (
 	defaultRequeueTime    time.Duration
-	validationRequeueTime = time.Second * 5
+	validationRequeueTime = time.Millisecond * 5000
 	noRequeueDuration     = time.Duration(0)
 	validFor              time.Duration
 	reconcileStart                    = metav1.Time{}
@@ -69,6 +71,10 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	logger := log.FromContext(ctx)
 
 	reconcileStart = metav1.Now()
+
+	// randomize validation reconcile delay
+	validationRequeueTime = common.RandomizeDuration(validationRequeueVariance, validationRequeueTime)
+
 	previous := &v1alpha1.DNSRecord{}
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, previous)
 	if err != nil {
@@ -138,7 +144,7 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 		if apierrors.IsConflict(updateError) {
 			return ctrl.Result{Requeue: true}, nil
 		}
-		return ctrl.Result{}, updateError
+		return ctrl.Result{RequeueAfter: requeueAfter}, updateError
 	}
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
