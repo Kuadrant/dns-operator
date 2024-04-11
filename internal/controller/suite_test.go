@@ -62,7 +62,7 @@ var dnsProviderFactory = &providerFake.Factory{
 	ProviderForFunc: func(ctx context.Context, pa v1alpha1.ProviderAccessor, c provider.Config) (provider.Provider, error) {
 		return &providerFake.Provider{
 			RecordsFunc: func(context.Context) ([]*externaldnsendpoint.Endpoint, error) {
-				return []*externaldnsendpoint.Endpoint{}, nil
+				return getTestEndpoints(), nil
 			},
 			ApplyChangesFunc: func(context.Context, *externaldnsplan.Changes) error {
 				return nil
@@ -132,7 +132,7 @@ var _ = BeforeSuite(func() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: dnsProviderFactory,
-	}).SetupWithManager(mgr)
+	}).SetupWithManager(mgr, RequeueDuration, ValidityDuration)
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {

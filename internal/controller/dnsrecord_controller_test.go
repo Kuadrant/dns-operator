@@ -28,10 +28,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
-	"github.com/kuadrant/dns-operator/internal/common/conditions"
 )
 
 var _ = Describe("DNSRecordReconciler", func() {
@@ -54,19 +52,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: managedZone.Name,
 				},
-				Endpoints: []*externaldnsendpoint.Endpoint{
-					{
-						DNSName: "foo.example.com",
-						Targets: []string{
-							"127.0.0.1",
-						},
-						RecordType:       "A",
-						SetIdentifier:    "",
-						RecordTTL:        60,
-						Labels:           nil,
-						ProviderSpecific: nil,
-					},
-				},
+				Endpoints: getTestEndpoints(),
 			},
 		}
 	})
@@ -89,7 +75,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(conditions.ConditionTypeReady)),
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":             Equal(metav1.ConditionTrue),
 					"Reason":             Equal("ProviderSuccess"),
 					"Message":            Equal("Provider ensured the dns record"),
@@ -97,6 +83,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+			g.Expect(dnsRecord.Status.WriteCounter).To(BeZero())
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
@@ -108,7 +95,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(conditions.ConditionTypeReady)),
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":             Equal(metav1.ConditionTrue),
 					"Reason":             Equal("ProviderSuccess"),
 					"Message":            Equal("Provider ensured the dns record"),
@@ -143,6 +130,33 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Spec.OwnerID).To(PointTo(Equal("foobar")))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
+	})
+
+	It("should increase write counter if fail to publish record or record is overridden", func() {
+		dnsRecord.Spec.Endpoints = getTestNonExistingEndpoints()
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+		// should be requeue record for validation after the write attempt
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal("AwaitingValidation"),
+					"Message":            Equal("Awaiting validation"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		// should be increasing write counter
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(0)))
+		}, TestTimeoutLong, time.Second).Should(Succeed())
 	})
 
 })

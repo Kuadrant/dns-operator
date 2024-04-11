@@ -330,6 +330,26 @@ spec:
                   it needs to retry the update for that specific zone.
                 format: int64
                 type: integer
+              queuedAt:
+                description: QueuedAt is a time when DNS record was received for the
+                  reconciliation
+                format: date-time
+                type: string
+              queuedFor:
+                description: QueuedFor is a time when we expect a DNS record to be
+                  reconciled again
+                format: date-time
+                type: string
+              validFor:
+                description: ValidFor indicates duration since the last reconciliation
+                  we consider data in the record to be valid
+                type: string
+              writeCounter:
+                description: WriteCounter represent a number of consecutive write
+                  attempts on the same generation of the record. It is being reset
+                  to 0 when the generation changes or there are no changes to write.
+                format: int64
+                type: integer
             type: object
         type: object
     served: true
