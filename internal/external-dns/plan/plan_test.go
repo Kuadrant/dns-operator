@@ -17,12 +17,15 @@ limitations under the License.
 package plan
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/plan"
 
 	"github.com/kuadrant/dns-operator/internal/external-dns/testutils"
 )
@@ -253,6 +256,12 @@ func (suite *PlanTestSuite) TestSyncFirstRound() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -262,10 +271,7 @@ func (suite *PlanTestSuite) TestSyncFirstRound() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRound() {
@@ -275,6 +281,12 @@ func (suite *PlanTestSuite) TestSyncSecondRound() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -284,10 +296,7 @@ func (suite *PlanTestSuite) TestSyncSecondRound() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundMigration() {
@@ -297,6 +306,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundMigration() {
 	expectedUpdateOld := []*endpoint.Endpoint{suite.fooV2CnameNoLabel}
 	expectedUpdateNew := []*endpoint.Endpoint{suite.fooV1Cname}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -306,10 +321,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundMigration() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithTTLChange() {
@@ -319,6 +331,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithTTLChange() {
 	expectedUpdateOld := []*endpoint.Endpoint{suite.bar127A}
 	expectedUpdateNew := []*endpoint.Endpoint{suite.bar127AWithTTL}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -328,10 +346,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithTTLChange() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificChange() {
@@ -341,6 +356,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificChange() {
 	expectedUpdateOld := []*endpoint.Endpoint{suite.bar127AWithProviderSpecificTrue}
 	expectedUpdateNew := []*endpoint.Endpoint{suite.bar127AWithProviderSpecificFalse}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -350,10 +371,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificChange() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificRemoval() {
@@ -363,6 +381,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificRemoval() {
 	expectedUpdateOld := []*endpoint.Endpoint{suite.bar127AWithProviderSpecificFalse}
 	expectedUpdateNew := []*endpoint.Endpoint{suite.bar127AWithProviderSpecificUnset}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -372,10 +396,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificRemoval() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificAddition() {
@@ -385,6 +406,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificAddition() {
 	expectedUpdateOld := []*endpoint.Endpoint{suite.bar127AWithProviderSpecificUnset}
 	expectedUpdateNew := []*endpoint.Endpoint{suite.bar127AWithProviderSpecificTrue}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -394,10 +421,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificAddition() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithOwnerInherited() {
@@ -417,6 +441,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithOwnerInherited() {
 		},
 	}}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -426,10 +456,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithOwnerInherited() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestIdempotency() {
@@ -439,6 +466,12 @@ func (suite *PlanTestSuite) TestIdempotency() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies: []Policy{&SyncPolicy{}},
@@ -447,10 +480,7 @@ func (suite *PlanTestSuite) TestIdempotency() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestRecordTypeChange() {
@@ -460,6 +490,12 @@ func (suite *PlanTestSuite) TestRecordTypeChange() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{suite.fooV1Cname}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -470,10 +506,7 @@ func (suite *PlanTestSuite) TestRecordTypeChange() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestExistingCNameWithDualStackDesired() {
@@ -483,6 +516,12 @@ func (suite *PlanTestSuite) TestExistingCNameWithDualStackDesired() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{suite.fooV1Cname}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -493,10 +532,7 @@ func (suite *PlanTestSuite) TestExistingCNameWithDualStackDesired() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestExistingDualStackWithCNameDesired() {
@@ -508,6 +544,12 @@ func (suite *PlanTestSuite) TestExistingDualStackWithCNameDesired() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{suite.fooA5, suite.fooAAAA}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -518,10 +560,7 @@ func (suite *PlanTestSuite) TestExistingDualStackWithCNameDesired() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 // TestExistingOwnerNotMatchingDualStackDesired validates that if there is an existing
@@ -536,6 +575,12 @@ func (suite *PlanTestSuite) TestExistingOwnerNotMatchingDualStackDesired() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -546,10 +591,7 @@ func (suite *PlanTestSuite) TestExistingOwnerNotMatchingDualStackDesired() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 // TestConflictingCurrentNonConflictingDesired is a bit of a corner case as it would indicate
@@ -564,6 +606,12 @@ func (suite *PlanTestSuite) TestConflictingCurrentNonConflictingDesired() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{suite.fooV1Cname}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -574,10 +622,7 @@ func (suite *PlanTestSuite) TestConflictingCurrentNonConflictingDesired() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 // TestConflictingCurrentNoDesired is a bit of a corner case as it would indicate
@@ -592,6 +637,12 @@ func (suite *PlanTestSuite) TestConflictingCurrentNoDesired() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{suite.fooV1Cname, suite.fooA5}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -602,10 +653,7 @@ func (suite *PlanTestSuite) TestConflictingCurrentNoDesired() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 // TestCurrentWithConflictingDesired simulates where the desired records result in conflicting records types.
@@ -619,6 +667,12 @@ func (suite *PlanTestSuite) TestCurrentWithConflictingDesired() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{suite.fooV1Cname}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -629,10 +683,7 @@ func (suite *PlanTestSuite) TestCurrentWithConflictingDesired() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 // TestNoCurrentWithConflictingDesired simulates where the desired records result in conflicting records types.
@@ -645,6 +696,12 @@ func (suite *PlanTestSuite) TestNoCurrentWithConflictingDesired() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -654,10 +711,7 @@ func (suite *PlanTestSuite) TestNoCurrentWithConflictingDesired() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestIgnoreTXT() {
@@ -667,6 +721,12 @@ func (suite *PlanTestSuite) TestIgnoreTXT() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -676,10 +736,7 @@ func (suite *PlanTestSuite) TestIgnoreTXT() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestExcludeTXT() {
@@ -689,6 +746,12 @@ func (suite *PlanTestSuite) TestExcludeTXT() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -699,10 +762,7 @@ func (suite *PlanTestSuite) TestExcludeTXT() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestIgnoreTargetCase() {
@@ -712,6 +772,12 @@ func (suite *PlanTestSuite) TestIgnoreTargetCase() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies: []Policy{&SyncPolicy{}},
@@ -720,10 +786,7 @@ func (suite *PlanTestSuite) TestIgnoreTargetCase() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestRemoveEndpoint() {
@@ -733,6 +796,12 @@ func (suite *PlanTestSuite) TestRemoveEndpoint() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{suite.bar192A}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -742,10 +811,7 @@ func (suite *PlanTestSuite) TestRemoveEndpoint() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestRemoveEndpointWithUpsert() {
@@ -755,6 +821,12 @@ func (suite *PlanTestSuite) TestRemoveEndpointWithUpsert() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&UpsertOnlyPolicy{}},
@@ -764,10 +836,7 @@ func (suite *PlanTestSuite) TestRemoveEndpointWithUpsert() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestMultipleRecordsSameNameDifferentSetIdentifier() {
@@ -777,6 +846,12 @@ func (suite *PlanTestSuite) TestMultipleRecordsSameNameDifferentSetIdentifier() 
 	expectedUpdateOld := []*endpoint.Endpoint{suite.multiple1}
 	expectedUpdateNew := []*endpoint.Endpoint{suite.multiple2}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -786,10 +861,7 @@ func (suite *PlanTestSuite) TestMultipleRecordsSameNameDifferentSetIdentifier() 
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestSetIdentifierUpdateCreatesAndDeletes() {
@@ -799,6 +871,12 @@ func (suite *PlanTestSuite) TestSetIdentifierUpdateCreatesAndDeletes() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{suite.multiple2}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -808,10 +886,7 @@ func (suite *PlanTestSuite) TestSetIdentifierUpdateCreatesAndDeletes() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestDomainFiltersInitial() {
@@ -821,6 +896,12 @@ func (suite *PlanTestSuite) TestDomainFiltersInitial() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	domainFilter := endpoint.NewDomainFilterWithExclusions([]string{"domain.tld"}, []string{"ex.domain.tld"})
 	p := &Plan{
@@ -832,10 +913,7 @@ func (suite *PlanTestSuite) TestDomainFiltersInitial() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestDomainFiltersUpdate() {
@@ -845,6 +923,12 @@ func (suite *PlanTestSuite) TestDomainFiltersUpdate() {
 	expectedUpdateOld := []*endpoint.Endpoint{}
 	expectedUpdateNew := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectedUpdateOld,
+		UpdateNew: expectedUpdateNew,
+		Delete:    expectedDelete,
+	}
 
 	domainFilter := endpoint.NewDomainFilterWithExclusions([]string{"domain.tld"}, []string{"ex.domain.tld"})
 	p := &Plan{
@@ -856,10 +940,7 @@ func (suite *PlanTestSuite) TestDomainFiltersUpdate() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.UpdateNew, expectedUpdateNew)
-	validateEntries(suite.T(), changes.UpdateOld, expectedUpdateOld)
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestAAAARecords() {
@@ -867,6 +948,12 @@ func (suite *PlanTestSuite) TestAAAARecords() {
 	desired := []*endpoint.Endpoint{suite.fooAAAA}
 	expectedCreate := []*endpoint.Endpoint{suite.fooAAAA}
 	expectNoChanges := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectNoChanges,
+		UpdateNew: expectNoChanges,
+		Delete:    expectNoChanges,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -876,10 +963,7 @@ func (suite *PlanTestSuite) TestAAAARecords() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.Delete, expectNoChanges)
-	validateEntries(suite.T(), changes.UpdateOld, expectNoChanges)
-	validateEntries(suite.T(), changes.UpdateNew, expectNoChanges)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestDualStackRecords() {
@@ -887,6 +971,12 @@ func (suite *PlanTestSuite) TestDualStackRecords() {
 	desired := []*endpoint.Endpoint{suite.dsA, suite.dsAAAA}
 	expectedCreate := []*endpoint.Endpoint{suite.dsA, suite.dsAAAA}
 	expectNoChanges := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectedCreate,
+		UpdateOld: expectNoChanges,
+		UpdateNew: expectNoChanges,
+		Delete:    expectNoChanges,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -896,10 +986,7 @@ func (suite *PlanTestSuite) TestDualStackRecords() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Create, expectedCreate)
-	validateEntries(suite.T(), changes.Delete, expectNoChanges)
-	validateEntries(suite.T(), changes.UpdateOld, expectNoChanges)
-	validateEntries(suite.T(), changes.UpdateNew, expectNoChanges)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestDualStackRecordsDelete() {
@@ -907,6 +994,12 @@ func (suite *PlanTestSuite) TestDualStackRecordsDelete() {
 	desired := []*endpoint.Endpoint{}
 	expectedDelete := []*endpoint.Endpoint{suite.dsA, suite.dsAAAA}
 	expectNoChanges := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectNoChanges,
+		UpdateOld: expectNoChanges,
+		UpdateNew: expectNoChanges,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -916,10 +1009,7 @@ func (suite *PlanTestSuite) TestDualStackRecordsDelete() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
-	validateEntries(suite.T(), changes.Create, expectNoChanges)
-	validateEntries(suite.T(), changes.UpdateOld, expectNoChanges)
-	validateEntries(suite.T(), changes.UpdateNew, expectNoChanges)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func (suite *PlanTestSuite) TestDualStackToSingleStack() {
@@ -927,6 +1017,12 @@ func (suite *PlanTestSuite) TestDualStackToSingleStack() {
 	desired := []*endpoint.Endpoint{suite.dsA}
 	expectedDelete := []*endpoint.Endpoint{suite.dsAAAA}
 	expectNoChanges := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    expectNoChanges,
+		UpdateOld: expectNoChanges,
+		UpdateNew: expectNoChanges,
+		Delete:    expectedDelete,
+	}
 
 	p := &Plan{
 		Policies:       []Policy{&SyncPolicy{}},
@@ -936,10 +1032,7 @@ func (suite *PlanTestSuite) TestDualStackToSingleStack() {
 	}
 
 	changes := p.Calculate().Changes
-	validateEntries(suite.T(), changes.Delete, expectedDelete)
-	validateEntries(suite.T(), changes.Create, expectNoChanges)
-	validateEntries(suite.T(), changes.UpdateOld, expectNoChanges)
-	validateEntries(suite.T(), changes.UpdateNew, expectNoChanges)
+	validateChanges(suite.T(), changes, expectedChanges)
 }
 
 func TestPlan(t *testing.T) {
@@ -950,6 +1043,34 @@ func TestPlan(t *testing.T) {
 func validateEntries(t *testing.T, entries, expected []*endpoint.Endpoint) {
 	if !testutils.SameEndpoints(entries, expected) {
 		t.Fatalf("expected %q to match %q", entries, expected)
+	}
+}
+
+func validateChangeEntries(t string, entries, expected []*endpoint.Endpoint) error {
+	if !testutils.SameEndpoints(entries, expected) {
+		return fmt.Errorf("expected %s %q to match %q", t, entries, expected)
+	}
+	return nil
+}
+
+func validateChanges(t *testing.T, changes, expected *plan.Changes) {
+	var validateErr error
+
+	if err := validateChangeEntries("changes.Create", changes.Create, expected.Create); err != nil {
+		validateErr = errors.Join(validateErr, err)
+	}
+	if err := validateChangeEntries("changes.UpdateNew", changes.UpdateNew, expected.UpdateNew); err != nil {
+		validateErr = errors.Join(validateErr, err)
+	}
+	if err := validateChangeEntries("changes.UpdateOld", changes.UpdateOld, expected.UpdateOld); err != nil {
+		validateErr = errors.Join(validateErr, err)
+	}
+	if err := validateChangeEntries("changes.Delete", changes.Delete, expected.Delete); err != nil {
+		validateErr = errors.Join(validateErr, err)
+	}
+
+	if validateErr != nil {
+		t.Fatalf(validateErr.Error())
 	}
 }
 
