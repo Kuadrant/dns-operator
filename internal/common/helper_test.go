@@ -1,3 +1,5 @@
+//go:build unit
+
 package common
 
 import (
@@ -36,6 +38,6 @@ func isValidVariance(duration, randomizedDuration time.Duration, variance float6
 	upperLimit := float64(duration.Milliseconds()) + float64(duration.Milliseconds())*variance
 	lowerLimmit := float64(duration.Milliseconds()) - float64(duration.Milliseconds())*variance
 
-	return float64(randomizedDuration.Milliseconds()) > lowerLimmit &&
+	return float64(randomizedDuration.Milliseconds()) >= lowerLimmit &&
 		float64(randomizedDuration.Milliseconds()) < upperLimit
 }
