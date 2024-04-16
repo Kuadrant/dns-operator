@@ -87,9 +87,16 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	dnsRecord := previous.DeepCopy()
 
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
-		if err = r.deleteRecord(ctx, dnsRecord); err != nil {
+		requeueTime, err := r.deleteRecord(ctx, dnsRecord)
+		if err != nil {
 			logger.Error(err, "Failed to delete DNSRecord")
-			return ctrl.Result{}, err
+			return ctrl.Result{RequeueAfter: requeueTime}, err
+		}
+		// if requeueTime returned  is the same as validationRequeueTime - the deleteRecord has successfully applied changes
+		// in this case we need to queue for validation to ensure DNS Provider retained changes
+		// before removing finalizer and deleting the DNS Record CR
+		if requeueTime == validationRequeueTime {
+			return ctrl.Result{RequeueAfter: requeueTime}, nil
 		}
 		logger.Info("Removing Finalizer", "name", DNSRecordFinalizer)
 		controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
@@ -161,7 +168,7 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, requeueIn, vali
 
 // deleteRecord deletes record(s) in the DNSPRovider(i.e. route53) configured by the ManagedZone assigned to this
 // DNSRecord (dnsRecord.Status.ParentManagedZone).
-func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord) error {
+func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord) (time.Duration, error) {
 	logger := log.FromContext(ctx)
 
 	managedZone := &v1alpha1.ManagedZone{
@@ -173,28 +180,28 @@ func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alp
 	err := r.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone, &client.GetOptions{})
 	if err != nil {
 		// If the Managed Zone isn't found, just continue
-		return client.IgnoreNotFound(err)
+		return noRequeueDuration, client.IgnoreNotFound(err)
 	}
 	managedZoneReady := meta.IsStatusConditionTrue(managedZone.Status.Conditions, "Ready")
 
 	if !managedZoneReady {
-		return fmt.Errorf("the managed zone is not in a ready state : %s", managedZone.Name)
+		return validationRequeueTime, fmt.Errorf("the managed zone is not in a ready state : %s", managedZone.Name)
 	}
 
-	_, err = r.applyChanges(ctx, dnsRecord, managedZone, true)
+	requeueTime, err := r.applyChanges(ctx, dnsRecord, managedZone, true)
 	if err != nil {
 		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
 			logger.Info("Record not found in managed zone, continuing", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
-			return nil
+			return noRequeueDuration, nil
 		} else if strings.Contains(err.Error(), "no endpoints") {
 			logger.Info("DNS record had no endpoint, continuing", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
-			return nil
+			return noRequeueDuration, nil
 		}
-		return err
+		return noRequeueDuration, err
 	}
 	logger.Info("Deleted DNSRecord in manage zone", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
 
-	return nil
+	return requeueTime, nil
 }
 
 // publishRecord publishes record(s) to the DNSPRovider(i.e. route53) configured by the ManagedZone assigned to this
