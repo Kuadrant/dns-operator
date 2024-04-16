@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -44,6 +45,7 @@ import (
 
 const (
 	DNSRecordFinalizer        = "kuadrant.io/dns-record"
+	WriteCounterLimit         = 20
 	validationRequeueVariance = 0.5
 )
 
@@ -236,6 +238,7 @@ func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1al
 	}
 	if generationChanged(dnsRecord) {
 		dnsRecord.Status.WriteCounter = 0
+		wrtiteCounter.WithLabelValues(dnsRecord.Name, dnsRecord.Namespace).Set(0)
 	}
 
 	requeueAfter, err := r.applyChanges(ctx, dnsRecord, managedZone, false)
@@ -343,8 +346,16 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		// generation has not changed but there are changes.
 		// implies that they were overridden - bump write counter
 		if !generationChanged(dnsRecord) {
-			dnsRecord.Status.WriteCounter++
-			logger.V(3).Info("Changes needed on the same generation of record")
+			if dnsRecord.Status.WriteCounter < WriteCounterLimit {
+				dnsRecord.Status.WriteCounter++
+				wrtiteCounter.WithLabelValues(dnsRecord.Name, dnsRecord.Namespace).Inc()
+				logger.V(3).Info("Changes needed on the same generation of record")
+			} else {
+				err = errors.New("reached write limit to the DNS provider for the same generation of record")
+				logger.Error(err, "Giving up on trying to maintain desired state of the DNS record - changes are being overridden")
+				return noRequeueDuration, err
+			}
+
 		}
 		dnsRecord.Status.ValidFor = validationRequeueTime.String()
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "AwaitingValidation", "Awaiting validation")
@@ -356,6 +367,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	} else {
 		logger.Info("All records are already up to date")
 		dnsRecord.Status.WriteCounter = 0
+		wrtiteCounter.WithLabelValues(dnsRecord.Name, dnsRecord.Namespace).Set(0)
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, "ProviderSuccess", "Provider ensured the dns record")
 	}
 
