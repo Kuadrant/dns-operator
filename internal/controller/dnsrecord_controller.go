@@ -47,11 +47,12 @@ const (
 	DNSRecordFinalizer        = "kuadrant.io/dns-record"
 	WriteCounterLimit         = 20
 	validationRequeueVariance = 0.5
+	DefaultValidationDuration = time.Second * 5
 )
 
 var (
 	defaultRequeueTime    time.Duration
-	validationRequeueTime = time.Millisecond * 5000
+	validationRequeueTime time.Duration
 	noRequeueDuration     = time.Duration(0)
 	validFor              time.Duration
 	reconcileStart                    = metav1.Time{}
@@ -75,7 +76,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	reconcileStart = metav1.Now()
 
 	// randomize validation reconcile delay
-	validationRequeueTime = common.RandomizeDuration(validationRequeueVariance, validationRequeueTime)
+	validationRequeueTime = common.RandomizeDuration(validationRequeueVariance, DefaultValidationDuration)
 
 	previous := &v1alpha1.DNSRecord{}
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, previous)
