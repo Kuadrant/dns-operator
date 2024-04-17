@@ -19,6 +19,11 @@ type Provider interface {
 
 	// Delete will delete a managed zone.
 	DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error
+
+	// Get an instance of HealthCheckReconciler for this provider
+	HealthCheckReconciler() HealthCheckReconciler
+
+	ProviderSpecific() ProviderSpecificLabels
 }
 
 type Config struct {

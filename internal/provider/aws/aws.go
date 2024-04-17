@@ -38,6 +38,7 @@ import (
 )
 
 const (
+	ProviderSpecificHealthCheckID            = "aws/health-check-id"
 	providerSpecificWeight                   = "aws/weight"
 	providerSpecificGeolocationCountryCode   = "aws/geolocation-country-code"
 	providerSpecificGeolocationContinentCode = "aws/geolocation-continent-code"
@@ -50,10 +51,11 @@ const (
 
 type Route53DNSProvider struct {
 	*externaldnsprovideraws.AWSProvider
-	awsConfig     externaldnsprovideraws.AWSConfig
-	logger        logr.Logger
-	route53Client *route53.Route53
-	ctx           context.Context
+	awsConfig             externaldnsprovideraws.AWSConfig
+	logger                logr.Logger
+	route53Client         *route53.Route53
+	ctx                   context.Context
+	healthCheckReconciler provider.HealthCheckReconciler
 }
 
 var _ provider.Provider = &Route53DNSProvider{}
@@ -108,6 +110,13 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 }
 
 // #### External DNS Provider ####
+func (p *Route53DNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
+	if p.healthCheckReconciler == nil {
+		p.healthCheckReconciler = NewRoute53HealthCheckReconciler(p.route53Client)
+	}
+
+	return p.healthCheckReconciler
+}
 
 func (p *Route53DNSProvider) AdjustEndpoints(endpoints []*externaldnsendpoint.Endpoint) ([]*externaldnsendpoint.Endpoint, error) {
 	endpoints, err := p.AWSProvider.AdjustEndpoints(endpoints)
@@ -229,6 +238,13 @@ func (p *Route53DNSProvider) DeleteManagedZone(zone *v1alpha1.ManagedZone) error
 		return err
 	}
 	return nil
+}
+
+func (*Route53DNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
+	return provider.ProviderSpecificLabels{
+		Weight:        providerSpecificWeight,
+		HealthCheckID: ProviderSpecificHealthCheckID,
+	}
 }
 
 // Register this Provider with the provider factory

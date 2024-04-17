@@ -1,0 +1,68 @@
+package provider
+
+import (
+	"context"
+	"reflect"
+	"sync"
+
+	externaldns "sigs.k8s.io/external-dns/endpoint"
+
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
+)
+
+type CachedHealthCheckReconciler struct {
+	reconciler HealthCheckReconciler
+	provider   Provider
+
+	syncCache *sync.Map
+}
+
+var _ HealthCheckReconciler = &CachedHealthCheckReconciler{}
+
+func NewCachedHealthCheckReconciler(provider Provider, reconciler HealthCheckReconciler) *CachedHealthCheckReconciler {
+	return &CachedHealthCheckReconciler{
+		reconciler: reconciler,
+		provider:   provider,
+		syncCache:  &sync.Map{},
+	}
+}
+
+// Delete implements HealthCheckReconciler
+func (r *CachedHealthCheckReconciler) Delete(ctx context.Context, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe) (HealthCheckResult, error) {
+	id, ok := r.getHealthCheckID(endpoint)
+	if !ok {
+		return NewHealthCheckResult(HealthCheckNoop, "", "", "", ""), nil
+	}
+
+	defer r.syncCache.Delete(id)
+	return r.reconciler.Delete(ctx, endpoint, probeStatus)
+}
+
+// Reconcile implements HealthCheckReconciler
+func (r *CachedHealthCheckReconciler) Reconcile(ctx context.Context, spec HealthCheckSpec, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe, address string) (HealthCheckResult, error) {
+	id, ok := r.getHealthCheckID(endpoint)
+	if !ok {
+		return r.reconciler.Reconcile(ctx, spec, endpoint, probeStatus, address)
+	}
+
+	// Update the cache with the new spec
+	defer r.syncCache.Store(id, spec)
+
+	// If the health heck is not cached, delegate the reconciliation
+	existingSpec, ok := r.syncCache.Load(id)
+	if !ok {
+		return r.reconciler.Reconcile(ctx, spec, endpoint, probeStatus, address)
+	}
+
+	// If the spec is unchanged, return Noop
+	if reflect.DeepEqual(spec, existingSpec.(HealthCheckSpec)) {
+		return NewHealthCheckResult(HealthCheckNoop, id, "", "", "Spec unchanged"), nil
+	}
+
+	// Otherwise, delegate the reconciliation
+	return r.reconciler.Reconcile(ctx, spec, endpoint, probeStatus, address)
+}
+
+func (r *CachedHealthCheckReconciler) getHealthCheckID(endpoint *externaldns.Endpoint) (string, bool) {
+	return endpoint.GetProviderSpecificProperty(r.provider.ProviderSpecific().HealthCheckID)
+}
