@@ -44,8 +44,8 @@ const (
 	providerSpecificGeolocationContinentCode = "aws/geolocation-continent-code"
 	awsBatchChangeSize                       = 1000
 	awsBatchChangeInterval                   = time.Second
-	awsEvaluateTargetHealth                  = true
-	awsPreferCNAME                           = false
+	awsEvaluateTargetHealth                  = false
+	awsPreferCNAME                           = true
 	awsZoneCacheDuration                     = 0 * time.Second
 )
 
