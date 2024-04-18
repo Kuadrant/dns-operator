@@ -9,6 +9,10 @@ import (
 // RandomizeDuration randomizes duration for a given variance.
 // variance is expected to be of a format 0.1 for 10%, 0.5 for 50% and so on
 func RandomizeDuration(variance float64, duration time.Duration) time.Duration {
+	// do not allow less than a second requeue
+	if duration.Milliseconds() < 1000 {
+		duration = time.Second * 1
+	}
 	// we won't go smaller than a second - using milliseconds to have a relatively big number to randomize
 	millisecond := float64(duration.Milliseconds())
 
