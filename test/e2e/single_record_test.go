@@ -19,7 +19,8 @@ import (
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
-var _ = Describe("Single Cluster Record Test", func() {
+// Test Cases covering a single DNSRecord updating a set of records in a zone
+var _ = Describe("Single Record Test", func() {
 	// testID is a randomly generated identifier for the test
 	// it is used to name resources and/or namespaces so different
 	// tests can be run in parallel in the same cluster
