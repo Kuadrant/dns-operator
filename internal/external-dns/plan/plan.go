@@ -17,6 +17,7 @@ limitations under the License.
 package plan
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -25,6 +26,11 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	externaldnsplan "sigs.k8s.io/external-dns/plan"
+)
+
+var (
+	ErrOwnerConflict      = errors.New("owner conflict")
+	ErrRecordTypeConflict = errors.New("record type conflict")
 )
 
 // PropertyComparator is used in Plan for comparing the previous and current custom annotations.
@@ -52,6 +58,9 @@ type Plan struct {
 	ExcludeRecords []string
 	// OwnerID of records to manage
 	OwnerID string
+	// ConflictErrors list of errors describing conflicts that can't be resolved.
+	// Populated after calling Calculate()
+	ConflictErrors []error
 }
 
 // planKey is a key for a row in `planTable`.
@@ -155,11 +164,18 @@ func (t *planTable) newPlanKey(e *endpoint.Endpoint) planKey {
 	return key
 }
 
+// ConflictError returns all ConflictErrors as a single error or nil if there are none.
+func (p *Plan) ConflictError() error {
+	return errors.Join(p.ConflictErrors...)
+}
+
 // Calculate computes the actions needed to move current state towards desired
 // state. It then passes those changes to the current policy for further
 // processing. It returns a copy of Plan with the changes populated.
 func (p *Plan) Calculate() *Plan {
 	t := newPlanTable()
+
+	var conflictErrs []error
 
 	if p.DomainFilter == nil {
 		p.DomainFilter = endpoint.MatchAllDomainFilters(nil)
@@ -241,24 +257,18 @@ func (p *Plan) Calculate() *Plan {
 		// dns name is taken (Update)
 		if len(row.current) > 0 && len(row.candidates) > 0 {
 			// apply changes for each record type
+			var rTypeUpdate endpointUpdate
 			recordsByType := t.resolver.ResolveRecordTypes(key, row)
 			for _, records := range recordsByType {
 
-				//ToDo Deal with record type changing
-				//ToDo Mark this is a conflict so we can propagate it out
-				//// record type not desired
-				//if records.current != nil && len(records.candidates) == 0 {
-				//	changes.Delete = append(changes.Delete, records.current)
-				//}
-				//
-				//// new record type desired
-				//if records.current == nil && len(records.candidates) > 0 {
-				//	update := t.resolver.ResolveCreate(records.candidates)
-				//	// creates are evaluated after all domain records have been processed to
-				//	// validate that this external dns has ownership claim on the domain before
-				//	// adding the records to planned changes.
-				//	creates = append(creates, update)
-				//}
+				// record type not desired
+				if records.current != nil && len(records.candidates) == 0 {
+					rTypeUpdate.current = records.current
+				}
+				// new record type desired
+				if records.current == nil && len(records.candidates) > 0 {
+					rTypeUpdate.desired = records.candidates[0]
+				}
 
 				// update existing record
 				if records.current != nil && len(records.candidates) > 0 {
@@ -267,7 +277,7 @@ func (p *Plan) Calculate() *Plan {
 					if endpointOwner, hasOwner := current.Labels[endpoint.OwnerLabelKey]; hasOwner {
 						if p.OwnerID == "" {
 							// Only allow owned records to be updated by other owned records
-							//ToDo Mark this is a conflict so we can propagate it out
+							conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update '%s' with no owner when existing record is already owned", ErrOwnerConflict, candidate.DNSName))
 							continue
 						}
 
@@ -280,13 +290,18 @@ func (p *Plan) Calculate() *Plan {
 					} else {
 						if p.OwnerID != "" {
 							// Only allow unowned records to be updated by other unowned records
-							//ToDo Mark this is a conflict so we can propagate it out
+							conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update '%s' with owner when existing record is not owned", ErrOwnerConflict, candidate.DNSName))
 							continue
 						}
 					}
 					inheritOwner(current, candidate)
 					managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous})
 				}
+			}
+
+			if rTypeUpdate.current != nil && rTypeUpdate.desired != nil {
+				conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update '%s' with record type '%s' when record already exists with record type '%s'",
+					ErrRecordTypeConflict, rTypeUpdate.current.DNSName, rTypeUpdate.desired.RecordType, rTypeUpdate.current.RecordType))
 			}
 		}
 
@@ -312,6 +327,7 @@ func (p *Plan) Calculate() *Plan {
 		Current:        p.Current,
 		Desired:        p.Desired,
 		Changes:        changes,
+		ConflictErrors: conflictErrs,
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 

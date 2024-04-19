@@ -571,8 +571,9 @@ func (suite *PlanTestSuite) TestSyncFirstRound() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRound() {
@@ -596,8 +597,9 @@ func (suite *PlanTestSuite) TestSyncSecondRound() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with no owner when existing record is already owned")
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundMigration() {
@@ -621,8 +623,9 @@ func (suite *PlanTestSuite) TestSyncSecondRoundMigration() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithTTLChange() {
@@ -646,8 +649,9 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithTTLChange() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificChange() {
@@ -671,8 +675,9 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificChange() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificRemoval() {
@@ -696,8 +701,9 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificRemoval() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificAddition() {
@@ -721,8 +727,9 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificAddition() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithOwnerInherited() {
@@ -757,8 +764,9 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithOwnerInherited() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestIdempotency() {
@@ -781,8 +789,9 @@ func (suite *PlanTestSuite) TestIdempotency() {
 		Desired:  desired,
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestRecordTypeChange() {
@@ -808,8 +817,9 @@ func (suite *PlanTestSuite) TestRecordTypeChange() {
 		OwnerID:        suite.fooV1Cname.Labels[endpoint.OwnerLabelKey],
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestExistingCNameWithDualStackDesired() {
@@ -835,8 +845,9 @@ func (suite *PlanTestSuite) TestExistingCNameWithDualStackDesired() {
 		OwnerID:        suite.fooV1Cname.Labels[endpoint.OwnerLabelKey],
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestExistingDualStackWithCNameDesired() {
@@ -864,8 +875,9 @@ func (suite *PlanTestSuite) TestExistingDualStackWithCNameDesired() {
 		OwnerID:        suite.fooA5.Labels[endpoint.OwnerLabelKey],
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // TestExistingOwnerNotMatchingDualStackDesired validates that if there is an existing
@@ -895,8 +907,9 @@ func (suite *PlanTestSuite) TestExistingOwnerNotMatchingDualStackDesired() {
 		OwnerID:        "pwner",
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "record type conflict, cannot update 'foo' with record type 'CNAME' when record already exists with record type 'A'")
 }
 
 // TestConflictingCurrentNonConflictingDesired is a bit of a corner case as it would indicate
@@ -927,8 +940,9 @@ func (suite *PlanTestSuite) TestConflictingCurrentNonConflictingDesired() {
 		OwnerID:        suite.fooV1Cname.Labels[endpoint.OwnerLabelKey],
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // TestConflictingCurrentNoDesired is a bit of a corner case as it would indicate
@@ -958,8 +972,9 @@ func (suite *PlanTestSuite) TestConflictingCurrentNoDesired() {
 		OwnerID:        suite.fooV1Cname.Labels[endpoint.OwnerLabelKey],
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // TestCurrentWithConflictingDesired simulates where the desired records result in conflicting records types.
@@ -989,8 +1004,9 @@ func (suite *PlanTestSuite) TestCurrentWithConflictingDesired() {
 		OwnerID:        suite.fooV1Cname.Labels[endpoint.OwnerLabelKey],
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // TestNoCurrentWithConflictingDesired simulates where the desired records result in conflicting records types.
@@ -1017,8 +1033,9 @@ func (suite *PlanTestSuite) TestNoCurrentWithConflictingDesired() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestIgnoreTXT() {
@@ -1042,8 +1059,9 @@ func (suite *PlanTestSuite) TestIgnoreTXT() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestExcludeTXT() {
@@ -1068,8 +1086,9 @@ func (suite *PlanTestSuite) TestExcludeTXT() {
 		ExcludeRecords: []string{endpoint.RecordTypeTXT},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestIgnoreTargetCase() {
@@ -1092,8 +1111,9 @@ func (suite *PlanTestSuite) TestIgnoreTargetCase() {
 		Desired:  desired,
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestRemoveEndpoint() {
@@ -1117,8 +1137,9 @@ func (suite *PlanTestSuite) TestRemoveEndpoint() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with no owner when existing record is already owned")
 }
 
 func (suite *PlanTestSuite) TestRemoveEndpointWithUpsert() {
@@ -1142,8 +1163,9 @@ func (suite *PlanTestSuite) TestRemoveEndpointWithUpsert() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with no owner when existing record is already owned")
 }
 
 func (suite *PlanTestSuite) TestMultipleRecordsSameNameDifferentSetIdentifier() {
@@ -1167,8 +1189,9 @@ func (suite *PlanTestSuite) TestMultipleRecordsSameNameDifferentSetIdentifier() 
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestSetIdentifierUpdateCreatesAndDeletes() {
@@ -1192,8 +1215,9 @@ func (suite *PlanTestSuite) TestSetIdentifierUpdateCreatesAndDeletes() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestDomainFiltersInitial() {
@@ -1219,8 +1243,9 @@ func (suite *PlanTestSuite) TestDomainFiltersInitial() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestDomainFiltersUpdate() {
@@ -1246,8 +1271,9 @@ func (suite *PlanTestSuite) TestDomainFiltersUpdate() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestAAAARecords() {
@@ -1269,8 +1295,9 @@ func (suite *PlanTestSuite) TestAAAARecords() {
 		ManagedRecords: []string{endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestDualStackRecords() {
@@ -1292,8 +1319,9 @@ func (suite *PlanTestSuite) TestDualStackRecords() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestDualStackRecordsDelete() {
@@ -1315,8 +1343,9 @@ func (suite *PlanTestSuite) TestDualStackRecordsDelete() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func (suite *PlanTestSuite) TestDualStackToSingleStack() {
@@ -1339,8 +1368,9 @@ func (suite *PlanTestSuite) TestDualStackToSingleStack() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Multiple Owner Tests
@@ -1366,8 +1396,9 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordCreate() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should not merge targets of records with a shared dnsName, type and a set identifier.
@@ -1389,8 +1420,9 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordWithSetIdentifierCreate() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should allow owned records to be updated from the creation of records with a shared dnsName and type by a plan with a different owner.
@@ -1414,8 +1446,9 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateCreate() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should allow owned records to be updated from the change to a record with a shared dnsName and type by a plan with the same owner.
@@ -1441,12 +1474,12 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateSameOwner() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should not allow the update of a record with a shared dnsName to a different record type (A -> CNAME) (CONFLICT).
-// ToDo This needs to expose the conflicting endpoints
 func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateRecordTypeConflict() {
 	current := []*endpoint.Endpoint{suite.fooA1Owner1}
 	previous := []*endpoint.Endpoint{}
@@ -1467,8 +1500,9 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateRecordTypeConflict() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "record type conflict, cannot update 'foo' with record type 'CNAME' when record already exists with record type 'A'")
 }
 
 // Should not merge targets of records with a shared dnsName, type and set identifier.
@@ -1490,8 +1524,9 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateSameOwnerWithSetIdentifie
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should not allow owned records to be updated by a plan with no owner
@@ -1512,8 +1547,33 @@ func (suite *PlanTestSuite) TestNoPlanOwnerARecordUpdate() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with no owner when existing record is already owned")
+}
+
+// Should not allow unowned records to be updated by a plan with an owner
+func (suite *PlanTestSuite) TestPlanOwnerARecordUpdateNoOwner() {
+	current := []*endpoint.Endpoint{suite.fooA1OwnerNone}
+	desired := []*endpoint.Endpoint{suite.fooA1OwnerNone}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with owner when existing record is not owned")
 }
 
 // Should not merge targets of unowned records with a shared dnsName and type
@@ -1534,8 +1594,9 @@ func (suite *PlanTestSuite) TestNoOwnerARecordUpdate() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should only delete records solely owned by the plan owner and update records with shared ownership to remove the plan owner.
@@ -1559,8 +1620,9 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordDelete() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 //CNAME Records
@@ -1584,8 +1646,9 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordCreate() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should not merge targets of records with a shared dnsName, type and a set identifier.
@@ -1607,8 +1670,9 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordWithSetIdentifierCreate() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should allow owned records to be updated from the creation of records with a shared dnsName and type by a plan with a different owner.
@@ -1634,8 +1698,9 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateDifferentOwner() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should allow owned records to be updated from the change to a record with a shared dnsName and type by a plan with the same owner.
@@ -1660,12 +1725,12 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateSameOwner() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should not allow the update of a record with a shared dnsName to a different record type (CNAME -> A) (CONFLICT).
-// ToDo This needs to expose the conflicting endpoints
 func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateRecordTypeConflict() {
 	current := []*endpoint.Endpoint{suite.fooCNAMEv1Owner1}
 	previous := []*endpoint.Endpoint{}
@@ -1686,8 +1751,9 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateRecordTypeConflict() 
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "record type conflict, cannot update 'foo' with record type 'A' when record already exists with record type 'CNAME'")
 }
 
 // Should not merge targets of records with a shared dnsName, type and set identifier.
@@ -1711,8 +1777,9 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateSameOwnerWithSetIdent
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should not allow owned records to be updated by a plan with no owner
@@ -1733,8 +1800,33 @@ func (suite *PlanTestSuite) TestNoPlanOwnerCNAMERecordUpdate() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with no owner when existing record is already owned")
+}
+
+// Should not allow unowned records to be updated by a plan with an owner
+func (suite *PlanTestSuite) TestPlanOwnerCNAMERecordUpdateNoOwner() {
+	current := []*endpoint.Endpoint{suite.fooCNAMEv1OwnerNone}
+	desired := []*endpoint.Endpoint{suite.fooCNAMEv1OwnerNone}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with owner when existing record is not owned")
 }
 
 // Should not merge targets of unowned records with a shared dnsName and type
@@ -1755,8 +1847,9 @@ func (suite *PlanTestSuite) TestNoPlanOwnerCNAMERecordUpdateNoOwner() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 // Should only delete records solely owned by the plan owner and update records with shared ownership to remove the plan owner.
@@ -1781,8 +1874,9 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordDelete() {
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
-	changes := p.Calculate().Changes
-	validateChanges(suite.T(), changes, expectedChanges)
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Nil(suite.T(), cp.ConflictError())
 }
 
 func TestPlan(t *testing.T) {

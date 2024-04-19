@@ -366,6 +366,10 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 
 	plan = plan.Calculate()
 
+	if err = plan.ConflictError(); err != nil {
+		return noRequeueDuration, err
+	}
+
 	dnsRecord.Status.ValidFor = defaultRequeueTime.String()
 	dnsRecord.Status.QueuedAt = reconcileStart
 	if plan.Changes.HasChanges() {
@@ -381,7 +385,6 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 				logger.Error(err, "Giving up on trying to maintain desired state of the DNS record - changes are being overridden")
 				return noRequeueDuration, err
 			}
-
 		}
 		dnsRecord.Status.ValidFor = validationRequeueTime.String()
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "AwaitingValidation", "Awaiting validation")
