@@ -28,12 +28,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
 var _ = Describe("DNSRecordReconciler", func() {
 	var dnsRecord *v1alpha1.DNSRecord
+	var dnsRecord2 *v1alpha1.DNSRecord
 	var managedZone *v1alpha1.ManagedZone
 	var testNamespace string
 
@@ -59,6 +61,10 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 	AfterEach(func() {
 		if dnsRecord != nil {
+			err := k8sClient.Delete(ctx, dnsRecord)
+			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+		}
+		if dnsRecord2 != nil {
 			err := k8sClient.Delete(ctx, dnsRecord)
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 		}
@@ -157,6 +163,77 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(0)))
 		}, TestTimeoutLong, time.Second).Should(Succeed())
+	})
+
+	It("should not allow second record to change the type", func() {
+		dnsRecord2 = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo2.example.com",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+					Name: managedZone.Name,
+				},
+				Endpoints: []*externaldnsendpoint.Endpoint{
+					{
+						DNSName: "foo.example.com",
+						Targets: []string{
+							"v1",
+						},
+						RecordType:       "CNAME",
+						SetIdentifier:    "",
+						RecordTTL:        60,
+						Labels:           nil,
+						ProviderSpecific: nil,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord2.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal("ProviderError"),
+					"Message":            ContainSubstring("record type conflict, cannot update 'foo.example.com' with record type 'CNAME' when record already exists with record type 'A'"),
+					"ObservedGeneration": Equal(dnsRecord2.Generation),
+				})),
+			)
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+	})
+
+	It("should not allow owned record to update it", func() {
+		dnsRecord2 = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo2.example.com",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				OwnerID: ptr.To("owner1"),
+				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+					Name: managedZone.Name,
+				},
+				Endpoints: getTestEndpoints(),
+			},
+		}
+		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord2.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal("ProviderError"),
+					"Message":            ContainSubstring("owner conflict, cannot update 'foo.example.com' with owner when existing record is not owned"),
+					"ObservedGeneration": Equal(dnsRecord2.Generation),
+				})),
+			)
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
 })
