@@ -90,7 +90,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	dnsRecord := previous.DeepCopy()
 
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
-		if err := r.ReconcileHealthChecks(ctx, dnsRecord); err != nil {
+		if err := r.ReconcileHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
 			return ctrl.Result{}, err
 		}
 		requeueTime, err := r.deleteRecord(ctx, dnsRecord)

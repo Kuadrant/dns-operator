@@ -19,6 +19,7 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -72,6 +73,46 @@ var _ = Describe("DNSRecordReconciler", func() {
 			err := k8sClient.Delete(ctx, managedZone)
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 		}
+	})
+
+	It("can delete a record with an invalid managed zone", func(ctx SpecContext) {
+		dnsRecord = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo.example.com",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+					Name: "doesnotexist",
+				},
+				Endpoints: getTestEndpoints(),
+			},
+		}
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal("ProviderError"),
+					"Message":            Equal("The DNS provider failed to ensure the record: ManagedZone.kuadrant.io \"doesnotexist\" not found"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		err := k8sClient.Delete(ctx, dnsRecord)
+		Expect(err).ToNot(HaveOccurred())
+
+		Eventually(func(g Gomega, ctx context.Context) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).To(HaveOccurred())
+			g.Expect(err).To(MatchError(ContainSubstring("not found")))
+		}, 5*time.Second, time.Second, ctx).Should(Succeed())
 	})
 
 	It("should have ready condition with status true", func() {
