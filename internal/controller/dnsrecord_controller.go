@@ -301,7 +301,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	logger := log.FromContext(ctx)
 	filterDomain, _ := strings.CutPrefix(managedZone.Spec.DomainName, v1alpha1.WildcardPrefix)
 	if dnsRecord.Spec.RootHost != nil {
-		filterDomain = *dnsRecord.Spec.RootHost
+		filterDomain, _ = strings.CutPrefix(*dnsRecord.Spec.RootHost, v1alpha1.WildcardPrefix)
 	}
 	rootDomainFilter := externaldnsendpoint.NewDomainFilter([]string{filterDomain})
 

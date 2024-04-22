@@ -53,6 +53,83 @@ var _ = Describe("Single Record Test", func() {
 		}
 	})
 
+	It("correctly handles wildcard rootHost values", func(ctx SpecContext) {
+		testTargetIP := "127.0.0.1"
+		testTargetIP2 := "127.0.0.2"
+		testWCHostname := "*." + testHostname
+		testHostname2 := "foo." + testHostname
+		dnsRecord = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testID,
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+					Name: testManagedZoneName,
+				},
+				Endpoints: []*externaldnsendpoint.Endpoint{
+					{
+						DNSName: testWCHostname,
+						Targets: []string{
+							testTargetIP,
+						},
+						RecordType: "A",
+						RecordTTL:  60,
+					},
+					{
+						DNSName: testHostname2,
+						Targets: []string{
+							testTargetIP2,
+						},
+						RecordType: "A",
+						RecordTTL:  60,
+					},
+				},
+				RootHost: ptr.To(testWCHostname),
+			},
+		}
+
+		By("creating dnsrecord " + dnsRecord.Name)
+		err := k8sClient.Create(ctx, dnsRecord)
+		Expect(err).ToNot(HaveOccurred())
+
+		By("checking " + dnsRecord.Name + " becomes ready")
+		Eventually(func(g Gomega, ctx context.Context) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status": Equal(metav1.ConditionTrue),
+				})),
+			)
+		}, 5*time.Minute, 10*time.Second, ctx).Should(Succeed())
+
+		By("ensuring zone records are created as expected")
+		testProvider, err := providerForManagedZone(ctx, testManagedZone)
+		Expect(err).NotTo(HaveOccurred())
+		zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(zoneEndpoints).To(HaveLen(2))
+		Expect(zoneEndpoints).To(ContainElements(
+			PointTo(MatchFields(IgnoreExtras, Fields{
+				"DNSName":       Equal(testWCHostname),
+				"Targets":       ConsistOf(testTargetIP),
+				"RecordType":    Equal("A"),
+				"SetIdentifier": Equal(""),
+				"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+			})),
+			PointTo(MatchFields(IgnoreExtras, Fields{
+				"DNSName":       Equal(testHostname2),
+				"Targets":       ConsistOf(testTargetIP2),
+				"RecordType":    Equal("A"),
+				"SetIdentifier": Equal(""),
+				"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+			})),
+		))
+	})
+
 	Context("simple", func() {
 		It("makes available a hostname that can be resolved", func(ctx SpecContext) {
 			By("creating a dns record")
