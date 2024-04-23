@@ -29,6 +29,7 @@ import (
 )
 
 var (
+	ErrInvalidTarget      = errors.New("invalid target")
 	ErrOwnerConflict      = errors.New("owner conflict")
 	ErrRecordTypeConflict = errors.New("record type conflict")
 )
@@ -61,6 +62,8 @@ type Plan struct {
 	// ConflictErrors list of errors describing conflicts that can't be resolved.
 	// Populated after calling Calculate()
 	ConflictErrors []error
+	// RootHost the host dns name being managed by the set of records in the plan.
+	RootHost *string
 }
 
 // planKey is a key for a row in `planTable`.
@@ -176,9 +179,15 @@ func (p *Plan) Calculate() *Plan {
 	t := newPlanTable()
 
 	var conflictErrs []error
+	var rootDomainFilter endpoint.DomainFilter
 
 	if p.DomainFilter == nil {
 		p.DomainFilter = endpoint.MatchAllDomainFilters(nil)
+	}
+
+	if p.RootHost != nil {
+		rootDomainFilter = endpoint.NewDomainFilter([]string{*p.RootHost})
+		p.DomainFilter = append(p.DomainFilter, &rootDomainFilter)
 	}
 
 	for _, current := range filterRecordsForPlan(p.Current, p.DomainFilter, p.ManagedRecords, p.ExcludeRecords) {
@@ -192,11 +201,13 @@ func (p *Plan) Calculate() *Plan {
 	}
 
 	managedChanges := managedRecordSetChanges{
-		ownerID:       p.OwnerID,
-		creates:       []*endpoint.Endpoint{},
-		deletes:       []*endpoint.Endpoint{},
-		updates:       []*endpointUpdate{},
-		dnsNameOwners: map[string][]string{},
+		ownerID:          p.OwnerID,
+		rootDomainFilter: rootDomainFilter,
+		creates:          []*endpoint.Endpoint{},
+		deletes:          []*endpoint.Endpoint{},
+		updates:          []*endpointUpdate{},
+		dnsNameOwners:    map[string][]string{},
+		errors:           []error{},
 	}
 
 	for key, row := range t.rows {
@@ -233,7 +244,6 @@ func (p *Plan) Calculate() *Plan {
 						slices.Sort(owners)
 						owners = slices.Compact[[]string, string](owners)
 						candidate.Labels[endpoint.OwnerLabelKey] = strings.Join(owners, OwnerLabelDeliminator)
-						managedChanges.dnsNameOwners[key.dnsName] = append(managedChanges.dnsNameOwners[key.dnsName], owners...)
 					}
 
 					if len(owners) == 0 {
@@ -249,6 +259,7 @@ func (p *Plan) Calculate() *Plan {
 						// If you delete one owner record, it currently removes the endpoint form desired causing an invalid record
 
 						managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous})
+						managedChanges.dnsNameOwners[key.dnsName] = append(managedChanges.dnsNameOwners[key.dnsName], owners...)
 					}
 				}
 			}
@@ -274,33 +285,34 @@ func (p *Plan) Calculate() *Plan {
 				if records.current != nil && len(records.candidates) > 0 {
 					candidate := t.resolver.ResolveUpdate(records.current, records.candidates)
 					current := records.current.DeepCopy()
+					owners := []string{}
 					if endpointOwner, hasOwner := current.Labels[endpoint.OwnerLabelKey]; hasOwner {
 						if p.OwnerID == "" {
 							// Only allow owned records to be updated by other owned records
-							conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update '%s' with no owner when existing record is already owned", ErrOwnerConflict, candidate.DNSName))
+							conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update endpoint '%s' with no owner when existing endpoint is already owned", ErrOwnerConflict, candidate.DNSName))
 							continue
 						}
 
-						owners := strings.Split(endpointOwner, OwnerLabelDeliminator)
+						owners = strings.Split(endpointOwner, OwnerLabelDeliminator)
 						owners = append(owners, p.OwnerID)
 						slices.Sort(owners)
 						owners = slices.Compact[[]string, string](owners)
 						current.Labels[endpoint.OwnerLabelKey] = strings.Join(owners, OwnerLabelDeliminator)
-						managedChanges.dnsNameOwners[key.dnsName] = append(managedChanges.dnsNameOwners[key.dnsName], owners...)
 					} else {
 						if p.OwnerID != "" {
 							// Only allow unowned records to be updated by other unowned records
-							conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update '%s' with owner when existing record is not owned", ErrOwnerConflict, candidate.DNSName))
+							conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update endpoint '%s' with owner when existing endpoint is not owned", ErrOwnerConflict, candidate.DNSName))
 							continue
 						}
 					}
 					inheritOwner(current, candidate)
 					managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous})
+					managedChanges.dnsNameOwners[key.dnsName] = append(managedChanges.dnsNameOwners[key.dnsName], owners...)
 				}
 			}
 
 			if rTypeUpdate.current != nil && rTypeUpdate.desired != nil {
-				conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update '%s' with record type '%s' when record already exists with record type '%s'",
+				conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update endpoint '%s' with record type '%s' when endpoint already exists with record type '%s'",
 					ErrRecordTypeConflict, rTypeUpdate.current.DNSName, rTypeUpdate.desired.RecordType, rTypeUpdate.current.RecordType))
 			}
 		}
@@ -310,6 +322,7 @@ func (p *Plan) Calculate() *Plan {
 	}
 
 	changes := managedChanges.Calculate()
+	conflictErrs = append(conflictErrs, managedChanges.errors...)
 
 	for _, pol := range p.Policies {
 		changes = pol.Apply(changes)
@@ -355,28 +368,58 @@ func (e *endpointUpdate) ShouldUpdate() bool {
 }
 
 type managedRecordSetChanges struct {
-	ownerID       string
-	creates       []*endpoint.Endpoint
-	deletes       []*endpoint.Endpoint
-	updates       []*endpointUpdate
-	dnsNameOwners map[string][]string
+	ownerID          string
+	rootDomainFilter endpoint.DomainFilter
+	creates          []*endpoint.Endpoint
+	deletes          []*endpoint.Endpoint
+	updates          []*endpointUpdate
+	dnsNameOwners    map[string][]string
+	errors           []error
 }
 
 func (e *managedRecordSetChanges) Calculate() *externaldnsplan.Changes {
 	changes := &externaldnsplan.Changes{
-		Create: e.creates,
 		Delete: e.deletes,
+	}
+
+	for _, ep := range e.creates {
+		if err := e.validTargets(ep); err != nil {
+			e.errors = append(e.errors, err)
+		} else {
+			changes.Create = append(changes.Create, ep)
+		}
 	}
 
 	for _, update := range e.updates {
 		e.calculateDesired(update)
 		if update.ShouldUpdate() {
-			changes.UpdateNew = append(changes.UpdateNew, update.desired)
-			changes.UpdateOld = append(changes.UpdateOld, update.current)
+			if err := e.validTargets(update.desired); err != nil {
+				e.errors = append(e.errors, err)
+			} else {
+				changes.UpdateNew = append(changes.UpdateNew, update.desired)
+				changes.UpdateOld = append(changes.UpdateOld, update.current)
+			}
 		}
 	}
 
 	return changes
+}
+
+// validTargets returns true if the endpoints targets pass all target validation checks
+// validates that CNAME record target values must exist if the target matches the current plans root domain filter.
+func (e *managedRecordSetChanges) validTargets(ep *endpoint.Endpoint) (err error) {
+	if ep.RecordType == endpoint.RecordTypeCNAME && e.rootDomainFilter.IsConfigured() {
+		for idx := range ep.Targets {
+			t := ep.Targets[idx]
+			if e.rootDomainFilter.Match(t) {
+				tDNSName := normalizeDNSName(t)
+				if _, tIsManaged := e.dnsNameOwners[tDNSName]; !tIsManaged {
+					err = fmt.Errorf("%w, endpoint '%s' has target '%s' that matches the root host filters '%v' but does not exist in the list of local or remote endpoints", ErrInvalidTarget, ep.DNSName, t, e.rootDomainFilter.Filters)
+				}
+			}
+		}
+	}
+	return
 }
 
 // calculateDesired changes the value of update.desired based on all information (desired/current/previous) available about the endpoint.
@@ -413,7 +456,7 @@ func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 
 		//ToDo manirn Check this is actually needed, and if it is add a test that requires it to be here
 		if len(update.desired.Targets) <= 1 {
-			log.Infof("skipping check for managed dnsNames for CNAME with single target value")
+			log.Debugf("skipping check for managed dnsNames for CNAME with single target value")
 			return
 		}
 

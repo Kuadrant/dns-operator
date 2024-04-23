@@ -19,6 +19,7 @@ package plan
 import (
 	"errors"
 	"fmt"
+	"k8s.io/utils/ptr"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -94,6 +95,13 @@ type PlanTestSuite struct {
 	fooCNAMEv2Owner1WithSetIdentifier1 *endpoint.Endpoint
 	fooCNAMEv2Owner1WithSetIdentifier2 *endpoint.Endpoint
 	fooCNAMEv2Owner2WithSetIdentifier2 *endpoint.Endpoint
+	//CNAME Records with *example.com dns names and targets
+	ecCNAMEfooecOwnerNone    *endpoint.Endpoint
+	fooecCNAMEbarecOwnerNone *endpoint.Endpoint
+	barecCNAMEbodoOwnerNone  *endpoint.Endpoint
+	ecCNAMEfooecOwner1       *endpoint.Endpoint
+	fooecCNAMEbarecOwner1    *endpoint.Endpoint
+	barecCNAMEbodoOwner1     *endpoint.Endpoint
 }
 
 func (suite *PlanTestSuite) SetupTest() {
@@ -548,6 +556,45 @@ func (suite *PlanTestSuite) SetupTest() {
 		},
 		SetIdentifier: "2",
 	}
+	suite.ecCNAMEfooecOwnerNone = &endpoint.Endpoint{
+		DNSName:    "*.example.com",
+		RecordType: "CNAME",
+		Targets:    endpoint.Targets{"foo.example.com"},
+	}
+	suite.fooecCNAMEbarecOwnerNone = &endpoint.Endpoint{
+		DNSName:    "foo.example.com",
+		RecordType: "CNAME",
+		Targets:    endpoint.Targets{"bar.example.com"},
+	}
+	suite.barecCNAMEbodoOwnerNone = &endpoint.Endpoint{
+		DNSName:    "bar.example.com",
+		RecordType: "CNAME",
+		Targets:    endpoint.Targets{"baz.other.domain.com"},
+	}
+	suite.ecCNAMEfooecOwner1 = &endpoint.Endpoint{
+		DNSName:    "*.example.com",
+		RecordType: "CNAME",
+		Targets:    endpoint.Targets{"foo.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.fooecCNAMEbarecOwner1 = &endpoint.Endpoint{
+		DNSName:    "foo.example.com",
+		RecordType: "CNAME",
+		Targets:    endpoint.Targets{"bar.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.barecCNAMEbodoOwner1 = &endpoint.Endpoint{
+		DNSName:    "bar.example.com",
+		RecordType: "CNAME",
+		Targets:    endpoint.Targets{"baz.other.domain.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
 }
 
 func (suite *PlanTestSuite) TestSyncFirstRound() {
@@ -573,7 +620,7 @@ func (suite *PlanTestSuite) TestSyncFirstRound() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRound() {
@@ -599,7 +646,7 @@ func (suite *PlanTestSuite) TestSyncSecondRound() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with no owner when existing record is already owned")
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update endpoint 'foo' with no owner when existing endpoint is already owned")
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundMigration() {
@@ -625,7 +672,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundMigration() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithTTLChange() {
@@ -651,7 +698,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithTTLChange() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificChange() {
@@ -677,7 +724,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificChange() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificRemoval() {
@@ -703,7 +750,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificRemoval() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificAddition() {
@@ -729,7 +776,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificAddition() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestSyncSecondRoundWithOwnerInherited() {
@@ -766,7 +813,7 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithOwnerInherited() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestIdempotency() {
@@ -791,7 +838,7 @@ func (suite *PlanTestSuite) TestIdempotency() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestRecordTypeChange() {
@@ -819,7 +866,7 @@ func (suite *PlanTestSuite) TestRecordTypeChange() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestExistingCNameWithDualStackDesired() {
@@ -847,7 +894,7 @@ func (suite *PlanTestSuite) TestExistingCNameWithDualStackDesired() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestExistingDualStackWithCNameDesired() {
@@ -877,7 +924,7 @@ func (suite *PlanTestSuite) TestExistingDualStackWithCNameDesired() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // TestExistingOwnerNotMatchingDualStackDesired validates that if there is an existing
@@ -909,7 +956,7 @@ func (suite *PlanTestSuite) TestExistingOwnerNotMatchingDualStackDesired() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.EqualError(suite.T(), cp.ConflictError(), "record type conflict, cannot update 'foo' with record type 'CNAME' when record already exists with record type 'A'")
+	assert.EqualError(suite.T(), cp.ConflictError(), "record type conflict, cannot update endpoint 'foo' with record type 'CNAME' when endpoint already exists with record type 'A'")
 }
 
 // TestConflictingCurrentNonConflictingDesired is a bit of a corner case as it would indicate
@@ -942,7 +989,7 @@ func (suite *PlanTestSuite) TestConflictingCurrentNonConflictingDesired() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // TestConflictingCurrentNoDesired is a bit of a corner case as it would indicate
@@ -974,7 +1021,7 @@ func (suite *PlanTestSuite) TestConflictingCurrentNoDesired() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // TestCurrentWithConflictingDesired simulates where the desired records result in conflicting records types.
@@ -1006,7 +1053,7 @@ func (suite *PlanTestSuite) TestCurrentWithConflictingDesired() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // TestNoCurrentWithConflictingDesired simulates where the desired records result in conflicting records types.
@@ -1035,7 +1082,7 @@ func (suite *PlanTestSuite) TestNoCurrentWithConflictingDesired() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestIgnoreTXT() {
@@ -1061,7 +1108,7 @@ func (suite *PlanTestSuite) TestIgnoreTXT() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestExcludeTXT() {
@@ -1088,7 +1135,7 @@ func (suite *PlanTestSuite) TestExcludeTXT() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestIgnoreTargetCase() {
@@ -1113,7 +1160,7 @@ func (suite *PlanTestSuite) TestIgnoreTargetCase() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestRemoveEndpoint() {
@@ -1139,7 +1186,7 @@ func (suite *PlanTestSuite) TestRemoveEndpoint() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with no owner when existing record is already owned")
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update endpoint 'foo' with no owner when existing endpoint is already owned")
 }
 
 func (suite *PlanTestSuite) TestRemoveEndpointWithUpsert() {
@@ -1165,7 +1212,7 @@ func (suite *PlanTestSuite) TestRemoveEndpointWithUpsert() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with no owner when existing record is already owned")
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update endpoint 'foo' with no owner when existing endpoint is already owned")
 }
 
 func (suite *PlanTestSuite) TestMultipleRecordsSameNameDifferentSetIdentifier() {
@@ -1191,7 +1238,7 @@ func (suite *PlanTestSuite) TestMultipleRecordsSameNameDifferentSetIdentifier() 
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestSetIdentifierUpdateCreatesAndDeletes() {
@@ -1217,7 +1264,7 @@ func (suite *PlanTestSuite) TestSetIdentifierUpdateCreatesAndDeletes() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestDomainFiltersInitial() {
@@ -1245,7 +1292,7 @@ func (suite *PlanTestSuite) TestDomainFiltersInitial() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestDomainFiltersUpdate() {
@@ -1273,7 +1320,7 @@ func (suite *PlanTestSuite) TestDomainFiltersUpdate() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestAAAARecords() {
@@ -1297,7 +1344,7 @@ func (suite *PlanTestSuite) TestAAAARecords() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestDualStackRecords() {
@@ -1321,7 +1368,7 @@ func (suite *PlanTestSuite) TestDualStackRecords() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestDualStackRecordsDelete() {
@@ -1345,7 +1392,7 @@ func (suite *PlanTestSuite) TestDualStackRecordsDelete() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func (suite *PlanTestSuite) TestDualStackToSingleStack() {
@@ -1370,7 +1417,7 @@ func (suite *PlanTestSuite) TestDualStackToSingleStack() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Multiple Owner Tests
@@ -1398,7 +1445,7 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordCreate() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should not merge targets of records with a shared dnsName, type and a set identifier.
@@ -1422,7 +1469,7 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordWithSetIdentifierCreate() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should allow owned records to be updated from the creation of records with a shared dnsName and type by a plan with a different owner.
@@ -1448,7 +1495,7 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateCreate() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should allow owned records to be updated from the change to a record with a shared dnsName and type by a plan with the same owner.
@@ -1476,7 +1523,7 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateSameOwner() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should not allow the update of a record with a shared dnsName to a different record type (A -> CNAME) (CONFLICT).
@@ -1502,7 +1549,7 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateRecordTypeConflict() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.EqualError(suite.T(), cp.ConflictError(), "record type conflict, cannot update 'foo' with record type 'CNAME' when record already exists with record type 'A'")
+	assert.EqualError(suite.T(), cp.ConflictError(), "record type conflict, cannot update endpoint 'foo' with record type 'CNAME' when endpoint already exists with record type 'A'")
 }
 
 // Should not merge targets of records with a shared dnsName, type and set identifier.
@@ -1526,7 +1573,7 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateSameOwnerWithSetIdentifie
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should not allow owned records to be updated by a plan with no owner
@@ -1549,7 +1596,7 @@ func (suite *PlanTestSuite) TestNoPlanOwnerARecordUpdate() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with no owner when existing record is already owned")
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update endpoint 'foo' with no owner when existing endpoint is already owned")
 }
 
 // Should not allow unowned records to be updated by a plan with an owner
@@ -1573,7 +1620,7 @@ func (suite *PlanTestSuite) TestPlanOwnerARecordUpdateNoOwner() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with owner when existing record is not owned")
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update endpoint 'foo' with owner when existing endpoint is not owned")
 }
 
 // Should not merge targets of unowned records with a shared dnsName and type
@@ -1596,7 +1643,7 @@ func (suite *PlanTestSuite) TestNoOwnerARecordUpdate() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should only delete records solely owned by the plan owner and update records with shared ownership to remove the plan owner.
@@ -1622,7 +1669,7 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordDelete() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 //CNAME Records
@@ -1648,7 +1695,7 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordCreate() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should not merge targets of records with a shared dnsName, type and a set identifier.
@@ -1672,7 +1719,152 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordWithSetIdentifierCreate() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
+}
+
+func (suite *PlanTestSuite) TestRootHost() {
+	current := []*endpoint.Endpoint{suite.barecCNAMEbodoOwner1, suite.ecCNAMEfooecOwner1}
+	desired := []*endpoint.Endpoint{suite.fooA1OwnerNone}
+	//No RootHost set, dnsName is not filtered
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{suite.fooA1OwnerNone.DeepCopy()},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{suite.barecCNAMEbodoOwner1.DeepCopy(), suite.ecCNAMEfooecOwner1.DeepCopy()},
+	}
+
+	p := &Plan{
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+	cp := p.Calculate()
+
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.ConflictErrors)
+
+	//With RootHost set, dnsName must have example.com suffix
+	expectedChanges = &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{suite.barecCNAMEbodoOwner1.DeepCopy(), suite.ecCNAMEfooecOwner1.DeepCopy()},
+	}
+
+	p = &Plan{
+		RootHost:       ptr.To("example.com"),
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+	cp = p.Calculate()
+
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.ConflictErrors)
+
+	//With DomainFilter and RootHost set, dnsName must have example.com and foo.example.com suffix
+	expectedChanges = &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{suite.barecCNAMEbodoOwner1.DeepCopy()},
+	}
+
+	p = &Plan{
+		RootHost:       ptr.To("bar.example.com"),
+		DomainFilter:   endpoint.MatchAllDomainFilters{ptr.To(endpoint.NewDomainFilter([]string{"example.com"}))},
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+	cp = p.Calculate()
+
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.ConflictErrors)
+}
+
+// ecCNAMEfooec *.example.com -> foo.example.com
+// fooecCNAMEbarec foo.example.com -> bar.example.com
+// barecCNAMEbodo bar.example.com -> baz.other.domain.com
+
+// Should not create a CNAME record when the plan has a root host(example.com) and it has a target which is a subdomain
+// of the root host (bar.example.com) and it does not exist in current or desired.
+func (suite *PlanTestSuite) TestRootHostCNAMERecordCreateWithMissingManagedTarget() {
+	current := []*endpoint.Endpoint{suite.ecCNAMEfooecOwner1}
+	desired := []*endpoint.Endpoint{suite.fooecCNAMEbarecOwnerNone}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		RootHost:       ptr.To("example.com"),
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.EqualError(suite.T(), cp.ConflictError(), "invalid target, endpoint 'foo.example.com' has target 'bar.example.com' that matches the root host filters '[example.com]' but does not exist in the list of local or remote endpoints")
+}
+
+// Should create a CNAME record when the plan has a root host(example.com) and it has a target which is a subdomain
+// of the root host (bar.example.com) and it does exist in current or desired.
+func (suite *PlanTestSuite) TestRootHostCNAMERecordCreateManagedTarget() {
+
+	current := []*endpoint.Endpoint{suite.ecCNAMEfooecOwner1, suite.barecCNAMEbodoOwner1}
+	desired := []*endpoint.Endpoint{suite.fooecCNAMEbarecOwnerNone}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{suite.fooecCNAMEbarecOwnerNone.DeepCopy()},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		RootHost:       ptr.To("example.com"),
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.ConflictErrors)
+}
+
+// Should create a CNAME record when the plan has no root host(example.com) even if the target might be a subdomain
+func (suite *PlanTestSuite) TestNoRootHostCNAMERecordCreateMissingManagedTarget() {
+	current := []*endpoint.Endpoint{suite.ecCNAMEfooecOwner1}
+	desired := []*endpoint.Endpoint{suite.fooecCNAMEbarecOwnerNone}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{suite.fooecCNAMEbarecOwnerNone.DeepCopy()},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should allow owned records to be updated from the creation of records with a shared dnsName and type by a plan with a different owner.
@@ -1700,7 +1892,7 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateDifferentOwner() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should allow owned records to be updated from the change to a record with a shared dnsName and type by a plan with the same owner.
@@ -1727,7 +1919,7 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateSameOwner() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should not allow the update of a record with a shared dnsName to a different record type (CNAME -> A) (CONFLICT).
@@ -1753,7 +1945,7 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateRecordTypeConflict() 
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.EqualError(suite.T(), cp.ConflictError(), "record type conflict, cannot update 'foo' with record type 'A' when record already exists with record type 'CNAME'")
+	assert.EqualError(suite.T(), cp.ConflictError(), "record type conflict, cannot update endpoint 'foo' with record type 'A' when endpoint already exists with record type 'CNAME'")
 }
 
 // Should not merge targets of records with a shared dnsName, type and set identifier.
@@ -1779,7 +1971,7 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateSameOwnerWithSetIdent
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should not allow owned records to be updated by a plan with no owner
@@ -1802,7 +1994,7 @@ func (suite *PlanTestSuite) TestNoPlanOwnerCNAMERecordUpdate() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with no owner when existing record is already owned")
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update endpoint 'foo' with no owner when existing endpoint is already owned")
 }
 
 // Should not allow unowned records to be updated by a plan with an owner
@@ -1826,7 +2018,7 @@ func (suite *PlanTestSuite) TestPlanOwnerCNAMERecordUpdateNoOwner() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update 'foo' with owner when existing record is not owned")
+	assert.EqualError(suite.T(), cp.ConflictError(), "owner conflict, cannot update endpoint 'foo' with owner when existing endpoint is not owned")
 }
 
 // Should not merge targets of unowned records with a shared dnsName and type
@@ -1849,7 +2041,7 @@ func (suite *PlanTestSuite) TestNoPlanOwnerCNAMERecordUpdateNoOwner() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 // Should only delete records solely owned by the plan owner and update records with shared ownership to remove the plan owner.
@@ -1876,7 +2068,7 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordDelete() {
 
 	cp := p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
-	assert.Nil(suite.T(), cp.ConflictError())
+	assert.Empty(suite.T(), cp.ConflictErrors)
 }
 
 func TestPlan(t *testing.T) {
@@ -1914,7 +2106,7 @@ func validateChanges(t *testing.T, changes, expected *plan.Changes) {
 	}
 
 	if validateErr != nil {
-		t.Fatalf(validateErr.Error())
+		assert.Fail(t, validateErr.Error())
 	}
 }
 
