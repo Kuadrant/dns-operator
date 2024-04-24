@@ -174,7 +174,7 @@ func getHealthChecksConfig(dnsRecord *v1alpha1.DNSRecord) *healthChecksConfig {
 // idForEndpoint returns a unique identifier for an endpoint
 func idForEndpoint(dnsRecord *v1alpha1.DNSRecord, endpoint *externaldns.Endpoint, address string) (string, error) {
 	hash := md5.New()
-	if _, err := io.WriteString(hash, fmt.Sprintf("%s/%s@%s:%s", dnsRecord.Name, endpoint.SetIdentifier, endpoint.DNSName, address)); err != nil {
+	if _, err := io.WriteString(hash, fmt.Sprintf("%s/%s@%s:%s-%v", dnsRecord.Name, endpoint.SetIdentifier, endpoint.DNSName, address, dnsRecord.Generation)); err != nil {
 		return "", fmt.Errorf("unexpected error creating ID for endpoint %s", endpoint.SetIdentifier)
 	}
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil

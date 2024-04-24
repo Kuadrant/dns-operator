@@ -28,6 +28,10 @@ func NewCachedHealthCheckReconciler(provider Provider, reconciler HealthCheckRec
 	}
 }
 
+func (r *CachedHealthCheckReconciler) HealthCheckExists(ctx context.Context, probeStatus *v1alpha1.HealthCheckStatusProbe) (bool, error) {
+	return r.reconciler.HealthCheckExists(ctx, probeStatus)
+}
+
 // Delete implements HealthCheckReconciler
 func (r *CachedHealthCheckReconciler) Delete(ctx context.Context, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe) (HealthCheckResult, error) {
 	id, ok := r.getHealthCheckID(endpoint)

@@ -12,6 +12,7 @@ import (
 type HealthCheckReconciler interface {
 	Reconcile(ctx context.Context, spec HealthCheckSpec, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe, address string) HealthCheckResult
 	Delete(ctx context.Context, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe) (HealthCheckResult, error)
+	HealthCheckExists(ctx context.Context, probeStatus *v1alpha1.HealthCheckStatusProbe) (bool, error)
 }
 
 type HealthCheckSpec struct {

@@ -52,6 +52,11 @@ func getTransitionTime(probeConditions []metav1.Condition, conditionType string,
 	return metav1.Now()
 }
 
+func (r *Route53HealthCheckReconciler) HealthCheckExists(ctx context.Context, probeStatus *v1alpha1.HealthCheckStatusProbe) (bool, error) {
+	_, exists, err := r.findHealthCheck(ctx, probeStatus)
+	return exists, err
+}
+
 func (r *Route53HealthCheckReconciler) Reconcile(ctx context.Context, spec provider.HealthCheckSpec, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe, address string) provider.HealthCheckResult {
 	healthCheck, exists, err := r.findHealthCheck(ctx, probeStatus)
 	if err != nil {
