@@ -29,18 +29,22 @@ type ManagedZoneReference struct {
 
 // ManagedZoneSpec defines the desired state of ManagedZone
 type ManagedZoneSpec struct {
-	// ID is the provider assigned id of this  zone (i.e. route53.HostedZone.ID).
+	// id is the provider assigned id of this  zone (i.e. route53.HostedZone.ID).
 	// +optional
 	ID string `json:"id,omitempty"`
-	//Domain name of this ManagedZone
+
+	//domainName of this ManagedZone
 	// +kubebuilder:validation:Pattern=`^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$`
 	DomainName string `json:"domainName"`
-	//Description for this ManagedZone
+
+	//description for this ManagedZone
 	Description string `json:"description"`
-	// Reference to another managed zone that this managed zone belongs to.
+
+	// parentManagedZone reference to another managed zone that this managed zone belongs to.
 	// +optional
 	ParentManagedZone *ManagedZoneReference `json:"parentManagedZone,omitempty"`
-	// +required
+
+	// dnsProviderSecretRef reference to a secret containing credentials to access a dns provider.
 	SecretRef ProviderRef `json:"dnsProviderSecretRef"`
 }
 
@@ -53,17 +57,20 @@ type ManagedZoneStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// observedGeneration is the most recently observed generation of the
-	// ManagedZone.
+	// observedGeneration is the most recently observed generation of the ManagedZone.
+	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// The ID assigned by this provider for this zone (i.e. route53.HostedZone.ID)
+	// +optional
 	ID string `json:"id,omitempty"`
 
 	// The number of records in the provider zone
+	// +optional
 	RecordCount int64 `json:"recordCount,omitempty"`
 
 	// The NameServers assigned by the provider for this zone (i.e. route53.DelegationSet.NameServers)
+	// +optional
 	NameServers []*string `json:"nameServers,omitempty"`
 }
 

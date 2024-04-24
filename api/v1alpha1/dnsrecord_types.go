@@ -58,17 +58,20 @@ type HealthCheckStatusProbe struct {
 
 // DNSRecordSpec defines the desired state of DNSRecord
 type DNSRecordSpec struct {
-	// OwnerID is a unique string used to identify all endpoints created by this kuadrant
+	// ownerID is a unique string used to identify the owner of this record.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="OwnerID is immutable"
 	// +optional
 	OwnerID *string `json:"ownerID,omitempty"`
+
 	// rootHost is the single root for all endpoints in a DNSRecord.
-	//If rootHost is set, it is expected all defined endpoints are children 	of or equal to this rootHost
+	// If rootHost is set, it is expected all defined endpoints are children of or equal to this rootHost
 	// +optional
 	RootHost *string `json:"rootHost,omitempty"`
-	// +kubebuilder:validation:Required
-	// +required
-	ManagedZoneRef *ManagedZoneReference `json:"managedZone,omitempty"`
+
+	// managedZone is a reference to a ManagedZone instance to which this record will publish its endpoints.
+	ManagedZoneRef *ManagedZoneReference `json:"managedZone"`
+
+	// endpoints is a list of endpoints that will be published into the dns provider.
 	// +kubebuilder:validation:MinItems=1
 	// +optional
 	Endpoints []*externaldns.Endpoint `json:"endpoints,omitempty"`

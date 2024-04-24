@@ -40,6 +40,8 @@ spec:
             description: DNSRecordSpec defines the desired state of DNSRecord
             properties:
               endpoints:
+                description: endpoints is a list of endpoints that will be published
+                  into the dns provider.
                 items:
                   description: Endpoint is a high-level way of a connection between
                     a service and an IP
@@ -100,7 +102,8 @@ spec:
                     type: string
                 type: object
               managedZone:
-                description: ManagedZoneReference holds a reference to a ManagedZone
+                description: managedZone is a reference to a ManagedZone instance
+                  to which this record will publish its endpoints.
                 properties:
                   name:
                     description: '`name` is the name of the managed zone. Required'
@@ -109,17 +112,19 @@ spec:
                 - name
                 type: object
               ownerID:
-                description: OwnerID is a unique string used to identify all endpoints
-                  created by this kuadrant
+                description: ownerID is a unique string used to identify the owner
+                  of this record.
                 type: string
                 x-kubernetes-validations:
                 - message: OwnerID is immutable
                   rule: self == oldSelf
               rootHost:
-                description: "rootHost is the single root for all endpoints in a DNSRecord.
+                description: rootHost is the single root for all endpoints in a DNSRecord.
                   If rootHost is set, it is expected all defined endpoints are children
-                  \tof or equal to this rootHost"
+                  of or equal to this rootHost
                 type: string
+            required:
+            - managedZone
             type: object
           status:
             description: DNSRecordStatus defines the observed state of DNSRecord
