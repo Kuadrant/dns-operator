@@ -367,7 +367,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 
 	plan = plan.Calculate()
 
-	if err = plan.ConflictError(); err != nil {
+	if err = plan.Error(); err != nil {
 		return noRequeueDuration, err
 	}
 

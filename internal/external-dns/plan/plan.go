@@ -59,9 +59,9 @@ type Plan struct {
 	ExcludeRecords []string
 	// OwnerID of records to manage
 	OwnerID string
-	// ConflictErrors list of errors describing conflicts that can't be resolved.
+	// Errors list of errors describing issues that can't be resolved by the plan.
 	// Populated after calling Calculate()
-	ConflictErrors []error
+	Errors []error
 	// RootHost the host dns name being managed by the set of records in the plan.
 	RootHost *string
 }
@@ -167,9 +167,9 @@ func (t *planTable) newPlanKey(e *endpoint.Endpoint) planKey {
 	return key
 }
 
-// ConflictError returns all ConflictErrors as a single error or nil if there are none.
-func (p *Plan) ConflictError() error {
-	return errors.Join(p.ConflictErrors...)
+// Error returns all Errors as a single error or nil if there are none.
+func (p *Plan) Error() error {
+	return errors.Join(p.Errors...)
 }
 
 // Calculate computes the actions needed to move current state towards desired
@@ -178,7 +178,7 @@ func (p *Plan) ConflictError() error {
 func (p *Plan) Calculate() *Plan {
 	t := newPlanTable()
 
-	var conflictErrs []error
+	var errs []error
 	var rootDomainFilter endpoint.DomainFilter
 
 	if p.DomainFilter == nil {
@@ -289,7 +289,7 @@ func (p *Plan) Calculate() *Plan {
 					if endpointOwner, hasOwner := current.Labels[endpoint.OwnerLabelKey]; hasOwner {
 						if p.OwnerID == "" {
 							// Only allow owned records to be updated by other owned records
-							conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update endpoint '%s' with no owner when existing endpoint is already owned", ErrOwnerConflict, candidate.DNSName))
+							errs = append(errs, fmt.Errorf("%w, cannot update endpoint '%s' with no owner when existing endpoint is already owned", ErrOwnerConflict, candidate.DNSName))
 							continue
 						}
 
@@ -301,7 +301,7 @@ func (p *Plan) Calculate() *Plan {
 					} else {
 						if p.OwnerID != "" {
 							// Only allow unowned records to be updated by other unowned records
-							conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update endpoint '%s' with owner when existing endpoint is not owned", ErrOwnerConflict, candidate.DNSName))
+							errs = append(errs, fmt.Errorf("%w, cannot update endpoint '%s' with owner when existing endpoint is not owned", ErrOwnerConflict, candidate.DNSName))
 							continue
 						}
 					}
@@ -312,7 +312,7 @@ func (p *Plan) Calculate() *Plan {
 			}
 
 			if rTypeUpdate.current != nil && rTypeUpdate.desired != nil {
-				conflictErrs = append(conflictErrs, fmt.Errorf("%w, cannot update endpoint '%s' with record type '%s' when endpoint already exists with record type '%s'",
+				errs = append(errs, fmt.Errorf("%w, cannot update endpoint '%s' with record type '%s' when endpoint already exists with record type '%s'",
 					ErrRecordTypeConflict, rTypeUpdate.current.DNSName, rTypeUpdate.desired.RecordType, rTypeUpdate.current.RecordType))
 			}
 		}
@@ -322,7 +322,7 @@ func (p *Plan) Calculate() *Plan {
 	}
 
 	changes := managedChanges.Calculate()
-	conflictErrs = append(conflictErrs, managedChanges.errors...)
+	errs = append(errs, managedChanges.errors...)
 
 	for _, pol := range p.Policies {
 		changes = pol.Apply(changes)
@@ -340,7 +340,7 @@ func (p *Plan) Calculate() *Plan {
 		Current:        p.Current,
 		Desired:        p.Desired,
 		Changes:        changes,
-		ConflictErrors: conflictErrs,
+		Errors:         errs,
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -405,7 +405,7 @@ func (e *managedRecordSetChanges) Calculate() *externaldnsplan.Changes {
 	return changes
 }
 
-// validTargets returns true if the endpoints targets pass all target validation checks
+// validTargets returns true if the endpoints targets pass all target validation checks.
 // validates that CNAME record target values must exist if the target matches the current plans root domain filter.
 func (e *managedRecordSetChanges) validTargets(ep *endpoint.Endpoint) (err error) {
 	if ep.RecordType == endpoint.RecordTypeCNAME && e.rootDomainFilter.IsConfigured() {
