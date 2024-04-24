@@ -240,7 +240,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":             Equal(metav1.ConditionFalse),
 					"Reason":             Equal("ProviderError"),
-					"Message":            ContainSubstring("record type conflict, cannot update 'foo.example.com' with record type 'CNAME' when record already exists with record type 'A'"),
+					"Message":            ContainSubstring("record type conflict, cannot update endpoint 'foo.example.com' with record type 'CNAME' when endpoint already exists with record type 'A'"),
 					"ObservedGeneration": Equal(dnsRecord2.Generation),
 				})),
 			)
@@ -270,7 +270,50 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":             Equal(metav1.ConditionFalse),
 					"Reason":             Equal("ProviderError"),
-					"Message":            ContainSubstring("owner conflict, cannot update 'foo.example.com' with owner when existing record is not owned"),
+					"Message":            ContainSubstring("owner conflict, cannot update endpoint 'foo.example.com' with owner when existing endpoint is not owned"),
+					"ObservedGeneration": Equal(dnsRecord2.Generation),
+				})),
+			)
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+	})
+
+	It("should not allow a record to have a target that matches the root host if an endpoint doesn't exist for the target dns name", func() {
+		dnsRecord2 = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "bar.example.com",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				OwnerID:  ptr.To("owner1"),
+				RootHost: ptr.To("bar.example.com"),
+				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+					Name: managedZone.Name,
+				},
+				Endpoints: []*externaldnsendpoint.Endpoint{
+					{
+						DNSName: "bar.example.com",
+						Targets: []string{
+							"foo.bar.example.com",
+						},
+						RecordType:       "CNAME",
+						SetIdentifier:    "",
+						RecordTTL:        60,
+						Labels:           nil,
+						ProviderSpecific: nil,
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord2.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal("ProviderError"),
+					"Message":            ContainSubstring("invalid target, endpoint 'bar.example.com' has target 'foo.bar.example.com' that matches the root host filters '[bar.example.com]' but does not exist in the list of local or remote endpoints"),
 					"ObservedGeneration": Equal(dnsRecord2.Generation),
 				})),
 			)

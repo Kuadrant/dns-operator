@@ -299,11 +299,12 @@ func (r *DNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord *v1a
 
 func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone, isDelete bool) (time.Duration, error) {
 	logger := log.FromContext(ctx)
-	filterDomain, _ := strings.CutPrefix(managedZone.Spec.DomainName, v1alpha1.WildcardPrefix)
+	zoneDomainName, _ := strings.CutPrefix(managedZone.Spec.DomainName, v1alpha1.WildcardPrefix)
+	var rootDomainName string
 	if dnsRecord.Spec.RootHost != nil {
-		filterDomain, _ = strings.CutPrefix(*dnsRecord.Spec.RootHost, v1alpha1.WildcardPrefix)
+		rootDomainName, _ = strings.CutPrefix(*dnsRecord.Spec.RootHost, v1alpha1.WildcardPrefix)
 	}
-	rootDomainFilter := externaldnsendpoint.NewDomainFilter([]string{filterDomain})
+	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{zoneDomainName})
 
 	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
 	if err != nil {
@@ -353,20 +354,20 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	logger.V(3).Info("applyChanges", "statusEndpoints", statusEndpoints)
 
 	plan := &externaldnsplan.Plan{
-		Policies: []externaldnsplan.Policy{policy},
-		Current:  zoneEndpoints,
-		Desired:  specEndpoints,
-		Previous: statusEndpoints,
-		//Note: We can't just filter domains by `managedZone.Spec.DomainName` it needs to be the exact root domain for this particular record
-		DomainFilter:   externaldnsendpoint.MatchAllDomainFilters{&rootDomainFilter},
+		Policies:       []externaldnsplan.Policy{policy},
+		Current:        zoneEndpoints,
+		Desired:        specEndpoints,
+		Previous:       statusEndpoints,
+		DomainFilter:   externaldnsendpoint.MatchAllDomainFilters{&zoneDomainFilter},
 		ManagedRecords: managedDNSRecordTypes,
 		ExcludeRecords: excludeDNSRecordTypes,
 		OwnerID:        registry.OwnerID(),
+		RootHost:       &rootDomainName,
 	}
 
 	plan = plan.Calculate()
 
-	if err = plan.ConflictError(); err != nil {
+	if err = plan.Error(); err != nil {
 		return noRequeueDuration, err
 	}
 
