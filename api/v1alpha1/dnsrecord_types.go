@@ -50,10 +50,11 @@ type HealthCheckStatus struct {
 }
 
 type HealthCheckStatusProbe struct {
-	ID        string `json:"id"`
-	IPAddress string `json:"ipAddress"`
-	Host      string `json:"host"`
-	Synced    bool   `json:"synced,omitempty"`
+	ID         string             `json:"id"`
+	IPAddress  string             `json:"ipAddress"`
+	Host       string             `json:"host"`
+	Synced     bool               `json:"synced,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // DNSRecordSpec defines the desired state of DNSRecord
@@ -178,7 +179,7 @@ func (s *DNSRecord) Validate() error {
 			return fmt.Errorf("invalid domain format no tld discovered")
 		}
 		if len(s.Spec.Endpoints) == 0 {
-			return fmt.Errorf("no endpoints defined for DNSRecord. Nothing to do.")
+			return fmt.Errorf("no endpoints defined for DNSRecord. Nothing to do")
 		}
 
 		root, _ = strings.CutPrefix(root, WildcardPrefix)

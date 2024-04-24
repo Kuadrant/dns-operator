@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"sync"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -31,7 +32,7 @@ func NewCachedHealthCheckReconciler(provider Provider, reconciler HealthCheckRec
 func (r *CachedHealthCheckReconciler) Delete(ctx context.Context, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe) (HealthCheckResult, error) {
 	id, ok := r.getHealthCheckID(endpoint)
 	if !ok {
-		return NewHealthCheckResult(HealthCheckNoop, "", "", "", ""), nil
+		return NewHealthCheckResult(HealthCheckNoop, "", "", "", metav1.Condition{}), nil
 	}
 
 	defer r.syncCache.Delete(id)
@@ -39,7 +40,7 @@ func (r *CachedHealthCheckReconciler) Delete(ctx context.Context, endpoint *exte
 }
 
 // Reconcile implements HealthCheckReconciler
-func (r *CachedHealthCheckReconciler) Reconcile(ctx context.Context, spec HealthCheckSpec, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe, address string) (HealthCheckResult, error) {
+func (r *CachedHealthCheckReconciler) Reconcile(ctx context.Context, spec HealthCheckSpec, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe, address string) HealthCheckResult {
 	id, ok := r.getHealthCheckID(endpoint)
 	if !ok {
 		return r.reconciler.Reconcile(ctx, spec, endpoint, probeStatus, address)
@@ -56,7 +57,7 @@ func (r *CachedHealthCheckReconciler) Reconcile(ctx context.Context, spec Health
 
 	// If the spec is unchanged, return Noop
 	if reflect.DeepEqual(spec, existingSpec.(HealthCheckSpec)) {
-		return NewHealthCheckResult(HealthCheckNoop, id, "", "", "Spec unchanged"), nil
+		return NewHealthCheckResult(HealthCheckNoop, id, "", "", metav1.Condition{Message: "spec unchanged"})
 	}
 
 	// Otherwise, delegate the reconciliation
