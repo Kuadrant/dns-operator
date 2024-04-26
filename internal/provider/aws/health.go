@@ -2,13 +2,17 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
 	"github.com/rs/xid"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -39,27 +43,95 @@ func NewRoute53HealthCheckReconciler(client route53iface.Route53API) *Route53Hea
 	}
 }
 
-func (r *Route53HealthCheckReconciler) Reconcile(ctx context.Context, spec provider.HealthCheckSpec, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe, address string) (provider.HealthCheckResult, error) {
+func getTransitionTime(probeConditions []metav1.Condition, conditionType string, conditionStatus metav1.ConditionStatus) metav1.Time {
+	for _, c := range probeConditions {
+		if c.Type == conditionType && c.Status == conditionStatus {
+			return c.LastTransitionTime
+		}
+	}
+	return metav1.Now()
+}
+
+func (r *Route53HealthCheckReconciler) Reconcile(ctx context.Context, spec provider.HealthCheckSpec, endpoint *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe, address string) provider.HealthCheckResult {
 	healthCheck, exists, err := r.findHealthCheck(ctx, probeStatus)
 	if err != nil {
-		return provider.HealthCheckResult{}, err
+		lastTransition := metav1.Now()
+		if probeStatus != nil {
+			lastTransition = getTransitionTime(probeStatus.Conditions, "ProbeSynced", "False")
+		}
+		return provider.HealthCheckResult{
+			Result:    provider.HealthCheckFailed,
+			ID:        "",
+			IPAddress: address,
+			Host:      *spec.Host,
+			Condition: metav1.Condition{
+				Type:               "ProbeSynced",
+				Status:             "False",
+				LastTransitionTime: lastTransition,
+				Reason:             "DNSProviderError",
+				Message:            fmt.Sprintf("probe (id: %v, address: %v, host: %v) error recovering existing health check: %v", "", address, *spec.Host, err),
+			},
+		}
 	}
 
 	if exists {
 		status, err := r.updateHealthCheck(ctx, spec, endpoint, healthCheck, address)
 		if err != nil {
-			return provider.HealthCheckResult{}, err
+			return provider.HealthCheckResult{
+				Result:    provider.HealthCheckFailed,
+				ID:        "",
+				IPAddress: address,
+				Host:      *spec.Host,
+				Condition: metav1.Condition{
+					Type:               "ProbeSynced",
+					Status:             "False",
+					LastTransitionTime: getTransitionTime(probeStatus.Conditions, "ProbeSynced", "False"),
+					Reason:             "DNSProviderError",
+					Message:            fmt.Sprintf("probe (id: %v, address: %v, host: %v) error updating existing health check: %v", "", address, *spec.Host, err),
+				},
+			}
 		}
 
-		return provider.NewHealthCheckResult(status, *healthCheck.Id, address, *spec.Host, ""), nil
+		return provider.NewHealthCheckResult(status, *healthCheck.Id, address, *spec.Host, metav1.Condition{
+			Type:               "ProbeSynced",
+			Status:             "True",
+			LastTransitionTime: getTransitionTime(probeStatus.Conditions, "ProbeSynced", "True"),
+			Reason:             "ProbeSyncSuccessful",
+			Message:            fmt.Sprintf("probe (id: %v, address: %v, host: %v)  synced successfully", *healthCheck.Id, address, *spec.Host),
+		})
 	}
 
 	healthCheck, err = r.createHealthCheck(ctx, spec, address)
 	if err != nil {
-		return provider.HealthCheckResult{}, err
+		lastTransition := metav1.Now()
+		if probeStatus != nil {
+			lastTransition = getTransitionTime(probeStatus.Conditions, "ProbeSynced", "False")
+		}
+		return provider.HealthCheckResult{
+			Result:    provider.HealthCheckFailed,
+			ID:        "",
+			IPAddress: address,
+			Host:      *spec.Host,
+			Condition: metav1.Condition{
+				Type:               "ProbeSynced",
+				Status:             "False",
+				LastTransitionTime: lastTransition,
+				Reason:             "DNSProviderError",
+				Message:            fmt.Sprintf("probe (id: %v, address: %v, host: %v) error from DNS Provider: %v", "", address, *spec.Host, err),
+			},
+		}
 	}
-
-	return provider.NewHealthCheckResult(provider.HealthCheckCreated, *healthCheck.Id, address, *spec.Host, fmt.Sprintf("Created health check with ID %s", *healthCheck.Id)), nil
+	lastTransition := metav1.Now()
+	if probeStatus != nil {
+		lastTransition = getTransitionTime(probeStatus.Conditions, "ProbeSynced", "True")
+	}
+	return provider.NewHealthCheckResult(provider.HealthCheckCreated, *healthCheck.Id, address, *spec.Host, metav1.Condition{
+		Type:               "ProbeSynced",
+		Status:             "True",
+		LastTransitionTime: lastTransition,
+		Reason:             "ProbeSyncSuccessful",
+		Message:            fmt.Sprintf("probe (id: %v, address: %v, host: %v) synced successfully", *healthCheck.Id, address, *spec.Host),
+	})
 }
 
 func (r *Route53HealthCheckReconciler) Delete(ctx context.Context, _ *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe) (provider.HealthCheckResult, error) {
@@ -68,7 +140,7 @@ func (r *Route53HealthCheckReconciler) Delete(ctx context.Context, _ *externaldn
 		return provider.HealthCheckResult{}, err
 	}
 	if !found {
-		return provider.NewHealthCheckResult(provider.HealthCheckNoop, "", "", "", ""), nil
+		return provider.NewHealthCheckResult(provider.HealthCheckNoop, "", "", "", metav1.Condition{}), nil
 	}
 
 	_, err = r.client.DeleteHealthCheckWithContext(ctx, &route53.DeleteHealthCheckInput{
@@ -79,7 +151,7 @@ func (r *Route53HealthCheckReconciler) Delete(ctx context.Context, _ *externaldn
 		return provider.HealthCheckResult{}, err
 	}
 
-	return provider.NewHealthCheckResult(provider.HealthCheckDeleted, *healthCheck.Id, "", "", ""), nil
+	return provider.NewHealthCheckResult(provider.HealthCheckDeleted, *healthCheck.Id, "", "", metav1.Condition{}), nil
 }
 
 func (r *Route53HealthCheckReconciler) findHealthCheck(ctx context.Context, probeStatus *v1alpha1.HealthCheckStatusProbe) (*route53.HealthCheck, bool, error) {
@@ -114,7 +186,7 @@ func (r *Route53HealthCheckReconciler) createHealthCheck(ctx context.Context, sp
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, removeMetaData(err)
 	}
 
 	// Add the tag to identify it
@@ -133,7 +205,7 @@ func (r *Route53HealthCheckReconciler) createHealthCheck(ctx context.Context, sp
 		ResourceType: aws.String(route53.TagResourceTypeHealthcheck),
 	})
 	if err != nil {
-		return nil, err
+		return nil, removeMetaData(err)
 	}
 
 	return output.HealthCheck, nil
@@ -147,10 +219,23 @@ func (r *Route53HealthCheckReconciler) updateHealthCheck(ctx context.Context, sp
 
 	_, err := r.client.UpdateHealthCheckWithContext(ctx, diff)
 	if err != nil {
-		return provider.HealthCheckFailed, err
+		return provider.HealthCheckFailed, removeMetaData(err)
 	}
 
 	return provider.HealthCheckUpdated, nil
+}
+
+// removeMetaData from the error responses to the API
+// this is janky, but without removing this data, the constantly
+// changing request ID and other data in the response causes
+// our controller to never stop writing the status update
+func removeMetaData(originalError error) error {
+	if awsErr, ok := originalError.(awserr.Error); ok {
+		chunks := strings.Split(awsErr.Message(), ":")
+		newErr := strings.TrimSpace(strings.ReplaceAll(chunks[len(chunks)-1], "'", ""))
+		return errors.New(newErr)
+	}
+	return originalError
 }
 
 // healthCheckDiff creates a `UpdateHealthCheckInput` object with the fields to

@@ -18,8 +18,8 @@ func NewGCPHealthCheckReconciler() *GCPHealthCheckReconciler {
 	return &GCPHealthCheckReconciler{}
 }
 
-func (r *GCPHealthCheckReconciler) Reconcile(_ context.Context, _ provider.HealthCheckSpec, _ *externaldns.Endpoint, _ *v1alpha1.HealthCheckStatusProbe, _ string) (provider.HealthCheckResult, error) {
-	return provider.HealthCheckResult{}, nil
+func (r *GCPHealthCheckReconciler) Reconcile(_ context.Context, _ provider.HealthCheckSpec, _ *externaldns.Endpoint, _ *v1alpha1.HealthCheckStatusProbe, _ string) provider.HealthCheckResult {
+	return provider.HealthCheckResult{}
 }
 
 func (r *GCPHealthCheckReconciler) Delete(_ context.Context, _ *externaldns.Endpoint, _ *v1alpha1.HealthCheckStatusProbe) (provider.HealthCheckResult, error) {

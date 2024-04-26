@@ -70,10 +70,7 @@ func (r *DNSRecordReconciler) ReconcileHealthChecks(ctx context.Context, dnsReco
 				FailureThreshold: config.FailureThreshold,
 			}
 
-			result, err := healthCheckReconciler.Reconcile(ctx, spec, dnsEndpoint, probeStatus, address)
-			if err != nil {
-				return err
-			}
+			result := healthCheckReconciler.Reconcile(ctx, spec, dnsEndpoint, probeStatus, address)
 			results = append(results, result)
 		}
 	}
@@ -119,7 +116,7 @@ func (r *DNSRecordReconciler) reconcileHealthCheckStatus(results []provider.Heal
 	dnsRecord.Status.HealthCheck.Probes = []v1alpha1.HealthCheckStatusProbe{}
 
 	for _, result := range results {
-		if result.ID == "" {
+		if result.Host == "" {
 			continue
 		}
 		status := true
@@ -129,10 +126,11 @@ func (r *DNSRecordReconciler) reconcileHealthCheckStatus(results []provider.Heal
 		}
 
 		dnsRecord.Status.HealthCheck.Probes = append(dnsRecord.Status.HealthCheck.Probes, v1alpha1.HealthCheckStatusProbe{
-			ID:        result.ID,
-			IPAddress: result.IPAddress,
-			Host:      result.Host,
-			Synced:    status,
+			ID:         result.ID,
+			IPAddress:  result.IPAddress,
+			Host:       result.Host,
+			Synced:     status,
+			Conditions: []metav1.Condition{result.Condition},
 		})
 	}
 
