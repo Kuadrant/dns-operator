@@ -437,13 +437,14 @@ func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 	}
 
 	currentCopy := update.current.DeepCopy()
+	desiredCopy := update.desired.DeepCopy()
 
 	// A Records can be merged, but we remove the known previous target values first in order to ensure potentially stale values are removed
 	if update.current.RecordType == endpoint.RecordTypeA {
 		if update.previous != nil {
 			removeEndpointTargets(update.previous.Targets, currentCopy)
 		}
-		mergeEndpointTargets(update.desired, currentCopy)
+		mergeEndpointTargets(desiredCopy, currentCopy)
 	}
 
 	// CNAME records can be merged, it's expected that the provider implementation understands that a CNAME might have
@@ -452,15 +453,13 @@ func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 		if update.previous != nil {
 			removeEndpointTargets(update.previous.Targets, currentCopy)
 		}
-		mergeEndpointTargets(update.desired, currentCopy)
+		mergeEndpointTargets(desiredCopy, currentCopy)
 
 		//ToDo manirn Check this is actually needed, and if it is add a test that requires it to be here
-		if len(update.desired.Targets) <= 1 {
+		if len(desiredCopy.Targets) <= 1 {
 			log.Debugf("skipping check for managed dnsNames for CNAME with single target value")
 			return
 		}
-
-		desiredCopy := update.desired.DeepCopy()
 
 		// Calculate if any of the new desired targets are also managed dnsNames within this record set.
 		// If a target is not managed, do nothing and continue with the current targets.
@@ -476,7 +475,7 @@ func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 
 				// If the target has no owners we can just remove it
 				if len(tOwners) == 0 {
-					removeEndpointTarget(t, update.desired)
+					removeEndpointTarget(t, desiredCopy)
 					break
 				}
 
@@ -490,13 +489,14 @@ func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 						}
 					}
 					if !hasMutualOwner {
-						removeEndpointTarget(t, update.desired)
+						removeEndpointTarget(t, desiredCopy)
 					}
 				}
 
 			}
 		}
 	}
+	update.desired = desiredCopy
 }
 
 func removeEndpointTarget(target string, endpoint *endpoint.Endpoint) {
