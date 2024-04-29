@@ -13,11 +13,13 @@ import (
 )
 
 const (
-	TestTimeoutMedium       = time.Second * 15
-	TestTimeoutLong         = time.Second * 30
-	TestRetryIntervalMedium = time.Millisecond * 250
-	RequeueDuration         = time.Second * 6
-	ValidityDuration        = time.Second * 3
+	TestTimeoutShort          = time.Second * 5
+	TestTimeoutMedium         = time.Second * 15
+	TestTimeoutLong           = time.Second * 30
+	TestRetryIntervalMedium   = time.Millisecond * 250
+	RequeueDuration           = time.Second * 6
+	ValidityDuration          = time.Second * 3
+	DefaultValidationDuration = time.Millisecond * 500
 )
 
 func testBuildManagedZone(name, ns, domainName, secretName string) *kuadrantdnsv1alpha1.ManagedZone {
@@ -47,31 +49,18 @@ func testBuildInMemoryCredentialsSecret(name, ns string) *v1.Secret {
 	}
 }
 
-func getTestEndpoints(dnsName string) []*externaldnsendpoint.Endpoint {
+func getDefaultTestEndpoints() []*externaldnsendpoint.Endpoint {
+	return getTestEndpoints("foo.example.com", "127.0.0.1")
+}
+func getTestEndpoints(dnsName, ip string) []*externaldnsendpoint.Endpoint {
 	return []*externaldnsendpoint.Endpoint{
 		{
 			DNSName: dnsName,
 			Targets: []string{
-				"127.0.0.1",
+				ip,
 			},
 			RecordType:       "A",
-			SetIdentifier:    "",
-			RecordTTL:        60,
-			Labels:           nil,
-			ProviderSpecific: nil,
-		},
-	}
-}
-
-func getTestNonExistingEndpoints() []*externaldnsendpoint.Endpoint {
-	return []*externaldnsendpoint.Endpoint{
-		{
-			DNSName: "nope.example.com",
-			Targets: []string{
-				"127.0.0.1",
-			},
-			RecordType:       "A",
-			SetIdentifier:    "",
+			SetIdentifier:    "foo",
 			RecordTTL:        60,
 			Labels:           nil,
 			ProviderSpecific: nil,
