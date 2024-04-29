@@ -12,7 +12,7 @@ const (
 )
 
 var (
-	wrtiteCounter = prometheus.NewGaugeVec(
+	writeCounter = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "dns_provider_write_counter",
 			Help: "Counts DNS provider write operations for a current generation of the DNS record",
@@ -21,5 +21,5 @@ var (
 )
 
 func init() {
-	metrics.Registry.MustRegister(wrtiteCounter)
+	metrics.Registry.MustRegister(writeCounter)
 }
