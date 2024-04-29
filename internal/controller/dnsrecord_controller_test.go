@@ -87,7 +87,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: managedZone.Name,
 				},
-				Endpoints: getTestEndpoints("foo.example.com"),
+				Endpoints: getDefaultTestEndpoints(),
 			},
 		}
 	})
@@ -123,7 +123,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: brokenZone.Name,
 				},
-				Endpoints:   getTestEndpoints("foo.fix.com"),
+				Endpoints:   getTestEndpoints("foo.fix.com", "127.0.0.1"),
 				HealthCheck: nil,
 			},
 		}
@@ -175,7 +175,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: "doesnotexist",
 				},
-				Endpoints:   getTestEndpoints("foo.example.com"),
+				Endpoints:   getDefaultTestEndpoints(),
 				HealthCheck: nil,
 			},
 		}
@@ -258,7 +258,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
-	It("should increase write counter if fail to publish record or record is overridden", func() {
+	It("should detect a conflict and the resolution of a conflict", func() {
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "foo-record-1",
@@ -270,20 +270,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: managedZone.Name,
 				},
-				Endpoints: []*externaldnsendpoint.Endpoint{
-					{
-						DNSName: "foo.example.com",
-						Targets: []string{
-							"127.0.0.1",
-						},
-						RecordType:       "A",
-						SetIdentifier:    "foo",
-						RecordTTL:        60,
-						Labels:           nil,
-						ProviderSpecific: nil,
-					},
-				},
-				HealthCheck: nil,
+				Endpoints: getDefaultTestEndpoints(),
 			},
 		}
 		dnsRecord2 = &v1alpha1.DNSRecord{
@@ -297,19 +284,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: managedZone.Name,
 				},
-				Endpoints: []*externaldnsendpoint.Endpoint{
-					{
-						DNSName: "foo.example.com",
-						Targets: []string{
-							"127.0.0.2",
-						},
-						RecordType:       "A",
-						SetIdentifier:    "foo",
-						RecordTTL:        60,
-						Labels:           nil,
-						ProviderSpecific: nil,
-					},
-				},
+				Endpoints: getTestEndpoints("foo.example.com", "127.0.0.2"),
 			},
 		}
 
@@ -347,7 +322,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
-			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(0)))
+			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(1)))
 
 			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -360,7 +335,40 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord2.Generation),
 				})),
 			)
-			g.Expect(dnsRecord2.Status.WriteCounter).To(BeNumerically(">", int64(0)))
+			g.Expect(dnsRecord2.Status.WriteCounter).To(BeNumerically(">", int64(1)))
+		}, TestTimeoutLong, time.Second).Should(Succeed())
+
+		By("fixing conflict with dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: `foo.example.com` and target: `127.0.0.1`")
+		Eventually(func(g Gomega) {
+			// refresh the second record CR
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			g.Expect(err).NotTo(HaveOccurred())
+			dnsRecord2.Spec.Endpoints = getDefaultTestEndpoints()
+			Expect(k8sClient.Update(ctx, dnsRecord2)).To(Succeed())
+		}, TestTimeoutShort, time.Second).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":  Equal(metav1.ConditionTrue),
+					"Reason":  Equal("ProviderSuccess"),
+					"Message": Equal("Provider ensured the dns record"),
+				})),
+			)
+
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord2.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":  Equal(metav1.ConditionTrue),
+					"Reason":  Equal("ProviderSuccess"),
+					"Message": Equal("Provider ensured the dns record"),
+				})),
+			)
 		}, TestTimeoutLong, time.Second).Should(Succeed())
 	})
 
@@ -399,7 +407,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 							"v1",
 						},
 						RecordType:       "CNAME",
-						SetIdentifier:    "",
+						SetIdentifier:    "foo",
 						RecordTTL:        60,
 						Labels:           nil,
 						ProviderSpecific: nil,

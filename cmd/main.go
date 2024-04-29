@@ -48,8 +48,9 @@ var (
 )
 
 const (
-	RequeueDuration  = time.Minute * 15
-	ValidityDuration = time.Minute * 14
+	RequeueDuration           = time.Minute * 15
+	ValidityDuration          = time.Minute * 14
+	DefaultValidationDuration = time.Second * 5
 )
 
 func init() {
@@ -63,18 +64,22 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
-	var requeueTime time.Duration
+	var minRequeueTime time.Duration
 	var validFor time.Duration
+	var maxRequeueTime time.Duration
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.DurationVar(&requeueTime, "requeue-time", RequeueDuration,
-		"Duration for the validation reconciliation loop. "+
+	flag.DurationVar(&maxRequeueTime, "max-requeue-time", RequeueDuration,
+		"The maximum times it takes between reconciliations of DNS Record "+
 			"Controls how ofter record is reconciled")
 	flag.DurationVar(&validFor, "valid-for", ValidityDuration,
 		"Duration when the record is considered to hold valid information"+
+			"Controls if we commit to the full reconcile loop")
+	flag.DurationVar(&minRequeueTime, "min-requeue-time", DefaultValidationDuration,
+		"The minimal timeout between calls to the DNS Provider"+
 			"Controls if we commit to the full reconcile loop")
 	opts := zap.Options{
 		Development: true,
@@ -127,7 +132,7 @@ func main() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
-	}).SetupWithManager(mgr, requeueTime, validFor); err != nil {
+	}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSRecord")
 		os.Exit(1)
 	}
