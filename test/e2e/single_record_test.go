@@ -103,7 +103,7 @@ var _ = Describe("Single Record Test", func() {
 					"Status": Equal(metav1.ConditionTrue),
 				})),
 			)
-		}, 5*time.Minute, 10*time.Second, ctx).Should(Succeed())
+		}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 		By("ensuring zone records are created as expected")
 		testProvider, err := providerForManagedZone(ctx, testManagedZone)
@@ -167,16 +167,7 @@ var _ = Describe("Single Record Test", func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
-			}, 5*time.Minute, 10*time.Second, ctx).Should(Succeed())
-
-			By("ensuring the authoritative nameserver resolves the hostname")
-			// speed up things by using the authoritative nameserver
-			authoritativeResolver := ResolverForDomainName(testZoneDomainName)
-			Eventually(func(g Gomega, ctx context.Context) {
-				ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(ips).To(ContainElement(testTargetIP))
-			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+			}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 			By("ensuring zone records are created as expected")
 			testProvider, err := providerForManagedZone(ctx, testManagedZone)
@@ -193,6 +184,15 @@ var _ = Describe("Single Record Test", func() {
 					"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
 				})),
 			))
+
+			By("ensuring the authoritative nameserver resolves the hostname")
+			// speed up things by using the authoritative nameserver
+			authoritativeResolver := ResolverForDomainName(testZoneDomainName)
+			Eventually(func(g Gomega, ctx context.Context) {
+				ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(ips).To(ContainElement(testTargetIP))
+			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 		})
 	})
 
@@ -291,16 +291,7 @@ var _ = Describe("Single Record Test", func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
-			}, 5*time.Minute, 10*time.Second, ctx).Should(Succeed())
-
-			By("ensuring the authoritative nameserver resolves the hostname")
-			// speed up things by using the authoritative nameserver
-			authoritativeResolver := ResolverForDomainName(testZoneDomainName)
-			Eventually(func(g Gomega, ctx context.Context) {
-				ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(ips).To(ContainElement(testTargetIP))
-			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+			}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 			By("ensuring zone records are created as expected")
 			testProvider, err := providerForManagedZone(ctx, testManagedZone)
@@ -401,6 +392,14 @@ var _ = Describe("Single Record Test", func() {
 				))
 			}
 
+			By("ensuring the authoritative nameserver resolves the hostname")
+			// speed up things by using the authoritative nameserver
+			authoritativeResolver := ResolverForDomainName(testZoneDomainName)
+			Eventually(func(g Gomega, ctx context.Context) {
+				ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(ips).To(ContainElement(testTargetIP))
+			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 		})
 	})
 
@@ -443,16 +442,7 @@ var _ = Describe("Single Record Test", func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
-				}, 5*time.Minute, 10*time.Second, ctx).Should(Succeed())
-
-				By("ensuring the authoritative nameserver resolves the hostname")
-				// speed up things by using the authoritative nameserver
-				authoritativeResolver := ResolverForDomainName(testZoneDomainName)
-				Eventually(func(g Gomega, ctx context.Context) {
-					ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(ips).To(ContainElement(testTargetIP))
-				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+				}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 				By("ensuring zone records are created as expected")
 				testProvider, err := providerForManagedZone(ctx, testManagedZone)
@@ -477,6 +467,15 @@ var _ = Describe("Single Record Test", func() {
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 				))
+
+				By("ensuring the authoritative nameserver resolves the hostname")
+				// speed up things by using the authoritative nameserver
+				authoritativeResolver := ResolverForDomainName(testZoneDomainName)
+				Eventually(func(g Gomega, ctx context.Context) {
+					ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(ips).To(ContainElement(testTargetIP))
+				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 			})
 		})
 
@@ -576,16 +575,7 @@ var _ = Describe("Single Record Test", func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
-				}, 5*time.Minute, 10*time.Second, ctx).Should(Succeed())
-
-				By("ensuring the authoritative nameserver resolves the hostname")
-				// speed up things by using the authoritative nameserver
-				authoritativeResolver := ResolverForDomainName(testZoneDomainName)
-				Eventually(func(g Gomega, ctx context.Context) {
-					ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(ips).To(ContainElement(testTargetIP))
-				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+				}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 				By("ensuring zone records are created as expected")
 				testProvider, err := providerForManagedZone(ctx, testManagedZone)
@@ -758,6 +748,14 @@ var _ = Describe("Single Record Test", func() {
 					))
 				}
 
+				By("ensuring the authoritative nameserver resolves the hostname")
+				// speed up things by using the authoritative nameserver
+				authoritativeResolver := ResolverForDomainName(testZoneDomainName)
+				Eventually(func(g Gomega, ctx context.Context) {
+					ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(ips).To(ContainElement(testTargetIP))
+				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 			})
 		})
 	})

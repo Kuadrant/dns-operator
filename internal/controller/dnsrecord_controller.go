@@ -133,7 +133,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		reason = "ValidationError"
 		message = fmt.Sprintf("validation of DNSRecord failed: %v", err)
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, reason, message)
-		return r.updateStatus(ctx, previous, dnsRecord, noRequeueDuration)
+		return r.updateStatus(ctx, previous, dnsRecord, noRequeueDuration, err)
 	}
 
 	// Publish the record
@@ -142,7 +142,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		reason = "ProviderError"
 		message = fmt.Sprintf("The DNS provider failed to ensure the record: %v", provider.SanitizeError(err))
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, reason, message)
-		return r.updateStatus(ctx, previous, dnsRecord, noRequeueDuration)
+		return r.updateStatus(ctx, previous, dnsRecord, noRequeueDuration, err)
 	}
 	// success
 	dnsRecord.Status.ObservedGeneration = dnsRecord.Generation
@@ -152,19 +152,30 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	return r.updateStatus(ctx, previous, dnsRecord, requeueAfter)
+	return r.updateStatus(ctx, previous, dnsRecord, requeueAfter, nil)
 }
 
-func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, current *v1alpha1.DNSRecord, requeueAfter time.Duration) (reconcile.Result, error) {
-	current.Status.QueuedFor = metav1.NewTime(reconcileStart.Add(requeueAfter))
+func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, current *v1alpha1.DNSRecord, requeueAfter time.Duration, specErr error) (reconcile.Result, error) {
+	if specErr != nil {
+		current.Status.WriteCounter = previous.Status.WriteCounter
+		current.Status.ValidFor = previous.Status.ValidFor
+		current.Status.QueuedAt = previous.Status.QueuedAt
+		current.Status.QueuedFor = previous.Status.QueuedFor
+	}
 
 	if !equality.Semantic.DeepEqual(previous.Status, current.Status) {
-		updateError := r.Status().Update(ctx, current)
-		if apierrors.IsConflict(updateError) {
-			return ctrl.Result{Requeue: true}, nil
+		if updateError := r.Status().Update(ctx, current); updateError != nil {
+			if apierrors.IsConflict(updateError) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, updateError
 		}
-		return ctrl.Result{RequeueAfter: requeueAfter}, updateError
 	}
+
+	if specErr != nil {
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 

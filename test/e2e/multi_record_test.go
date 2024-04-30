@@ -119,7 +119,7 @@ var _ = Describe("Multi Record Test", func() {
 				err := k8sClient.Create(ctx, dnsRecord1)
 				Expect(err).ToNot(HaveOccurred())
 
-				By("creating dnsrecord " + dnsRecord1.Name)
+				By("creating dnsrecord " + dnsRecord2.Name)
 				err = k8sClient.Create(ctx, dnsRecord2)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -141,16 +141,7 @@ var _ = Describe("Multi Record Test", func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
-				}, 1*time.Minute, 10*time.Second, ctx).Should(Succeed())
-
-				By("ensuring the authoritative nameserver resolves the hostname")
-				// speed up things by using the authoritative nameserver
-				authoritativeResolver := ResolverForDomainName(testZoneDomainName)
-				Eventually(func(g Gomega, ctx context.Context) {
-					ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(ips).To(ConsistOf(testTargetIP1, testTargetIP2))
-				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+				}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 				testProvider, err := providerForManagedZone(ctx, testManagedZone)
 				Expect(err).NotTo(HaveOccurred())
@@ -176,7 +167,16 @@ var _ = Describe("Multi Record Test", func() {
 							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						})),
 					))
-				}, 5*time.Second, 1*time.Second, ctx).Should(Succeed())
+				}, 10*time.Second, 1*time.Second, ctx).Should(Succeed())
+
+				By("ensuring the authoritative nameserver resolves the hostname")
+				// speed up things by using the authoritative nameserver
+				authoritativeResolver := ResolverForDomainName(testZoneDomainName)
+				Eventually(func(g Gomega, ctx context.Context) {
+					ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(ips).To(ConsistOf(testTargetIP1, testTargetIP2))
+				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 
 				By("deleting dnsrecord " + dnsRecord2.Name)
 				err = k8sClient.Delete(ctx, dnsRecord2,
@@ -189,13 +189,6 @@ var _ = Describe("Multi Record Test", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(err).To(MatchError(ContainSubstring("not found")))
 				}, 10*time.Second, 1*time.Second, ctx).Should(Succeed())
-
-				By("ensuring the authoritative nameserver resolves the hostname")
-				Eventually(func(g Gomega, ctx context.Context) {
-					ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(ips).To(ConsistOf(testTargetIP1))
-				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 
 				By("ensuring zone records are updated as expected")
 				Eventually(func(g Gomega, ctx context.Context) {
@@ -219,6 +212,13 @@ var _ = Describe("Multi Record Test", func() {
 						})),
 					))
 				}, 5*time.Second, 1*time.Second, ctx).Should(Succeed())
+
+				By("ensuring the authoritative nameserver resolves the hostname")
+				Eventually(func(g Gomega, ctx context.Context) {
+					ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(ips).To(ConsistOf(testTargetIP1))
+				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 
 				By("deleting dnsrecord " + dnsRecord1.Name)
 				err = k8sClient.Delete(ctx, dnsRecord1,
@@ -418,17 +418,7 @@ var _ = Describe("Multi Record Test", func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
-				}, 5*time.Minute, 10*time.Second, ctx).Should(Succeed())
-
-				By("ensuring the authoritative nameserver resolves the hostname")
-				// speed up things by using the authoritative nameserver
-				authoritativeResolver := ResolverForDomainName(testZoneDomainName)
-				Eventually(func(g Gomega, ctx context.Context) {
-					ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
-					g.Expect(err).NotTo(HaveOccurred())
-					GinkgoWriter.Printf("[debug] ips: %v\n", ips)
-					g.Expect(ips).To(Or(ContainElement(testTargetIP1), ContainElement(testTargetIP2)))
-				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+				}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 				testProvider, err := providerForManagedZone(ctx, testManagedZone)
 				Expect(err).NotTo(HaveOccurred())
@@ -706,6 +696,16 @@ var _ = Describe("Multi Record Test", func() {
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 				}
+
+				By("ensuring the authoritative nameserver resolves the hostname")
+				// speed up things by using the authoritative nameserver
+				authoritativeResolver := ResolverForDomainName(testZoneDomainName)
+				Eventually(func(g Gomega, ctx context.Context) {
+					ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
+					g.Expect(err).NotTo(HaveOccurred())
+					GinkgoWriter.Printf("[debug] ips: %v\n", ips)
+					g.Expect(ips).To(Or(ContainElement(testTargetIP1), ContainElement(testTargetIP2)))
+				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 
 				By("deleting dnsrecord " + dnsRecord2.Name)
 				err = k8sClient.Delete(ctx, dnsRecord2,
