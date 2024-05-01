@@ -22,18 +22,18 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
-	"k8s.io/apimachinery/pkg/util/sets"
 
+	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
 )
 
 var (
-	// ErrZoneAlreadyExists error returned when zone cannot be created when it already exists
-	ErrZoneAlreadyExists = errors.New("specified zone already exists")
-	// ErrZoneNotFound error returned when specified zone does not exists
-	ErrZoneNotFound = errors.New("specified zone not found")
+	// ErrZoneAlreadyExists error returned when Zone cannot be created when it already exists
+	ErrZoneAlreadyExists = errors.New("specified Zone already exists")
+	// ErrZoneNotFound error returned when specified Zone does not exists
+	ErrZoneNotFound = errors.New("specified Zone not found")
 	// ErrRecordAlreadyExists when create request is sent but record already exists
 	ErrRecordAlreadyExists = errors.New("record already exists")
 	// ErrRecordNotFound when update/delete request is sent but record not found
@@ -47,7 +47,7 @@ var (
 type InMemoryProvider struct {
 	provider.BaseProvider
 	domain         endpoint.DomainFilter
-	client         *inMemoryClient
+	client         *InMemoryClient
 	filter         *filter
 	OnApplyChanges func(ctx context.Context, changes *plan.Changes)
 	OnRecords      func()
@@ -94,6 +94,13 @@ func InMemoryInitZones(zones []string) InMemoryOption {
 	}
 }
 
+// InMemoryWithClient modifies the client which the provider will use
+func InMemoryWithClient(memoryClient *InMemoryClient) InMemoryOption {
+	return func(p *InMemoryProvider) {
+		p.client = memoryClient
+	}
+}
+
 // NewInMemoryProvider returns InMemoryProvider DNS provider interface implementation
 func NewInMemoryProvider(opts ...InMemoryOption) *InMemoryProvider {
 	im := &InMemoryProvider{
@@ -101,7 +108,7 @@ func NewInMemoryProvider(opts ...InMemoryOption) *InMemoryProvider {
 		OnApplyChanges: func(ctx context.Context, changes *plan.Changes) {},
 		OnRecords:      func() {},
 		domain:         endpoint.NewDomainFilter([]string{""}),
-		client:         newInMemoryClient(),
+		client:         NewInMemoryClient(),
 	}
 
 	for _, opt := range opts {
@@ -111,9 +118,14 @@ func NewInMemoryProvider(opts ...InMemoryOption) *InMemoryProvider {
 	return im
 }
 
-// CreateZone adds new zone if not present
+// CreateZone adds new Zone if not present
 func (im *InMemoryProvider) CreateZone(newZone string) error {
 	return im.client.CreateZone(newZone)
+}
+
+// DeleteZone deletes a Zone if present
+func (im *InMemoryProvider) DeleteZone(zone string) error {
+	return im.client.DeleteZone(zone)
 }
 
 // Zones returns filtered zones as specified by domain
@@ -241,17 +253,17 @@ func (f *filter) EndpointZoneID(endpoint *endpoint.Endpoint, zones map[string]st
 	return matchZoneID
 }
 
-type zone map[endpoint.EndpointKey]*endpoint.Endpoint
+type Zone map[endpoint.EndpointKey]*endpoint.Endpoint
 
-type inMemoryClient struct {
-	zones map[string]zone
+type InMemoryClient struct {
+	zones map[string]Zone
 }
 
-func newInMemoryClient() *inMemoryClient {
-	return &inMemoryClient{map[string]zone{}}
+func NewInMemoryClient() *InMemoryClient {
+	return &InMemoryClient{map[string]Zone{}}
 }
 
-func (c *inMemoryClient) Records(zone string) ([]*endpoint.Endpoint, error) {
+func (c *InMemoryClient) Records(zone string) ([]*endpoint.Endpoint, error) {
 	if _, ok := c.zones[zone]; !ok {
 		return nil, ErrZoneNotFound
 	}
@@ -263,7 +275,7 @@ func (c *inMemoryClient) Records(zone string) ([]*endpoint.Endpoint, error) {
 	return records, nil
 }
 
-func (c *inMemoryClient) Zones() map[string]string {
+func (c *InMemoryClient) Zones() map[string]string {
 	zones := map[string]string{}
 	for zone := range c.zones {
 		zones[zone] = zone
@@ -271,7 +283,7 @@ func (c *inMemoryClient) Zones() map[string]string {
 	return zones
 }
 
-func (c *inMemoryClient) CreateZone(zone string) error {
+func (c *InMemoryClient) CreateZone(zone string) error {
 	if _, ok := c.zones[zone]; ok {
 		return ErrZoneAlreadyExists
 	}
@@ -280,7 +292,15 @@ func (c *inMemoryClient) CreateZone(zone string) error {
 	return nil
 }
 
-func (c *inMemoryClient) ApplyChanges(ctx context.Context, zoneID string, changes *plan.Changes) error {
+func (c *InMemoryClient) DeleteZone(zone string) error {
+	if _, ok := c.zones[zone]; ok {
+		delete(c.zones, zone)
+		return nil
+	}
+	return ErrZoneNotFound
+}
+
+func (c *InMemoryClient) ApplyChanges(ctx context.Context, zoneID string, changes *plan.Changes) error {
 	if err := c.validateChangeBatch(zoneID, changes); err != nil {
 		return err
 	}
@@ -296,7 +316,7 @@ func (c *inMemoryClient) ApplyChanges(ctx context.Context, zoneID string, change
 	return nil
 }
 
-func (c *inMemoryClient) updateMesh(mesh sets.Set[endpoint.EndpointKey], record *endpoint.Endpoint) error {
+func (c *InMemoryClient) updateMesh(mesh sets.Set[endpoint.EndpointKey], record *endpoint.Endpoint) error {
 	if mesh.Has(record.Key()) {
 		return ErrDuplicateRecordFound
 	}
@@ -305,7 +325,7 @@ func (c *inMemoryClient) updateMesh(mesh sets.Set[endpoint.EndpointKey], record 
 }
 
 // validateChangeBatch validates that the changes passed to InMemory DNS provider is valid
-func (c *inMemoryClient) validateChangeBatch(zone string, changes *plan.Changes) error {
+func (c *InMemoryClient) validateChangeBatch(zone string, changes *plan.Changes) error {
 	curZone, ok := c.zones[zone]
 	if !ok {
 		return ErrZoneNotFound

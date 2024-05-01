@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
@@ -44,28 +45,28 @@ func testInMemoryRecords(t *testing.T) {
 		title       string
 		zone        string
 		expectError bool
-		init        map[string]zone
+		init        map[string]Zone
 		expected    []*endpoint.Endpoint
 	}{
 		{
-			title:       "no records, no zone",
+			title:       "no records, no Zone",
 			zone:        "",
-			init:        map[string]zone{},
+			init:        map[string]Zone{},
 			expectError: false,
 		},
 		{
-			title: "records, wrong zone",
+			title: "records, wrong Zone",
 			zone:  "net",
-			init: map[string]zone{
+			init: map[string]Zone{
 				"org": {},
 				"com": {},
 			},
 			expectError: false,
 		},
 		{
-			title: "records, zone with records",
+			title: "records, Zone with records",
 			zone:  "org",
-			init: map[string]zone{
+			init: map[string]Zone{
 				"org": makeZone(
 					"example.org", "8.8.8.8", endpoint.RecordTypeA,
 					"example.org", "", endpoint.RecordTypeTXT,
@@ -94,7 +95,7 @@ func testInMemoryRecords(t *testing.T) {
 		},
 	} {
 		t.Run(ti.title, func(t *testing.T) {
-			c := newInMemoryClient()
+			c := NewInMemoryClient()
 			c.zones = ti.init
 			im := NewInMemoryProvider()
 			im.client = c
@@ -113,7 +114,7 @@ func testInMemoryRecords(t *testing.T) {
 }
 
 func testInMemoryValidateChangeBatch(t *testing.T) {
-	init := map[string]zone{
+	init := map[string]Zone{
 		"org": makeZone(
 			"example.org", "8.8.8.8", endpoint.RecordTypeA,
 			"example.org", "", endpoint.RecordTypeTXT,
@@ -126,7 +127,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 		title       string
 		expectError bool
 		errorType   error
-		init        map[string]zone
+		init        map[string]Zone
 		changes     *plan.Changes
 		zone        string
 	}{
@@ -134,7 +135,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			title:       "no zones, no update",
 			expectError: true,
 			zone:        "",
-			init:        map[string]zone{},
+			init:        map[string]Zone{},
 			changes: &plan.Changes{
 				Create:    []*endpoint.Endpoint{},
 				UpdateNew: []*endpoint.Endpoint{},
@@ -157,7 +158,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			errorType: ErrZoneNotFound,
 		},
 		{
-			title:       "zones, update, wrong zone",
+			title:       "zones, update, wrong Zone",
 			expectError: true,
 			zone:        "test",
 			init:        init,
@@ -170,7 +171,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			errorType: ErrZoneNotFound,
 		},
 		{
-			title:       "zones, update, right zone, invalid batch - already exists",
+			title:       "zones, update, right Zone, invalid batch - already exists",
 			expectError: true,
 			zone:        "org",
 			init:        init,
@@ -189,7 +190,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			errorType: ErrRecordAlreadyExists,
 		},
 		{
-			title:       "zones, update, right zone, invalid batch - record not found for update",
+			title:       "zones, update, right Zone, invalid batch - record not found for update",
 			expectError: true,
 			zone:        "org",
 			init:        init,
@@ -214,7 +215,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			errorType: ErrRecordNotFound,
 		},
 		{
-			title:       "zones, update, right zone, invalid batch - record not found for update",
+			title:       "zones, update, right Zone, invalid batch - record not found for update",
 			expectError: true,
 			zone:        "org",
 			init:        init,
@@ -239,7 +240,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			errorType: ErrRecordNotFound,
 		},
 		{
-			title:       "zones, update, right zone, invalid batch - duplicated create",
+			title:       "zones, update, right Zone, invalid batch - duplicated create",
 			expectError: true,
 			zone:        "org",
 			init:        init,
@@ -263,7 +264,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			errorType: ErrDuplicateRecordFound,
 		},
 		{
-			title:       "zones, update, right zone, invalid batch - duplicated update/delete",
+			title:       "zones, update, right Zone, invalid batch - duplicated update/delete",
 			expectError: true,
 			zone:        "org",
 			init:        init,
@@ -288,7 +289,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			errorType: ErrDuplicateRecordFound,
 		},
 		{
-			title:       "zones, update, right zone, invalid batch - duplicated update",
+			title:       "zones, update, right Zone, invalid batch - duplicated update",
 			expectError: true,
 			zone:        "org",
 			init:        init,
@@ -312,7 +313,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			errorType: ErrDuplicateRecordFound,
 		},
 		{
-			title:       "zones, update, right zone, invalid batch - wrong update old",
+			title:       "zones, update, right Zone, invalid batch - wrong update old",
 			expectError: true,
 			zone:        "org",
 			init:        init,
@@ -331,7 +332,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			errorType: ErrRecordNotFound,
 		},
 		{
-			title:       "zones, update, right zone, invalid batch - wrong delete",
+			title:       "zones, update, right Zone, invalid batch - wrong delete",
 			expectError: true,
 			zone:        "org",
 			init:        init,
@@ -350,7 +351,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			errorType: ErrRecordNotFound,
 		},
 		{
-			title:       "zones, update, right zone, valid batch - delete",
+			title:       "zones, update, right Zone, valid batch - delete",
 			expectError: false,
 			zone:        "org",
 			init:        init,
@@ -368,7 +369,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 			},
 		},
 		{
-			title:       "zones, update, right zone, valid batch - update and create",
+			title:       "zones, update, right Zone, valid batch - update and create",
 			expectError: false,
 			zone:        "org",
 			init:        init,
@@ -399,7 +400,7 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 		},
 	} {
 		t.Run(ti.title, func(t *testing.T) {
-			c := &inMemoryClient{}
+			c := &InMemoryClient{}
 			c.zones = ti.init
 			ichanges := &plan.Changes{
 				Create:    ti.changes.Create,
@@ -417,8 +418,8 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 	}
 }
 
-func getInitData() map[string]zone {
-	return map[string]zone{
+func getInitData() map[string]Zone {
+	return map[string]Zone{
 		"org": makeZone("example.org", "8.8.8.8", endpoint.RecordTypeA,
 			"example.org", "", endpoint.RecordTypeTXT,
 			"foo.org", "4.4.4.4", endpoint.RecordTypeCNAME,
@@ -432,12 +433,12 @@ func testInMemoryApplyChanges(t *testing.T) {
 	for _, ti := range []struct {
 		title              string
 		expectError        bool
-		init               map[string]zone
+		init               map[string]Zone
 		changes            *plan.Changes
-		expectedZonesState map[string]zone
+		expectedZonesState map[string]Zone
 	}{
 		{
-			title:       "unmatched zone, should be ignored in the apply step",
+			title:       "unmatched Zone, should be ignored in the apply step",
 			expectError: false,
 			changes: &plan.Changes{
 				Create: []*endpoint.Endpoint{{
@@ -474,7 +475,7 @@ func testInMemoryApplyChanges(t *testing.T) {
 			},
 		},
 		{
-			title:       "zones, update, right zone, valid batch - delete",
+			title:       "zones, update, right Zone, valid batch - delete",
 			expectError: false,
 			changes: &plan.Changes{
 				Create:    []*endpoint.Endpoint{},
@@ -488,7 +489,7 @@ func testInMemoryApplyChanges(t *testing.T) {
 					},
 				},
 			},
-			expectedZonesState: map[string]zone{
+			expectedZonesState: map[string]Zone{
 				"org": makeZone("example.org", "8.8.8.8", endpoint.RecordTypeA,
 					"example.org", "", endpoint.RecordTypeTXT,
 					"foo.org", "4.4.4.4", endpoint.RecordTypeCNAME,
@@ -497,7 +498,7 @@ func testInMemoryApplyChanges(t *testing.T) {
 			},
 		},
 		{
-			title:       "zones, update, right zone, valid batch - update, create, delete",
+			title:       "zones, update, right Zone, valid batch - update, create, delete",
 			expectError: false,
 			changes: &plan.Changes{
 				Create: []*endpoint.Endpoint{
@@ -533,7 +534,7 @@ func testInMemoryApplyChanges(t *testing.T) {
 					},
 				},
 			},
-			expectedZonesState: map[string]zone{
+			expectedZonesState: map[string]Zone{
 				"org": makeZone(
 					"example.org", "", endpoint.RecordTypeTXT,
 					"foo.org", "4.4.4.4", endpoint.RecordTypeCNAME,
@@ -546,7 +547,7 @@ func testInMemoryApplyChanges(t *testing.T) {
 	} {
 		t.Run(ti.title, func(t *testing.T) {
 			im := NewInMemoryProvider()
-			c := &inMemoryClient{}
+			c := &InMemoryClient{}
 			c.zones = getInitData()
 			im.client = c
 
@@ -568,9 +569,9 @@ func testNewInMemoryProvider(t *testing.T) {
 
 func testInMemoryCreateZone(t *testing.T) {
 	im := NewInMemoryProvider()
-	err := im.CreateZone("zone")
+	err := im.CreateZone("Zone")
 	assert.NoError(t, err)
-	err = im.CreateZone("zone")
+	err = im.CreateZone("Zone")
 	assert.EqualError(t, err, ErrZoneAlreadyExists.Error())
 }
 
