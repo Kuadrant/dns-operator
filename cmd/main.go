@@ -36,6 +36,7 @@ import (
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
+	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
 	//+kubebuilder:scaffold:imports
 )
 

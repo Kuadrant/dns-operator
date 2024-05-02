@@ -286,7 +286,7 @@ func (p *Plan) Calculate() *Plan {
 					candidate := t.resolver.ResolveUpdate(records.current, records.candidates)
 					current := records.current.DeepCopy()
 					owners := []string{}
-					if endpointOwner, hasOwner := current.Labels[endpoint.OwnerLabelKey]; hasOwner {
+					if endpointOwner, hasOwner := current.Labels[endpoint.OwnerLabelKey]; hasOwner && endpointOwner != "" {
 						if p.OwnerID == "" {
 							// Only allow owned records to be updated by other owned records
 							errs = append(errs, fmt.Errorf("%w, cannot update endpoint '%s' with no owner when existing endpoint is already owned", ErrOwnerConflict, candidate.DNSName))

@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	TestTimeoutMedium       = time.Second * 10
+	TestTimeoutMedium       = time.Second * 15
 	TestTimeoutLong         = time.Second * 30
 	TestRetryIntervalMedium = time.Millisecond * 250
 	RequeueDuration         = time.Second * 6

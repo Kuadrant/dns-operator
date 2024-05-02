@@ -45,6 +45,17 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		managedZone = testBuildManagedZone("mz-example-com", testNamespace, "example.com")
 		Expect(k8sClient.Create(ctx, managedZone)).To(Succeed())
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(managedZone.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionTrue),
+					"ObservedGeneration": Equal(managedZone.Generation),
+				})),
+			)
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
@@ -135,8 +146,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("should not allow ownerID to be updated once set", func() {
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(BeNil())
-
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -180,10 +190,77 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("should increase write counter if fail to publish record or record is overridden", func() {
-		dnsRecord.Spec.Endpoints = getTestNonExistingEndpoints()
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		dnsRecord = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo-record-1",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+					Name: managedZone.Name,
+				},
+				Endpoints: []*externaldnsendpoint.Endpoint{
+					{
+						DNSName: "foo.example.com",
+						Targets: []string{
+							"127.0.0.1",
+						},
+						RecordType:       "A",
+						SetIdentifier:    "",
+						RecordTTL:        60,
+						Labels:           nil,
+						ProviderSpecific: nil,
+					},
+				},
+			},
+		}
+		dnsRecord2 = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo-record-2",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+					Name: managedZone.Name,
+				},
+				Endpoints: []*externaldnsendpoint.Endpoint{
+					{
+						DNSName: "foo.example.com",
+						Targets: []string{
+							"127.0.0.2",
+						},
+						RecordType:       "A",
+						SetIdentifier:    "",
+						RecordTTL:        60,
+						Labels:           nil,
+						ProviderSpecific: nil,
+					},
+				},
+			},
+		}
 
-		// should be requeue record for validation after the write attempt
+		By("creating dnsrecord " + dnsRecord.Name + " with endpoint dnsName: `foo.example.com` and target: `127.0.0.1`")
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		By("checking dnsrecord " + dnsRecord.Name + " becomes ready")
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionTrue),
+					"Reason":             Equal("ProviderSuccess"),
+					"Message":            Equal("Provider ensured the dns record"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		By("creating dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: `foo.example.com` and target: `127.0.0.2`")
+		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
+
+		By("checking dnsrecord " + dnsRecord.Name + " and " + dnsRecord2.Name + " conflict")
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -196,17 +273,40 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
-		}, TestTimeoutMedium, time.Second).Should(Succeed())
-
-		// should be increasing write counter
-		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
-			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(0)))
+
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord2.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal("AwaitingValidation"),
+					"Message":            Equal("Awaiting validation"),
+					"ObservedGeneration": Equal(dnsRecord2.Generation),
+				})),
+			)
+			g.Expect(dnsRecord2.Status.WriteCounter).To(BeNumerically(">", int64(0)))
 		}, TestTimeoutLong, time.Second).Should(Succeed())
 	})
 
 	It("should not allow second record to change the type", func() {
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionTrue),
+					"Reason":             Equal("ProviderSuccess"),
+					"Message":            Equal("Provider ensured the dns record"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
 		dnsRecord2 = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "foo2.example.com",
@@ -248,6 +348,22 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("should not allow owned record to update it", func() {
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionTrue),
+					"Reason":             Equal("ProviderSuccess"),
+					"Message":            Equal("Provider ensured the dns record"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
 		dnsRecord2 = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "foo2.example.com",
@@ -278,6 +394,22 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("should not allow a record to have a target that matches the root host if an endpoint doesn't exist for the target dns name", func() {
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionTrue),
+					"Reason":             Equal("ProviderSuccess"),
+					"Message":            Equal("Provider ensured the dns record"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
 		dnsRecord2 = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "bar.example.com",

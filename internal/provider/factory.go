@@ -82,6 +82,8 @@ func nameForProviderSecret(secret *v1.Secret) (string, error) {
 		return "aws", nil
 	case "kuadrant.io/gcp":
 		return "google", nil
+	case "kuadrant.io/inmemory":
+		return "inmemory", nil
 	}
 	return "", errUnsupportedProvider
 }

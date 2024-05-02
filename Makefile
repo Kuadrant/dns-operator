@@ -140,8 +140,8 @@ test-unit: manifests generate fmt vet ## Run unit tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -tags=unit -coverprofile cover-unit.out
 
 .PHONY: test-integration
-test-integration: manifests generate fmt vet envtest ## Run integration tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./internal/controller... -tags=integration -coverprofile cover-integration.out
+test-integration: manifests generate fmt vet envtest ginkgo ## Run integration tests.
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -tags=integration ./internal/controller -coverprofile cover-integration.out
 
 .PHONY: test-e2e
 test-e2e: ginkgo
