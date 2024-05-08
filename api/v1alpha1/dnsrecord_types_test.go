@@ -73,7 +73,7 @@ func TestValidate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			record := &DNSRecord{
 				Spec: DNSRecordSpec{
-					RootHost: &tt.rootHost,
+					RootHost: tt.rootHost,
 				},
 			}
 			for idx := range tt.dnsNames {

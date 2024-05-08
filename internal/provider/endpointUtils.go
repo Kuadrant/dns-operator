@@ -14,10 +14,7 @@ func IsExternalAddress(address string, dnsRecord *v1alpha1.DNSRecord) bool {
 		return true
 	}
 
-	if dnsRecord.Spec.RootHost == nil {
-		return false
-	}
-	return !strings.Contains(address, *dnsRecord.Spec.RootHost)
+	return !strings.Contains(address, dnsRecord.Spec.RootHost)
 }
 
 func GetExternalAddresses(endpoint *externaldns.Endpoint, dnsRecord *v1alpha1.DNSRecord) (externalAddresses []string) {

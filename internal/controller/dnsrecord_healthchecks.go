@@ -62,8 +62,8 @@ func (r *DNSRecordReconciler) ReconcileHealthChecks(ctx context.Context, dnsReco
 
 			spec := provider.HealthCheckSpec{
 				Id:               endpointId,
-				Name:             fmt.Sprintf("%s-%s-%s", *dnsRecord.Spec.RootHost, dnsEndpoint.DNSName, address),
-				Host:             dnsRecord.Spec.RootHost,
+				Name:             fmt.Sprintf("%s-%s-%s", dnsRecord.Spec.RootHost, dnsEndpoint.DNSName, address),
+				Host:             &dnsRecord.Spec.RootHost,
 				Path:             config.Endpoint,
 				Port:             config.Port,
 				Protocol:         config.Protocol,

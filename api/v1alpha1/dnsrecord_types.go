@@ -61,13 +61,14 @@ type HealthCheckStatusProbe struct {
 type DNSRecordSpec struct {
 	// ownerID is a unique string used to identify the owner of this record.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="OwnerID is immutable"
-	// +optional
-	OwnerID *string `json:"ownerID,omitempty"`
+	// +kubebuilder:validation:MinLength=6
+	// +kubebuilder:validation:MaxLength=12
+	OwnerID string `json:"ownerID"`
 
 	// rootHost is the single root for all endpoints in a DNSRecord.
-	// If rootHost is set, it is expected all defined endpoints are children of or equal to this rootHost
-	// +optional
-	RootHost *string `json:"rootHost,omitempty"`
+	// it is expected all defined endpoints are children of or equal to this rootHost
+	// +kubebuilder:validation:MinLength=1
+	RootHost string `json:"rootHost"`
 
 	// managedZone is a reference to a ManagedZone instance to which this record will publish its endpoints.
 	ManagedZoneRef *ManagedZoneReference `json:"managedZone"`
@@ -173,43 +174,37 @@ const (
 const WildcardPrefix = "*."
 
 func (s *DNSRecord) Validate() error {
-	if s.Spec.RootHost != nil {
-		root := *s.Spec.RootHost
-		if len(strings.Split(root, ".")) <= 1 {
-			return fmt.Errorf("invalid domain format no tld discovered")
-		}
-		if len(s.Spec.Endpoints) == 0 {
-			return fmt.Errorf("no endpoints defined for DNSRecord. Nothing to do")
-		}
+	root := s.Spec.RootHost
+	if len(strings.Split(root, ".")) <= 1 {
+		return fmt.Errorf("invalid domain format no tld discovered")
+	}
+	if len(s.Spec.Endpoints) == 0 {
+		return fmt.Errorf("no endpoints defined for DNSRecord. Nothing to do")
+	}
 
-		root, _ = strings.CutPrefix(root, WildcardPrefix)
+	root, _ = strings.CutPrefix(root, WildcardPrefix)
 
-		rootEndpointFound := false
-		for _, ep := range s.Spec.Endpoints {
-			if !strings.HasSuffix(ep.DNSName, root) {
-				return fmt.Errorf("invalid endpoint discovered %s all endpoints should be equal to or end with the rootHost %s", ep.DNSName, root)
-			}
-			if !rootEndpointFound {
-				//check original root
-				if ep.DNSName == *s.Spec.RootHost {
-					rootEndpointFound = true
-				}
-			}
+	rootEndpointFound := false
+	for _, ep := range s.Spec.Endpoints {
+		if !strings.HasSuffix(ep.DNSName, root) {
+			return fmt.Errorf("invalid endpoint discovered %s all endpoints should be equal to or end with the rootHost %s", ep.DNSName, root)
 		}
 		if !rootEndpointFound {
-			return fmt.Errorf("invalid endpoint set. rootHost is set but found no endpoint defining a record for the rootHost %s", root)
+			//check original root
+			if ep.DNSName == s.Spec.RootHost {
+				rootEndpointFound = true
+			}
 		}
+	}
+	if !rootEndpointFound {
+		return fmt.Errorf("invalid endpoint set. rootHost is set but found no endpoint defining a record for the rootHost %s", root)
 	}
 	return nil
 }
 
 func (s *DNSRecord) GetRegistry(provider externaldnsprovider.Provider, managedDNSRecordTypes, excludeDNSRecordTypes []string) (externaldnsregistry.Registry, error) {
-	if s.Spec.OwnerID != nil {
-		return registry.NewTXTRegistry(provider, txtRegistryPrefix, txtRegistrySuffix, *s.Spec.OwnerID, txtRegistryCacheInterval,
-			txtRegistryWildcardReplacement, managedDNSRecordTypes, excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
-	} else {
-		return externaldnsregistry.NewNoopRegistry(provider)
-	}
+	return registry.NewTXTRegistry(provider, txtRegistryPrefix, txtRegistrySuffix, s.Spec.OwnerID, txtRegistryCacheInterval,
+		txtRegistryWildcardReplacement, managedDNSRecordTypes, excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
 }
 
 func init() {
