@@ -15,8 +15,8 @@
 
 | **Field**        | **Type**                                                                                 | **Required** | **Description**                                                                     |
 |------------------|------------------------------------------------------------------------------------------|:------------:|-------------------------------------------------------------------------------------|
-| `ownerID`        | String                                                                                   |      No      | Unique string used to identify the owner of this record                             | 
-| `rootHost`       | String                                                                                   |      No      | Single root host of all endpoints in a DNSRecord                                    |
+| `ownerID`        | String                                                                                   |     Yes      | Unique string used to identify the owner of this record                             | 
+| `rootHost`       | String                                                                                   |     Yes      | Single root host of all endpoints in a DNSRecord                                    |
 | `managedZone`    | [ManagedZoneReference](#managedzonereference)                                            |     Yes      | Reference to a ManagedZone instance to which this record will publish its endpoints |
 | `endpoints`      | [][ExternalDNS Endpoint](https://pkg.go.dev/sigs.k8s.io/external-dns/endpoint#Endpoint)  |      No      | Endpoints to manage in the dns provider                                             |
 | `healthCheck`    | [HealthCheckSpec](#healthcheckspec)                                                      |      No      | Health check configuration                                                          |
