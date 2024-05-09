@@ -254,7 +254,7 @@ func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1al
 	}
 	expiryTime := metav1.NewTime(dnsRecord.Status.QueuedAt.Add(requeueIn))
 	if !generationChanged(dnsRecord) && reconcileStart.Before(&expiryTime) {
-		logger.V(3).Info("Skipping managed zone to which the DNS dnsRecord is already published and is still valid", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+		logger.V(1).Info("Skipping managed zone to which the DNS dnsRecord is already published and is still valid", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
 		return requeueIn, nil
 	}
 	if generationChanged(dnsRecord) {
@@ -311,19 +311,15 @@ func (r *DNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord *v1a
 func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone, isDelete bool) (time.Duration, error) {
 	logger := log.FromContext(ctx)
 	zoneDomainName, _ := strings.CutPrefix(managedZone.Spec.DomainName, v1alpha1.WildcardPrefix)
-	var rootDomainName string
-	if dnsRecord.Spec.RootHost != nil {
-		rootDomainName, _ = strings.CutPrefix(*dnsRecord.Spec.RootHost, v1alpha1.WildcardPrefix)
-	}
+	rootDomainName, _ := strings.CutPrefix(dnsRecord.Spec.RootHost, v1alpha1.WildcardPrefix)
 	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{zoneDomainName})
+	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
+	excludeDNSRecordTypes := []string{}
 
 	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
 	if err != nil {
 		return noRequeueDuration, err
 	}
-
-	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
-	excludeDNSRecordTypes := []string{}
 
 	registry, err := dnsRecord.GetRegistry(dnsProvider, managedDNSRecordTypes, excludeDNSRecordTypes)
 	if err != nil {
@@ -360,9 +356,9 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	}
 
 	//Note: All endpoint lists should be in the same provider specific format at this point
-	logger.V(3).Info("applyChanges", "zoneEndpoints", zoneEndpoints)
-	logger.V(3).Info("applyChanges", "specEndpoints", specEndpoints)
-	logger.V(3).Info("applyChanges", "statusEndpoints", statusEndpoints)
+	logger.V(1).Info("applyChanges", "zoneEndpoints", zoneEndpoints)
+	logger.V(1).Info("applyChanges", "specEndpoints", specEndpoints)
+	logger.V(1).Info("applyChanges", "statusEndpoints", statusEndpoints)
 
 	plan := &externaldnsplan.Plan{
 		Policies:       []externaldnsplan.Policy{policy},
@@ -391,7 +387,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 			if dnsRecord.Status.WriteCounter < WriteCounterLimit {
 				dnsRecord.Status.WriteCounter++
 				wrtiteCounter.WithLabelValues(dnsRecord.Name, dnsRecord.Namespace).Inc()
-				logger.V(3).Info("Changes needed on the same generation of record")
+				logger.V(1).Info("Changes needed on the same generation of record")
 			} else {
 				err = errors.New("reached write limit to the DNS provider for the same generation of record")
 				logger.Error(err, "Giving up on trying to maintain desired state of the DNS record - changes are being overridden")

@@ -203,10 +203,10 @@ func (p *GoogleDNSProvider) Zones(ctx context.Context) (map[string]*dnsv1.Manage
 					zones[zone.Name] = zone
 					p.logger.Info(fmt.Sprintf("Matched %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
 				} else {
-					p.logger.Info(fmt.Sprintf("Filtered %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
+					p.logger.V(1).Info(fmt.Sprintf("Filtered %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
 				}
 			} else {
-				p.logger.Info(fmt.Sprintf("Filtered peering zone %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
+				p.logger.V(1).Info(fmt.Sprintf("Filtered peering zone %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
 			}
 		}
 

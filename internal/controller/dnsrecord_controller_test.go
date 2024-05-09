@@ -27,7 +27,6 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
@@ -63,6 +62,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
+				OwnerID:  "owner1",
+				RootHost: "foo.example.com",
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: managedZone.Name,
 				},
@@ -93,10 +94,13 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
+				OwnerID:  "owner1",
+				RootHost: "foo.example.com",
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: "doesnotexist",
 				},
-				Endpoints: getTestEndpoints(),
+				Endpoints:   getTestEndpoints(),
+				HealthCheck: nil,
 			},
 		}
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
@@ -162,31 +166,20 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
-		//Allows updating from not owned to owned
-		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			dnsRecord.Spec.OwnerID = ptr.To("foobar")
-			err = k8sClient.Update(ctx, dnsRecord)
-			g.Expect(err).NotTo(HaveOccurred())
-		}, TestTimeoutMedium, time.Second).Should(Succeed())
-
 		//Does not allow ownerID to change once set
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Spec.OwnerID).To(PointTo(Equal("foobar")))
+			g.Expect(dnsRecord.Spec.OwnerID).To(Equal("owner1"))
 
-			dnsRecord.Spec.OwnerID = ptr.To("foobarbaz")
+			dnsRecord.Spec.OwnerID = "foobarbaz"
 			err = k8sClient.Update(ctx, dnsRecord)
 			g.Expect(err).To(MatchError(ContainSubstring("OwnerID is immutable")))
 
 			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Spec.OwnerID).To(PointTo(Equal("foobar")))
+			g.Expect(dnsRecord.Spec.OwnerID).To(Equal("owner1"))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
-
 	})
 
 	It("should increase write counter if fail to publish record or record is overridden", func() {
@@ -196,6 +189,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
+				OwnerID:  "owner1",
+				RootHost: "foo.example.com",
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: managedZone.Name,
 				},
@@ -206,12 +201,13 @@ var _ = Describe("DNSRecordReconciler", func() {
 							"127.0.0.1",
 						},
 						RecordType:       "A",
-						SetIdentifier:    "",
+						SetIdentifier:    "foo",
 						RecordTTL:        60,
 						Labels:           nil,
 						ProviderSpecific: nil,
 					},
 				},
+				HealthCheck: nil,
 			},
 		}
 		dnsRecord2 = &v1alpha1.DNSRecord{
@@ -220,6 +216,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
+				OwnerID:  "owner2",
+				RootHost: "foo.example.com",
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: managedZone.Name,
 				},
@@ -230,7 +228,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 							"127.0.0.2",
 						},
 						RecordType:       "A",
-						SetIdentifier:    "",
+						SetIdentifier:    "foo",
 						RecordTTL:        60,
 						Labels:           nil,
 						ProviderSpecific: nil,
@@ -309,10 +307,12 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		dnsRecord2 = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "foo2.example.com",
+				Name:      "foo.example.com-2",
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
+				OwnerID:  "owner2",
+				RootHost: "foo.example.com",
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: managedZone.Name,
 				},
@@ -329,6 +329,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 						ProviderSpecific: nil,
 					},
 				},
+				HealthCheck: nil,
 			},
 		}
 		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
@@ -341,52 +342,6 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"Status":             Equal(metav1.ConditionFalse),
 					"Reason":             Equal("ProviderError"),
 					"Message":            ContainSubstring("record type conflict, cannot update endpoint 'foo.example.com' with record type 'CNAME' when endpoint already exists with record type 'A'"),
-					"ObservedGeneration": Equal(dnsRecord2.Generation),
-				})),
-			)
-		}, TestTimeoutMedium, time.Second).Should(Succeed())
-	})
-
-	It("should not allow owned record to update it", func() {
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
-		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.Conditions).To(
-				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status":             Equal(metav1.ConditionTrue),
-					"Reason":             Equal("ProviderSuccess"),
-					"Message":            Equal("Provider ensured the dns record"),
-					"ObservedGeneration": Equal(dnsRecord.Generation),
-				})),
-			)
-			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
-		}, TestTimeoutMedium, time.Second).Should(Succeed())
-
-		dnsRecord2 = &v1alpha1.DNSRecord{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "foo2.example.com",
-				Namespace: testNamespace,
-			},
-			Spec: v1alpha1.DNSRecordSpec{
-				OwnerID: ptr.To("owner1"),
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
-				},
-				Endpoints: getTestEndpoints(),
-			},
-		}
-		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
-		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord2.Status.Conditions).To(
-				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status":             Equal(metav1.ConditionFalse),
-					"Reason":             Equal("ProviderError"),
-					"Message":            ContainSubstring("owner conflict, cannot update endpoint 'foo.example.com' with owner when existing endpoint is not owned"),
 					"ObservedGeneration": Equal(dnsRecord2.Generation),
 				})),
 			)
@@ -416,8 +371,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
-				OwnerID:  ptr.To("owner1"),
-				RootHost: ptr.To("bar.example.com"),
+				OwnerID:  "owner1",
+				RootHost: "bar.example.com",
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: managedZone.Name,
 				},
