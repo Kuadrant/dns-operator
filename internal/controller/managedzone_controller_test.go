@@ -105,5 +105,68 @@ var _ = Describe("ManagedZoneReconciler", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec.domainName in body should match"))
 		})
+
+		It("managed zone should not become ready with a spec.ID that does not exist", func() {
+			//Create a managed zone with no spec.ID
+			Expect(k8sClient.Create(ctx, managedZone)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(managedZone.Status.ID).To(Equal("example.com"))
+				g.Expect(managedZone.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"ObservedGeneration": Equal(managedZone.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			//Create a second managed zone with spec.ID referencing a zone id that does not exist
+			mz := testBuildManagedZone("mz-example-com-2", testNamespace, "example.com", dnsProviderSecret.Name)
+			mz.Spec.ID = "dosnotexist"
+			Expect(k8sClient.Create(ctx, mz)).To(Succeed())
+			Eventually(func(g Gomega) error {
+				err := k8sClient.Get(ctx, client.ObjectKey{Namespace: mz.Namespace, Name: mz.Name}, mz)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(mz.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status": Equal(metav1.ConditionFalse),
+						"Reason": Equal("ProviderError"),
+						"Message": And(
+							ContainSubstring("The DNS provider failed to ensure the managed zone"),
+							ContainSubstring("not found")),
+					})),
+				)
+				g.Expect(mz.Finalizers).To(ContainElement(ManagedZoneFinalizer))
+				return nil
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			//Update second managed zone to use the known existing managed zone id (managedZone.Status.ID)
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(mz), mz)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				mz.Spec.ID = managedZone.Status.ID
+				err = k8sClient.Update(ctx, mz)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			Eventually(func(g Gomega) error {
+				err := k8sClient.Get(ctx, client.ObjectKey{Namespace: mz.Namespace, Name: mz.Name}, mz)
+				Expect(err).NotTo(HaveOccurred())
+				g.Expect(mz.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"ObservedGeneration": Equal(mz.Generation),
+					})),
+				)
+				g.Expect(mz.Finalizers).To(ContainElement(ManagedZoneFinalizer))
+				return nil
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
 	})
 })
