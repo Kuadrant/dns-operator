@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
@@ -36,13 +37,17 @@ import (
 var _ = Describe("DNSRecordReconciler", func() {
 	var dnsRecord *v1alpha1.DNSRecord
 	var dnsRecord2 *v1alpha1.DNSRecord
+	var dnsProviderSecret *v1.Secret
 	var managedZone *v1alpha1.ManagedZone
 	var testNamespace string
 
 	BeforeEach(func() {
 		CreateNamespace(&testNamespace)
 
-		managedZone = testBuildManagedZone("mz-example-com", testNamespace, "example.com")
+		dnsProviderSecret = testBuildInMemoryCredentialsSecret("inmemory-credentials", testNamespace)
+		managedZone = testBuildManagedZone("mz-example-com", testNamespace, "example.com", dnsProviderSecret.Name)
+
+		Expect(k8sClient.Create(ctx, dnsProviderSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, managedZone)).To(Succeed())
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone)

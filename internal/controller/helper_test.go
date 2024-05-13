@@ -5,6 +5,7 @@ package controller
 import (
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
@@ -17,24 +18,32 @@ const (
 	TestRetryIntervalMedium = time.Millisecond * 250
 	RequeueDuration         = time.Second * 6
 	ValidityDuration        = time.Second * 3
-	defaultNS               = "default"
-	providerCredential      = "secretname"
 )
 
-func testBuildManagedZone(name, ns, domainName string) *kuadrantdnsv1alpha1.ManagedZone {
+func testBuildManagedZone(name, ns, domainName, secretName string) *kuadrantdnsv1alpha1.ManagedZone {
 	return &kuadrantdnsv1alpha1.ManagedZone{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 		},
 		Spec: kuadrantdnsv1alpha1.ManagedZoneSpec{
-			ID:          "1234",
 			DomainName:  domainName,
 			Description: domainName,
 			SecretRef: kuadrantdnsv1alpha1.ProviderRef{
-				Name: "secretname",
+				Name: secretName,
 			},
 		},
+	}
+}
+
+func testBuildInMemoryCredentialsSecret(name, ns string) *v1.Secret {
+	return &v1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Data: map[string][]byte{},
+		Type: "kuadrant.io/inmemory",
 	}
 }
 

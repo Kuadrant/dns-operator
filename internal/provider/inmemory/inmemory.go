@@ -44,13 +44,28 @@ func NewProviderFromSecret(ctx context.Context, _ *v1.Secret, c provider.Config)
 	return p, nil
 }
 
-func (i InMemoryDNSProvider) EnsureManagedZone(managedZone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
-	_ = i.CreateZone(managedZone.Spec.DomainName)
+func (i InMemoryDNSProvider) EnsureManagedZone(mz *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
+	var zoneID string
+	if mz.Spec.ID != "" {
+		zoneID = mz.Spec.ID
+	} else {
+		zoneID = mz.Status.ID
+	}
+
+	if zoneID != "" {
+		_, err := i.GetZone(zoneID)
+		return provider.ManagedZoneOutput{
+			ID:          zoneID,
+			NameServers: nil,
+			RecordCount: 0,
+		}, err
+	}
+	err := i.CreateZone(mz.Spec.DomainName)
 	return provider.ManagedZoneOutput{
-		ID:          managedZone.Spec.DomainName,
+		ID:          mz.Spec.DomainName,
 		NameServers: nil,
 		RecordCount: 0,
-	}, nil
+	}, err
 }
 
 func (i InMemoryDNSProvider) DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error {
