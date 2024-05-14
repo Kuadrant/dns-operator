@@ -128,6 +128,11 @@ func (im *InMemoryProvider) DeleteZone(zone string) error {
 	return im.client.DeleteZone(zone)
 }
 
+// GetZone gets a Zone if present
+func (im *InMemoryProvider) GetZone(zone string) (Zone, error) {
+	return im.client.GetZone(zone)
+}
+
 // Zones returns filtered zones as specified by domain
 func (im *InMemoryProvider) Zones() map[string]string {
 	return im.filter.Zones(im.client.Zones())
@@ -298,6 +303,13 @@ func (c *InMemoryClient) DeleteZone(zone string) error {
 		return nil
 	}
 	return ErrZoneNotFound
+}
+
+func (c *InMemoryClient) GetZone(zone string) (Zone, error) {
+	if _, ok := c.zones[zone]; ok {
+		return c.zones[zone], nil
+	}
+	return nil, ErrZoneNotFound
 }
 
 func (c *InMemoryClient) ApplyChanges(ctx context.Context, zoneID string, changes *plan.Changes) error {

@@ -44,9 +44,8 @@ import (
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
-	providerFake "github.com/kuadrant/dns-operator/internal/provider/fake"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
-	"github.com/kuadrant/dns-operator/internal/provider/inmemory"
+	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -59,11 +58,6 @@ var k8sClient client.Client
 var testEnv *envtest.Environment
 var ctx context.Context
 var cancel context.CancelFunc
-var dnsProviderFactory = &providerFake.Factory{
-	ProviderForFunc: func(ctx context.Context, pa v1alpha1.ProviderAccessor, c provider.Config) (provider.Provider, error) {
-		return dnsProvider, nil
-	},
-}
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -105,21 +99,20 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	providerFactory := provider.NewFactory(mgr.GetClient())
+
 	err = (&ManagedZoneReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
-		ProviderFactory: dnsProviderFactory,
+		ProviderFactory: providerFactory,
 	}).SetupWithManager(mgr)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&DNSRecordReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
-		ProviderFactory: dnsProviderFactory,
+		ProviderFactory: providerFactory,
 	}).SetupWithManager(mgr, RequeueDuration, ValidityDuration)
-	Expect(err).ToNot(HaveOccurred())
-
-	dnsProvider, err = inmemory.NewProviderFromSecret(ctx, &v1.Secret{}, provider.Config{})
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {
