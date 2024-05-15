@@ -34,6 +34,7 @@ import (
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
+	"github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
 const (
@@ -42,6 +43,8 @@ const (
 	dnsManagedZoneName      = "TEST_DNS_MANAGED_ZONE_NAME"
 	dnsNamespace            = "TEST_DNS_NAMESPACE"
 	dnsProvider             = "TEST_DNS_PROVIDER"
+	TestTimeoutMedium       = 10 * time.Second
+	TestTimeoutLong         = 60 * time.Second
 )
 
 var (
@@ -49,12 +52,13 @@ var (
 	// testSuiteID is a randomly generated identifier for the test suite
 	testSuiteID string
 	// testZoneDomainName provided domain name for the testZoneID e.g. e2e.hcpapps.net
-	testZoneDomainName  string
-	testManagedZoneName string
-	testNamespace       string
-	testDNSProvider     string
-	supportedProviders  = []string{"aws", "gcp"}
-	testManagedZone     *v1alpha1.ManagedZone
+	testZoneDomainName            string
+	testManagedZoneName           string
+	testNamespace                 string
+	testDNSProvider               string
+	supportedProviders            = []string{"aws", "gcp"}
+	supportedHealthCheckProviders = []string{"aws"}
+	testManagedZone               *v1alpha1.ManagedZone
 )
 
 func TestAPIs(t *testing.T) {
@@ -89,6 +93,12 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	Expect(err).NotTo(HaveOccurred())
 
 	testSuiteID = "dns-op-e2e-" + GenerateName()
+
+	geoCode := "EU"
+	if testDNSProvider == "gcp" {
+		geoCode = "europe-west1"
+	}
+	helpers.SetTestEnv("testGeoCode", geoCode)
 })
 
 func ResolverForDomainName(domainName string) *net.Resolver {

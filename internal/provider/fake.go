@@ -11,6 +11,9 @@ import (
 
 type FakeHealthCheckReconciler struct{}
 
+func (*FakeHealthCheckReconciler) HealthCheckExists(ctx context.Context, probeStatus *v1alpha1.HealthCheckStatusProbe) (bool, error) {
+	return true, nil
+}
 func (*FakeHealthCheckReconciler) Reconcile(_ context.Context, _ HealthCheckSpec, _ *externaldns.Endpoint, _ *v1alpha1.HealthCheckStatusProbe, _ string) HealthCheckResult {
 	return HealthCheckResult{HealthCheckCreated, "fakeID", "", "", metav1.Condition{}}
 }

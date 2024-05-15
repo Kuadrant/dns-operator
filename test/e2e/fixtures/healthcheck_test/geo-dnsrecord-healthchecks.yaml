@@ -1,0 +1,53 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: ${testID}
+  namespace: ${testNamespace}
+spec:
+  healthCheck:
+    endpoint: "/"
+    port: 80
+    protocol: "HTTPS"
+    failureThreshold: 3
+  endpoints:
+    - dnsName: 14byhk-2k52h1.klb.${testHostname}
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.32.200.1
+    - dnsName: ${testHostname}
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.${testHostname}
+    - dnsName: eu.klb.${testHostname}
+      providerSpecific:
+        - name: weight
+          value: "120"
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: 14byhk-2k52h1.klb.${testHostname}
+      targets:
+        - 14byhk-2k52h1.klb.${testHostname}
+    - dnsName: klb.${testHostname}
+      providerSpecific:
+        - name: geo-code
+          value: ${testGeoCode}
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: ${testGeoCode}
+      targets:
+        - eu.klb.${testHostname}
+    - dnsName: klb.${testHostname}
+      providerSpecific:
+        - name: geo-code
+          value: '*'
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: default
+      targets:
+        - eu.klb.${testHostname}
+  managedZone:
+    name: ${TEST_DNS_MANAGED_ZONE_NAME}
+  ownerID: 2bq03i
+  rootHost: ${testHostname}
