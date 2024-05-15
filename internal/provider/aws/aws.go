@@ -31,9 +31,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
-	externaldnsprovideraws "sigs.k8s.io/external-dns/provider/aws"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	externaldnsprovideraws "github.com/kuadrant/dns-operator/internal/external-dns/provider/aws"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
