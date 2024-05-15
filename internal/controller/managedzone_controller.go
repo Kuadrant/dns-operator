@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -37,6 +38,10 @@ import (
 
 const (
 	ManagedZoneFinalizer = "kuadrant.io/managed-zone"
+)
+
+var (
+	ErrProvider = errors.New("ProviderError")
 )
 
 // ManagedZoneReconciler reconciles a ManagedZone object
@@ -98,52 +103,50 @@ func (r *ManagedZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	var reason, message string
-	status := metav1.ConditionTrue
-	reason = "ProviderSuccess"
-	message = "Provider ensured the managed zone"
-
-	// Publish the managed zone
 	err = r.publishManagedZone(ctx, managedZone)
 	if err != nil {
-		status = metav1.ConditionFalse
-		reason = "ProviderError"
-		message = fmt.Sprintf("The DNS provider failed to ensure the managed zone: %v", err)
-
-		err = r.Status().Update(ctx, managedZone)
-		if err != nil {
-			return ctrl.Result{}, err
+		reason := "UnknownError"
+		message := fmt.Sprintf("unexpected error %v ", provider.SanitizeError(err))
+		if errors.Is(err, ErrProvider) {
+			reason = ErrProvider.Error()
+			message = err.Error()
 		}
+		setManagedZoneCondition(managedZone, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, reason, message)
+		statusUpdateErr := r.Status().Update(ctx, managedZone)
+		if statusUpdateErr != nil {
+			return ctrl.Result{}, fmt.Errorf("zone error %v : status update failed error %v", err, statusUpdateErr)
+		}
+		return ctrl.Result{}, err
 	}
 
-	// Create the parent zone NS record
 	err = r.createParentZoneNSRecord(ctx, managedZone)
 	if err != nil {
-		status = metav1.ConditionFalse
-		reason = "ParentZoneNSRecordError"
-		message = fmt.Sprintf("Failed to create the NS record in the parent managed zone: %v", err)
-
-		err = r.Status().Update(ctx, managedZone)
-		if err != nil {
-			return ctrl.Result{}, err
+		message := fmt.Sprintf("Failed to create the NS record in the parent managed zone: %v", provider.SanitizeError(err))
+		setManagedZoneCondition(managedZone, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "ParentZoneNSRecordError", message)
+		statusUpdateErr := r.Status().Update(ctx, managedZone)
+		if statusUpdateErr != nil {
+			// if we fail to update the status we want an immediate requeue to ensure the end user sees the error
+			return ctrl.Result{}, fmt.Errorf("provider failed error %v : status update failed error %v", err, statusUpdateErr)
 		}
+		return ctrl.Result{}, err
 	}
 
 	// Check the parent zone NS record status
 	err = r.parentZoneNSRecordReady(ctx, managedZone)
 	if err != nil {
-		status = metav1.ConditionFalse
-		reason = "ParentZoneNSRecordNotReady"
-		message = fmt.Sprintf("NS Record ready status check failed: %v", err)
-
-		err = r.Status().Update(ctx, managedZone)
-		if err != nil {
-			return ctrl.Result{}, err
+		message := fmt.Sprintf("NS Record ready status check failed: %v", provider.SanitizeError(err))
+		setManagedZoneCondition(managedZone, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "ParentZoneNSRecordNotReady", message)
+		statusUpdateErr := r.Status().Update(ctx, managedZone)
+		if statusUpdateErr != nil {
+			// if we fail to update the status we want an immediate requeue to ensure the end user sees the error
+			return ctrl.Result{}, fmt.Errorf("provider failed error %v : status update failed error %v", err, statusUpdateErr)
 		}
+		return ctrl.Result{}, err
 	}
 
+	//We are all good set ready status true
 	managedZone.Status.ObservedGeneration = managedZone.Generation
-	setManagedZoneCondition(managedZone, string(v1alpha1.ConditionTypeReady), status, reason, message)
+	setManagedZoneCondition(managedZone, string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, "ProviderSuccess", "Provider ensured the managed zone")
 	err = r.Status().Update(ctx, managedZone)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -164,11 +167,14 @@ func (r *ManagedZoneReconciler) publishManagedZone(ctx context.Context, managedZ
 
 	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone, provider.Config{})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get provider for the zone: %v", provider.SanitizeError(err))
 	}
 	mzResp, err := dnsProvider.EnsureManagedZone(managedZone)
 	if err != nil {
-		return err
+		managedZone.Status.ID = ""
+		managedZone.Status.RecordCount = 0
+		managedZone.Status.NameServers = nil
+		return fmt.Errorf("%w, The DNS provider failed to ensure the managed zone: %v", ErrProvider, provider.SanitizeError(err))
 	}
 
 	managedZone.Status.ID = mzResp.ID
@@ -186,13 +192,7 @@ func (r *ManagedZoneReconciler) deleteManagedZone(ctx context.Context, managedZo
 
 	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone, provider.Config{})
 	if err != nil {
-		var reason, message string
-		status := metav1.ConditionFalse
-		reason = "ProviderError"
-		message = fmt.Sprintf("The DNS provider creation failed: %v", err)
-		managedZone.Status.ObservedGeneration = managedZone.Generation
-		setManagedZoneCondition(managedZone, string(v1alpha1.ConditionTypeReady), status, reason, message)
-		return err
+		return fmt.Errorf("failed to get DNS provider instance : %v", err)
 	}
 	err = dnsProvider.DeleteManagedZone(managedZone)
 	if err != nil {
@@ -200,7 +200,7 @@ func (r *ManagedZoneReconciler) deleteManagedZone(ctx context.Context, managedZo
 			log.Log.Info("ManagedZone was not found, continuing", "managedZone", managedZone.Name)
 			return nil
 		}
-		return err
+		return fmt.Errorf("%w, Failed to delete from provider. Provider Error: %v", ErrProvider, provider.SanitizeError(err))
 	}
 	log.Log.Info("Deleted ManagedZone", "managedZone", managedZone.Name)
 
