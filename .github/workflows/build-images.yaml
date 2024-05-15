@@ -34,12 +34,18 @@ jobs:
         run: |
           echo "IMG_TAGS=latest ${{ env.IMG_TAGS }}" >> $GITHUB_ENV
 
+      - name: Install qemu dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+
       - name: Build Image
         id: build-image
         uses: redhat-actions/buildah-build@v2
         with:
           image: ${{ env.OPERATOR_NAME }}
           tags: ${{ env.IMG_TAGS }}
+          platforms: linux/amd64,linux/arm64
           dockerfiles: |
             ./Dockerfile
 
@@ -74,12 +80,18 @@ jobs:
       - name: Run make bundle
         run: make bundle IMG=${{ needs.build.outputs.build-image }}
 
+      - name: Install qemu dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+
       - name: Build Image
         id: build-image
         uses: redhat-actions/buildah-build@v2
         with:
           image: ${{ env.OPERATOR_NAME }}-bundle
           tags: ${{ needs.build.outputs.build-tags }}
+          platforms: linux/amd64,linux/arm64
           dockerfiles: |
             ./bundle.Dockerfile
 
@@ -111,12 +123,18 @@ jobs:
       - name: Run make catalog-build
         run: make catalog-build BUNDLE_IMG=${{ needs.build-bundle.outputs.bundle-image }}
 
+      - name: Install qemu dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+
       - name: Build Image
         id: build-image
         uses: redhat-actions/buildah-build@v2
         with:
           image: ${{ env.OPERATOR_NAME }}-catalog
           tags: ${{ needs.build.outputs.build-tags }}
+          platforms: linux/amd64,linux/arm64
           context: ./tmp/catalog
           dockerfiles: |
             ./tmp/catalog/index.Dockerfile
