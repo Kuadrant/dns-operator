@@ -4,7 +4,7 @@
 ## Targets to verify actions that generate/modify code have been executed and output committed
 
 .PHONY: verify-all
-verify-all: verify-code verify-bundle verify-imports verify-manifests
+verify-all: verify-code verify-bundle verify-imports verify-manifests verify-generate verify-go-mod
 
 .PHONY: verify-code
 verify-code: vet ## Verify code formatting
@@ -23,3 +23,12 @@ verify-bundle: bundle ## Verify bundle update.
 .PHONY: verify-imports
 verify-imports: ## Verify go imports are sorted and grouped correctly.
 	hack/verify-imports.sh
+
+.PHONY: verify-generate
+verify-generate: generate ## Verify generate update.
+	git diff --exit-code ./api ./internal/controller
+
+.PHONY: verify-go-mod
+verify-go-mod: ## Verify go.mod matches source code
+	go mod tidy
+	git diff --exit-code ./go.mod
