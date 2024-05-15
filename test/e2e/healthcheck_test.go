@@ -20,7 +20,7 @@ import (
 )
 
 // Test Cases covering multiple creation and deletion of health checks
-var _ = Describe("Health Check Test", Serial, func() {
+var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 	// tests can be run in parallel in the same cluster
 	var testID string
 	// testDomainName generated domain for this test e.g. t-e2e-12345.e2e.hcpapps.net
