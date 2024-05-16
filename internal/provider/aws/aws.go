@@ -19,6 +19,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -163,13 +164,6 @@ func (p *Route53DNSProvider) EnsureManagedZone(zone *v1alpha1.ManagedZone) (prov
 			return managedZoneOutput, err
 		}
 
-		_, err = p.route53Client.UpdateHostedZoneComment(&route53.UpdateHostedZoneCommentInput{
-			Comment: &zone.Spec.Description,
-			Id:      &zoneID,
-		})
-		if err != nil {
-			log.Log.Error(err, "failed to update hosted zone comment")
-		}
 		if getResp.HostedZone == nil {
 			err = fmt.Errorf("aws zone issue. No hosted zone info in response")
 			log.Log.Error(err, "unexpected response")
@@ -179,8 +173,22 @@ func (p *Route53DNSProvider) EnsureManagedZone(zone *v1alpha1.ManagedZone) (prov
 			err = fmt.Errorf("aws zone issue. No hosted zone id in response")
 			return managedZoneOutput, err
 		}
+		if getResp.HostedZone.Name == nil {
+			err = fmt.Errorf("aws zone issue. No hosted zone name in response")
+			return managedZoneOutput, err
+		}
+
+		_, err = p.route53Client.UpdateHostedZoneComment(&route53.UpdateHostedZoneCommentInput{
+			Comment: &zone.Spec.Description,
+			Id:      &zoneID,
+		})
+		if err != nil {
+			log.Log.Error(err, "failed to update hosted zone comment")
+		}
 
 		managedZoneOutput.ID = *getResp.HostedZone.Id
+		managedZoneOutput.DNSName = strings.ToLower(strings.TrimSuffix(*getResp.HostedZone.Name, "."))
+
 		if getResp.HostedZone.ResourceRecordSetCount != nil {
 			managedZoneOutput.RecordCount = *getResp.HostedZone.ResourceRecordSetCount
 		}
@@ -218,11 +226,18 @@ func (p *Route53DNSProvider) EnsureManagedZone(zone *v1alpha1.ManagedZone) (prov
 		err = fmt.Errorf("aws zone creation issue. No hosted zone id in response")
 		return managedZoneOutput, err
 	}
+	if createResp.HostedZone.Name == nil {
+		err = fmt.Errorf("aws zone creation issue. No hosted zone name in response")
+		return managedZoneOutput, err
+	}
+
 	managedZoneOutput.ID = *createResp.HostedZone.Id
+	managedZoneOutput.DNSName = strings.ToLower(strings.TrimSuffix(*createResp.HostedZone.Name, "."))
 
 	if createResp.HostedZone.ResourceRecordSetCount != nil {
 		managedZoneOutput.RecordCount = *createResp.HostedZone.ResourceRecordSetCount
 	}
+
 	if createResp.DelegationSet != nil {
 		managedZoneOutput.NameServers = createResp.DelegationSet.NameServers
 	}
