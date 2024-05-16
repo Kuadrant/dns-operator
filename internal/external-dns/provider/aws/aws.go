@@ -18,6 +18,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -27,7 +28,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/route53"
-	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
 	"sigs.k8s.io/external-dns/endpoint"
@@ -323,10 +323,10 @@ func (p *AWSProvider) Zones(ctx context.Context) (map[string]*route53.HostedZone
 
 	err := p.client.ListHostedZonesPagesWithContext(ctx, &route53.ListHostedZonesInput{}, f)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to list hosted zones")
+		return nil, fmt.Errorf("failed to list hosted zones, %w", err)
 	}
 	if tagErr != nil {
-		return nil, errors.Wrap(tagErr, "failed to list zones tags")
+		return nil, fmt.Errorf("failed to list zones tags, %w", tagErr)
 	}
 
 	for _, zone := range zones {
@@ -351,7 +351,7 @@ func wildcardUnescape(s string) string {
 func (p *AWSProvider) Records(ctx context.Context) (endpoints []*endpoint.Endpoint, _ error) {
 	zones, err := p.Zones(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "records retrieval failed")
+		return nil, fmt.Errorf("records retrieval failed, %w", err)
 	}
 
 	return p.records(ctx, zones)
@@ -443,7 +443,7 @@ func (p *AWSProvider) records(ctx context.Context, zones map[string]*route53.Hos
 		}
 
 		if err := p.client.ListResourceRecordSetsPagesWithContext(ctx, params, f); err != nil {
-			return nil, errors.Wrapf(err, "failed to list resource records sets for zone %s", *z.Id)
+			return nil, fmt.Errorf("failed to list resource records sets for zone %s, %w", *z.Id, err)
 		}
 	}
 
@@ -528,7 +528,7 @@ func (p *AWSProvider) GetDomainFilter() endpoint.DomainFilter {
 func (p *AWSProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
 	zones, err := p.Zones(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to list zones, not applying changes")
+		return fmt.Errorf("failed to list zones, not applying changes, %w", err)
 	}
 
 	updateChanges := p.createUpdateChanges(changes.UpdateNew, changes.UpdateOld)
@@ -555,9 +555,8 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 		log.Info("All records are already up to date, there are no changes for the matching hosted zones")
 	}
 
-	var failedZones []string
+	var zoneErrors []error
 	for z, cs := range changesByZone {
-		var failedUpdate bool
 
 		// group changes into new changes and into changes that failed in a previous iteration and are retried
 		retriedChanges, newChanges := findChangesInQueue(cs, p.failedChangesQueue[z])
@@ -586,29 +585,31 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 				if _, err := p.client.ChangeResourceRecordSetsWithContext(ctx, params); err != nil {
 					log.Errorf("Failure in zone %s [Id: %s] when submitting change batch: %v", aws.StringValue(zones[z].Name), z, err)
 
-					changesByOwnership := groupChangesByNameAndOwnershipRelation(b)
-
-					if len(changesByOwnership) > 1 {
-						log.Debug("Trying to submit change sets one-by-one instead")
-
-						for _, changes := range changesByOwnership {
-							for _, c := range changes {
-								log.Debugf("Desired change: %s %s %s [Id: %s]", *c.Action, *c.ResourceRecordSet.Name, *c.ResourceRecordSet.Type, z)
-							}
-							params.ChangeBatch = &route53.ChangeBatch{
-								Changes: changes.Route53Changes(),
-							}
-							if _, err := p.client.ChangeResourceRecordSetsWithContext(ctx, params); err != nil {
-								failedUpdate = true
-								log.Errorf("Failed submitting change (error: %v), it will be retried in a separate change batch in the next iteration", err)
-								p.failedChangesQueue[z] = append(p.failedChangesQueue[z], changes...)
-							} else {
-								successfulChanges = successfulChanges + len(changes)
-							}
-						}
-					} else {
-						failedUpdate = true
-					}
+					//ToDo mnairn: Make this optional
+					// We don't want parts of the record set being created if it fails to update
+					//changesByOwnership := groupChangesByNameAndOwnershipRelation(b)
+					//
+					//if len(changesByOwnership) > 1 {
+					//	log.Debug("Trying to submit change sets one-by-one instead")
+					//
+					//	for _, changes := range changesByOwnership {
+					//		for _, c := range changes {
+					//			log.Debugf("Desired change: %s %s %s [Id: %s]", *c.Action, *c.ResourceRecordSet.Name, *c.ResourceRecordSet.Type, z)
+					//		}
+					//		params.ChangeBatch = &route53.ChangeBatch{
+					//			Changes: changes.Route53Changes(),
+					//		}
+					//		if _, err := p.client.ChangeResourceRecordSetsWithContext(ctx, params); err != nil {
+					//			failedUpdate = true
+					//			log.Errorf("Failed submitting change (error: %v), it will be retried in a separate change batch in the next iteration", err)
+					//			p.failedChangesQueue[z] = append(p.failedChangesQueue[z], changes...)
+					//		} else {
+					//			successfulChanges = successfulChanges + len(changes)
+					//		}
+					//	}
+					//} else {
+					zoneErrors = append(zoneErrors, fmt.Errorf("Failure in zone %s [Id: %s] when submitting change: %v", aws.StringValue(zones[z].Name), z, err))
+					//}
 				} else {
 					successfulChanges = len(b)
 				}
@@ -624,13 +625,10 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 			}
 		}
 
-		if failedUpdate {
-			failedZones = append(failedZones, z)
-		}
 	}
 
-	if len(failedZones) > 0 {
-		return errors.Errorf("failed to submit all changes for the following zones: %v", failedZones)
+	if len(zoneErrors) > 0 {
+		return errors.Join(zoneErrors...)
 	}
 
 	return nil
@@ -845,7 +843,7 @@ func (p *AWSProvider) tagsForZone(ctx context.Context, zoneID string) (map[strin
 		ResourceId:   aws.String(zoneID),
 	})
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list tags for zone %s", zoneID)
+		return nil, fmt.Errorf("failed to list tags for zone %s, %w", zoneID, err)
 	}
 	tagMap := map[string]string{}
 	for _, tag := range response.ResourceTagSet.Tags {

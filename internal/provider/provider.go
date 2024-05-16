@@ -3,11 +3,18 @@ package provider
 import (
 	"errors"
 	"regexp"
+	"strings"
 
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+)
+
+var (
+	statusCodeRegexp        = regexp.MustCompile(`status code: [^\s]+`)
+	requestIDRegexp         = regexp.MustCompile(`request id: [^\s]+`)
+	saxParseExceptionRegexp = regexp.MustCompile(`Invalid XML ; javax.xml.stream.XMLStreamException: org.xml.sax.SAXParseException; lineNumber: [^\s]+; columnNumber: [^\s]+`)
 )
 
 // Provider knows how to manage DNS zones only as pertains to routing.
@@ -48,7 +55,12 @@ type ManagedZoneOutput struct {
 
 // SanitizeError removes request specific data from error messages in order to make them consistent across multiple similar requests to the provider.  e.g AWS SDK Request ids `request id: 051c860b-9b30-4c19-be1a-1280c3e9fdc4`
 func SanitizeError(err error) error {
-	re := regexp.MustCompile(`request id: [^\s]+`)
-	sanitizedErr := re.ReplaceAllString(err.Error(), "")
+	sanitizedErr := err.Error()
+	sanitizedErr = strings.ReplaceAll(sanitizedErr, "\n", " ")
+	sanitizedErr = strings.ReplaceAll(sanitizedErr, "\t", " ")
+	sanitizedErr = statusCodeRegexp.ReplaceAllString(sanitizedErr, "")
+	sanitizedErr = requestIDRegexp.ReplaceAllString(sanitizedErr, "")
+	sanitizedErr = saxParseExceptionRegexp.ReplaceAllString(sanitizedErr, "")
+	sanitizedErr = strings.TrimSpace(sanitizedErr)
 	return errors.New(sanitizedErr)
 }
