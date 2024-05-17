@@ -5,14 +5,13 @@ package google
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sort"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/google/go-cmp/cmp"
 	dnsv1 "google.golang.org/api/dns/v1"
 
-	"k8s.io/apimachinery/pkg/api/equality"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/internal/provider"
@@ -126,8 +125,8 @@ func TestGoogleDNSProvider_toManagedZoneOutput(t *testing.T) {
 				t.Errorf("GoogleDNSProvider.toManagedZoneOutput() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("GoogleDNSProvider.toManagedZoneOutput() = %v, want %v", got, tt.want)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("GoogleDNSProvider.toManagedZoneOutput() (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -202,6 +201,7 @@ func Test_endpointsFromResourceRecordSets(t *testing.T) {
 					DNSName:    "lb-4ej5le.unittest.google.hcpapps.net",
 					RecordType: "CNAME",
 					RecordTTL:  300,
+					Labels:     externaldnsendpoint.Labels{},
 					Targets: externaldnsendpoint.Targets{
 						"europe-west1.lb-4ej5le.unittest.google.hcpapps.net",
 						"us-east1.lb-4ej5le.unittest.google.hcpapps.net",
@@ -257,6 +257,7 @@ func Test_endpointsFromResourceRecordSets(t *testing.T) {
 					DNSName:    "default.lb-4ej5le.unittest.google.hcpapps.net",
 					RecordType: "CNAME",
 					RecordTTL:  60,
+					Labels:     externaldnsendpoint.Labels{},
 					Targets: externaldnsendpoint.Targets{
 						"2c71gf.lb-4ej5le.unittest.google.hcpapps.net",
 						"lrnse3.lb-4ej5le.unittest.google.hcpapps.net",
@@ -297,6 +298,7 @@ func Test_endpointsFromResourceRecordSets(t *testing.T) {
 					DNSName:    "2c71gf.lb-4ej5le.unittest.google.hcpapps.net",
 					RecordType: "A",
 					RecordTTL:  60,
+					Labels:     externaldnsendpoint.Labels{},
 					Targets: externaldnsendpoint.Targets{
 						"0.0.0.0",
 					},
@@ -307,9 +309,11 @@ func Test_endpointsFromResourceRecordSets(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := endpointsFromResourceRecordSets(tt.args.resourceRecordSets); !equality.Semantic.DeepEqual(got, tt.want) {
-				t.Errorf("endpointsFromResourceRecordSets() = %v, want %v", got, tt.want)
+			got := endpointsFromResourceRecordSets(tt.args.resourceRecordSets)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("endpointsFromResourceRecordSets (-want +got):\n%s", diff)
 			}
+
 		})
 	}
 }
@@ -368,6 +372,7 @@ func Test_endpointsToGoogleFormat(t *testing.T) {
 						"2c71gf.lb-4ej5le.unittest.google.hcpapps.net",
 						"lrnse3.lb-4ej5le.unittest.google.hcpapps.net",
 					},
+					Labels: externaldnsendpoint.Labels{},
 					ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 						externaldnsendpoint.ProviderSpecificProperty{
 							Name:  "routingpolicy",
@@ -430,6 +435,7 @@ func Test_endpointsToGoogleFormat(t *testing.T) {
 						"europe-west1.lb-4ej5le.unittest.google.hcpapps.net",
 						"us-east1.lb-4ej5le.unittest.google.hcpapps.net",
 					},
+					Labels: externaldnsendpoint.Labels{},
 					ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 						externaldnsendpoint.ProviderSpecificProperty{
 							Name:  "routingpolicy",
@@ -616,6 +622,7 @@ func Test_endpointsToGoogleFormat(t *testing.T) {
 						"cluster2.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net",
 					},
 					RecordTTL: 60,
+					Labels:    externaldnsendpoint.Labels{},
 					ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 						externaldnsendpoint.ProviderSpecificProperty{
 							Name:  "routingpolicy",
@@ -638,6 +645,7 @@ func Test_endpointsToGoogleFormat(t *testing.T) {
 						"cluster3.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net",
 					},
 					RecordTTL: 60,
+					Labels:    externaldnsendpoint.Labels{},
 					ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 						externaldnsendpoint.ProviderSpecificProperty{
 							Name:  "routingpolicy",
@@ -657,6 +665,7 @@ func Test_endpointsToGoogleFormat(t *testing.T) {
 						"us-east1.lb-gw1-ns1.loadbalanced.mn.google.hcpapps.net",
 					},
 					RecordTTL: 300,
+					Labels:    externaldnsendpoint.Labels{},
 					ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 						externaldnsendpoint.ProviderSpecificProperty{
 							Name:  "routingpolicy",
@@ -881,8 +890,8 @@ func Test_endpointsToGoogleFormat(t *testing.T) {
 			got := endpointsToGoogleFormat(tt.args.endpoints)
 			sorted(got)
 			sorted(tt.want)
-			if !equality.Semantic.DeepEqual(got, tt.want) {
-				t.Errorf("endpointsToGoogleFormat() = %+v, want %+v", got, tt.want)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("endpointsToGoogleFormat (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -1025,8 +1034,25 @@ func Test_resourceRecordSetFromEndpoint(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := resourceRecordSetFromEndpoint(tt.args.endpoint); !equality.Semantic.DeepEqual(got, tt.want) {
-				t.Errorf("resourceRecordSetFromEndpoint() = %+v, want %+v", got, tt.want)
+			got := resourceRecordSetFromEndpoint(tt.args.endpoint)
+
+			//Sort the routing policy items so the equality check doesn't complain
+			if got.RoutingPolicy != nil {
+				if got.RoutingPolicy.Geo != nil {
+					sort.Slice(got.RoutingPolicy.Geo.Items, func(i, j int) bool {
+						return got.RoutingPolicy.Geo.Items[i].Rrdatas[0] < got.RoutingPolicy.Geo.Items[j].Rrdatas[0]
+					})
+				}
+
+				if got.RoutingPolicy.Wrr != nil {
+					sort.Slice(got.RoutingPolicy.Wrr.Items, func(i, j int) bool {
+						return got.RoutingPolicy.Wrr.Items[i].Rrdatas[0] < got.RoutingPolicy.Wrr.Items[j].Rrdatas[0]
+					})
+				}
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("resourceRecordSetFromEndpoint (-want +got):\n%s", diff)
 			}
 		})
 	}

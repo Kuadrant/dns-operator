@@ -5,12 +5,12 @@ go 1.21
 require (
 	github.com/aws/aws-sdk-go v1.44.311
 	github.com/go-logr/logr v1.3.0
+	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.3.1
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e
 	github.com/linki/instrumented_http v0.3.0
 	github.com/onsi/ginkgo/v2 v2.13.2
 	github.com/onsi/gomega v1.30.0
-	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.17.0
 	github.com/rs/xid v1.5.0
 	github.com/sirupsen/logrus v1.9.3
@@ -50,7 +50,6 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20221212185716-aee1124e3a93 // indirect
 	github.com/google/s2a-go v0.1.4 // indirect
@@ -67,6 +66,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/openshift/api v0.0.0-20230607130528-611114dca681 // indirect
 	github.com/openshift/client-go v0.0.0-20230607134213-3cd0021bbee3 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/projectcontour/contour v1.25.2 // indirect
 	github.com/prometheus/client_model v0.5.0 // indirect
