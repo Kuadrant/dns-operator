@@ -134,8 +134,8 @@ func (im *InMemoryProvider) GetZone(zone string) (Zone, error) {
 }
 
 // Zones returns filtered zones as specified by domain
-func (im *InMemoryProvider) Zones() map[string]string {
-	return im.filter.Zones(im.client.Zones())
+func (im *InMemoryProvider) Zones() (map[string]string, error) {
+	return im.filter.Zones(im.client.Zones()), nil
 }
 
 // Records returns the list of endpoints
@@ -144,7 +144,11 @@ func (im *InMemoryProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, 
 
 	endpoints := make([]*endpoint.Endpoint, 0)
 
-	for zoneID := range im.Zones() {
+	zones, err := im.Zones()
+	if err != nil {
+		return nil, err
+	}
+	for zoneID := range zones {
 		records, err := im.client.Records(zoneID)
 		if err != nil {
 			return nil, err
@@ -166,7 +170,10 @@ func (im *InMemoryProvider) ApplyChanges(ctx context.Context, changes *plan.Chan
 
 	perZoneChanges := map[string]*plan.Changes{}
 
-	zones := im.Zones()
+	zones, err := im.Zones()
+	if err != nil {
+		return err
+	}
 	for zoneID := range zones {
 		perZoneChanges[zoneID] = &plan.Changes{}
 	}
