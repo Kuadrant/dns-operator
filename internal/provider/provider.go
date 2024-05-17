@@ -2,6 +2,7 @@ package provider
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -40,6 +41,13 @@ type Config struct {
 	ZoneTypeFilter externaldnsprovider.ZoneTypeFilter
 	// only consider hosted zones ending with this zone id
 	ZoneIDFilter externaldnsprovider.ZoneIDFilter
+}
+
+func (c Config) GetZoneID() (string, error) {
+	if !c.ZoneIDFilter.IsConfigured() && len(c.ZoneIDFilter.ZoneIDs) != 1 {
+		return "", fmt.Errorf("invalid zone id filter configuration %s", c.ZoneIDFilter)
+	}
+	return c.ZoneIDFilter.ZoneIDs[0], nil
 }
 
 type ProviderSpecificLabels struct {
