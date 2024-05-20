@@ -53,19 +53,27 @@ func (i InMemoryDNSProvider) EnsureManagedZone(mz *v1alpha1.ManagedZone) (provid
 	}
 
 	if zoneID != "" {
-		_, err := i.GetZone(zoneID)
+		z, err := i.GetZone(zoneID)
+		if err != nil {
+			return provider.ManagedZoneOutput{}, err
+		}
 		return provider.ManagedZoneOutput{
 			ID:          zoneID,
+			DNSName:     zoneID,
 			NameServers: nil,
-			RecordCount: 0,
-		}, err
+			RecordCount: int64(len(z)),
+		}, nil
 	}
 	err := i.CreateZone(mz.Spec.DomainName)
+	if err != nil {
+		return provider.ManagedZoneOutput{}, err
+	}
 	return provider.ManagedZoneOutput{
 		ID:          mz.Spec.DomainName,
+		DNSName:     mz.Spec.DomainName,
 		NameServers: nil,
 		RecordCount: 0,
-	}, err
+	}, nil
 }
 
 func (i InMemoryDNSProvider) DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error {

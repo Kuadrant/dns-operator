@@ -688,6 +688,7 @@ func (p *GoogleDNSProvider) toManagedZoneOutput(mz *dnsv1.ManagedZone) (provider
 		nameservers = append(nameservers, &mz.NameServers[i])
 	}
 	managedZoneOutput.ID = zoneID
+	managedZoneOutput.DNSName = strings.ToLower(strings.TrimSuffix(mz.DnsName, "."))
 	managedZoneOutput.NameServers = nameservers
 
 	currentRecords, err := p.getResourceRecordSets(p.ctx, zoneID)

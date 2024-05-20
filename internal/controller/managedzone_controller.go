@@ -41,7 +41,8 @@ const (
 )
 
 var (
-	ErrProvider = errors.New("ProviderError")
+	ErrProvider       = errors.New("ProviderError")
+	ErrZoneValidation = errors.New("ZoneValidationError")
 )
 
 // ManagedZoneReconciler reconciles a ManagedZone object
@@ -111,6 +112,10 @@ func (r *ManagedZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			reason = ErrProvider.Error()
 			message = err.Error()
 		}
+		if errors.Is(err, ErrZoneValidation) {
+			reason = ErrZoneValidation.Error()
+			message = err.Error()
+		}
 		setManagedZoneCondition(managedZone, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, reason, message)
 		statusUpdateErr := r.Status().Update(ctx, managedZone)
 		if statusUpdateErr != nil {
@@ -169,12 +174,19 @@ func (r *ManagedZoneReconciler) publishManagedZone(ctx context.Context, managedZ
 	if err != nil {
 		return fmt.Errorf("failed to get provider for the zone: %v", provider.SanitizeError(err))
 	}
+
 	mzResp, err := dnsProvider.EnsureManagedZone(managedZone)
+	if err != nil {
+		err = fmt.Errorf("%w, The DNS provider failed to ensure the managed zone: %v", ErrProvider, provider.SanitizeError(err))
+	} else if managedZone.Spec.ID != "" && mzResp.DNSName != managedZone.Spec.DomainName {
+		err = fmt.Errorf("%w, zone DNS name '%s' and managed zone domain name '%s' do not match for zone id '%s'", ErrZoneValidation, mzResp.DNSName, managedZone.Spec.DomainName, managedZone.Spec.ID)
+	}
+
 	if err != nil {
 		managedZone.Status.ID = ""
 		managedZone.Status.RecordCount = 0
 		managedZone.Status.NameServers = nil
-		return fmt.Errorf("%w, The DNS provider failed to ensure the managed zone: %v", ErrProvider, provider.SanitizeError(err))
+		return err
 	}
 
 	managedZone.Status.ID = mzResp.ID

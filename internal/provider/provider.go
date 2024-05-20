@@ -49,6 +49,7 @@ type ProviderSpecificLabels struct {
 
 type ManagedZoneOutput struct {
 	ID          string
+	DNSName     string
 	NameServers []*string
 	RecordCount int64
 }
