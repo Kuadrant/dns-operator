@@ -195,6 +195,7 @@ var canonicalHostedZones = map[string]string{
 type Route53API interface {
 	ListResourceRecordSetsPagesWithContext(ctx context.Context, input *route53.ListResourceRecordSetsInput, fn func(resp *route53.ListResourceRecordSetsOutput, lastPage bool) (shouldContinue bool), opts ...request.Option) error
 	ChangeResourceRecordSetsWithContext(ctx context.Context, input *route53.ChangeResourceRecordSetsInput, opts ...request.Option) (*route53.ChangeResourceRecordSetsOutput, error)
+	GetHostedZoneWithContext(ctx aws.Context, input *route53.GetHostedZoneInput, opts ...request.Option) (*route53.GetHostedZoneOutput, error)
 	CreateHostedZoneWithContext(ctx context.Context, input *route53.CreateHostedZoneInput, opts ...request.Option) (*route53.CreateHostedZoneOutput, error)
 	ListHostedZonesPagesWithContext(ctx context.Context, input *route53.ListHostedZonesInput, fn func(resp *route53.ListHostedZonesOutput, lastPage bool) (shouldContinue bool), opts ...request.Option) error
 	ListTagsForResourceWithContext(ctx context.Context, input *route53.ListTagsForResourceInput, opts ...request.Option) (*route53.ListTagsForResourceOutput, error)
@@ -216,12 +217,6 @@ func (cs Route53Changes) Route53Changes() []*route53.Change {
 	return ret
 }
 
-type zonesListCache struct {
-	age      time.Time
-	duration time.Duration
-	zones    map[string]*route53.HostedZone
-}
-
 // AWSProvider is an implementation of Provider for AWS Route53.
 type AWSProvider struct {
 	provider.BaseProvider
@@ -230,18 +225,10 @@ type AWSProvider struct {
 	batchChangeSize      int
 	batchChangeInterval  time.Duration
 	evaluateTargetHealth bool
-	// only consider hosted zones managing domains ending in this suffix
-	domainFilter endpoint.DomainFilter
-	// filter hosted zones by id
-	zoneIDFilter provider.ZoneIDFilter
-	// filter hosted zones by type (e.g. private or public)
-	zoneTypeFilter provider.ZoneTypeFilter
-	// filter hosted zones by tags
-	zoneTagFilter provider.ZoneTagFilter
-	preferCNAME   bool
-	zonesCache    *zonesListCache
+	preferCNAME          bool
 	// queue for collecting changes to submit them in the next iteration, but after all other changes
 	failedChangesQueue map[string]Route53Changes
+	zonesClient        ZonesAPI
 }
 
 // AWSConfig contains configuration to create a new AWS provider.
@@ -259,20 +246,16 @@ type AWSConfig struct {
 }
 
 // NewAWSProvider initializes a new AWS Route53 based Provider.
-func NewAWSProvider(awsConfig AWSConfig, client Route53API) (*AWSProvider, error) {
+func NewAWSProvider(awsConfig AWSConfig, client Route53API, zonesClient ZonesAPI) (*AWSProvider, error) {
 	provider := &AWSProvider{
 		client:               client,
-		domainFilter:         awsConfig.DomainFilter,
-		zoneIDFilter:         awsConfig.ZoneIDFilter,
-		zoneTypeFilter:       awsConfig.ZoneTypeFilter,
-		zoneTagFilter:        awsConfig.ZoneTagFilter,
 		batchChangeSize:      awsConfig.BatchChangeSize,
 		batchChangeInterval:  awsConfig.BatchChangeInterval,
 		evaluateTargetHealth: awsConfig.EvaluateTargetHealth,
 		preferCNAME:          awsConfig.PreferCNAME,
 		dryRun:               awsConfig.DryRun,
-		zonesCache:           &zonesListCache{duration: awsConfig.ZoneCacheDuration},
 		failedChangesQueue:   make(map[string]Route53Changes),
+		zonesClient:          zonesClient,
 	}
 
 	return provider, nil
@@ -280,65 +263,7 @@ func NewAWSProvider(awsConfig AWSConfig, client Route53API) (*AWSProvider, error
 
 // Zones returns the list of hosted zones.
 func (p *AWSProvider) Zones(ctx context.Context) (map[string]*route53.HostedZone, error) {
-	if p.zonesCache.zones != nil && time.Since(p.zonesCache.age) < p.zonesCache.duration {
-		log.Debug("Using cached zones list")
-		return p.zonesCache.zones, nil
-	}
-	log.Debug("Refreshing zones list cache")
-
-	zones := make(map[string]*route53.HostedZone)
-
-	var tagErr error
-	f := func(resp *route53.ListHostedZonesOutput, lastPage bool) (shouldContinue bool) {
-		for _, zone := range resp.HostedZones {
-			if !p.zoneIDFilter.Match(aws.StringValue(zone.Id)) {
-				continue
-			}
-
-			if !p.zoneTypeFilter.Match(zone) {
-				continue
-			}
-
-			if !p.domainFilter.Match(aws.StringValue(zone.Name)) {
-				continue
-			}
-
-			// Only fetch tags if a tag filter was specified
-			if !p.zoneTagFilter.IsEmpty() {
-				tags, err := p.tagsForZone(ctx, *zone.Id)
-				if err != nil {
-					tagErr = err
-					return false
-				}
-				if !p.zoneTagFilter.Match(tags) {
-					continue
-				}
-			}
-
-			zones[aws.StringValue(zone.Id)] = zone
-		}
-
-		return true
-	}
-
-	err := p.client.ListHostedZonesPagesWithContext(ctx, &route53.ListHostedZonesInput{}, f)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list hosted zones, %w", err)
-	}
-	if tagErr != nil {
-		return nil, fmt.Errorf("failed to list zones tags, %w", tagErr)
-	}
-
-	for _, zone := range zones {
-		log.Debugf("Considering zone: %s (domain: %s)", aws.StringValue(zone.Id), aws.StringValue(zone.Name))
-	}
-
-	if p.zonesCache.duration > time.Duration(0) {
-		p.zonesCache.zones = zones
-		p.zonesCache.age = time.Now()
-	}
-
-	return zones, nil
+	return p.zonesClient.GetZones(ctx)
 }
 
 // wildcardUnescape converts \\052.abc back to *.abc
@@ -835,21 +760,6 @@ func groupChangesByNameAndOwnershipRelation(cs Route53Changes) map[string]Route5
 		changesByOwnership[key] = append(changesByOwnership[key], v)
 	}
 	return changesByOwnership
-}
-
-func (p *AWSProvider) tagsForZone(ctx context.Context, zoneID string) (map[string]string, error) {
-	response, err := p.client.ListTagsForResourceWithContext(ctx, &route53.ListTagsForResourceInput{
-		ResourceType: aws.String("hostedzone"),
-		ResourceId:   aws.String(zoneID),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list tags for zone %s, %w", zoneID, err)
-	}
-	tagMap := map[string]string{}
-	for _, tag := range response.ResourceTagSet.Tags {
-		tagMap[*tag.Key] = *tag.Value
-	}
-	return tagMap, nil
 }
 
 func batchChangeSet(cs Route53Changes, batchSize int) []Route53Changes {
