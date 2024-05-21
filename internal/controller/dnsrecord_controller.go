@@ -32,6 +32,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
@@ -186,6 +187,23 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, requeueIn, vali
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.DNSRecord{}).
+		Watches(&v1alpha1.ManagedZone{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+			logger := log.FromContext(ctx)
+			toReconcile := []reconcile.Request{}
+			// list dns records in the maanagedzone namespace as they will be in the same namespace as the zone
+			records := &v1alpha1.DNSRecordList{}
+			if err := mgr.GetClient().List(ctx, records, &client.ListOptions{Namespace: o.GetNamespace()}); err != nil {
+				logger.Error(err, "failed to list dnsrecords ", "namespace", o.GetNamespace())
+				return toReconcile
+			}
+			for _, record := range records.Items {
+				if record.Spec.ManagedZoneRef.Name == o.GetName() {
+					logger.Info("managed zone updated", "managedzone", o.GetNamespace()+"/"+o.GetName(), "enqueuing dnsrecord ", record.GetName())
+					toReconcile = append(toReconcile, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&record)})
+				}
+			}
+			return toReconcile
+		})).
 		Complete(r)
 }
 

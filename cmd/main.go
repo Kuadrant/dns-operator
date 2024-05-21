@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -26,6 +27,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -79,17 +81,33 @@ func main() {
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+	logger := zap.New(zap.UseFlagOptions(&opts))
+	ctrl.SetLogger(logger)
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	var watchNamespaces = "WATCH_NAMESPACES"
+	defaultOptions := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		WebhookServer:          webhook.NewServer(webhook.Options{Port: 9443}),
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "a3f98d6c.kuadrant.io",
-	})
+	}
+
+	if watch := os.Getenv(watchNamespaces); watch != "" {
+		namespaces := strings.Split(watch, ",")
+		logger.Info("watching namespaces set ", watchNamespaces, namespaces)
+		cacheOpts := cache.Options{
+			DefaultNamespaces: map[string]cache.Config{},
+		}
+		for _, ns := range namespaces {
+			cacheOpts.DefaultNamespaces[ns] = cache.Config{}
+		}
+		defaultOptions.Cache = cacheOpts
+
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), defaultOptions)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)

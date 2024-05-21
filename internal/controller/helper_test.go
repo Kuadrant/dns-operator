@@ -47,10 +47,10 @@ func testBuildInMemoryCredentialsSecret(name, ns string) *v1.Secret {
 	}
 }
 
-func getTestEndpoints() []*externaldnsendpoint.Endpoint {
+func getTestEndpoints(dnsName string) []*externaldnsendpoint.Endpoint {
 	return []*externaldnsendpoint.Endpoint{
 		{
-			DNSName: "foo.example.com",
+			DNSName: dnsName,
 			Targets: []string{
 				"127.0.0.1",
 			},

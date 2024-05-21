@@ -39,6 +39,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 	var dnsRecord2 *v1alpha1.DNSRecord
 	var dnsProviderSecret *v1.Secret
 	var managedZone *v1alpha1.ManagedZone
+	var brokenZone *v1alpha1.ManagedZone
 	var testNamespace string
 
 	BeforeEach(func() {
@@ -46,9 +47,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		dnsProviderSecret = testBuildInMemoryCredentialsSecret("inmemory-credentials", testNamespace)
 		managedZone = testBuildManagedZone("mz-example-com", testNamespace, "example.com", dnsProviderSecret.Name)
+		brokenZone = testBuildManagedZone("mz-fix-com", testNamespace, "fix.com", "not-there")
 
 		Expect(k8sClient.Create(ctx, dnsProviderSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, managedZone)).To(Succeed())
+		Expect(k8sClient.Create(ctx, brokenZone)).To(Succeed())
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -57,6 +60,18 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":             Equal(metav1.ConditionTrue),
 					"ObservedGeneration": Equal(managedZone.Generation),
+				})),
+			)
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(brokenZone), brokenZone)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(brokenZone.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"ObservedGeneration": Equal(brokenZone.Generation),
 				})),
 			)
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
@@ -72,7 +87,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: managedZone.Name,
 				},
-				Endpoints: getTestEndpoints(),
+				Endpoints: getTestEndpoints("foo.example.com"),
 			},
 		}
 	})
@@ -90,6 +105,62 @@ var _ = Describe("DNSRecordReconciler", func() {
 			err := k8sClient.Delete(ctx, managedZone)
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 		}
+		if brokenZone != nil {
+			err := k8sClient.Delete(ctx, brokenZone)
+			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+		}
+	})
+
+	It("dns records are reconciled once zone is fixed", func(ctx SpecContext) {
+		dnsRecord = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo.fix.com",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				OwnerID:  "owner1",
+				RootHost: "foo.fix.com",
+				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+					Name: brokenZone.Name,
+				},
+				Endpoints:   getTestEndpoints("foo.fix.com"),
+				HealthCheck: nil,
+			},
+		}
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal("ProviderError"),
+					"Message":            ContainSubstring("The DNS provider failed to ensure the record"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		fixedZone := brokenZone.DeepCopy()
+		fixedZone.Spec.SecretRef.Name = dnsProviderSecret.Name
+		Expect(k8sClient.Update(ctx, fixedZone)).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionTrue),
+					"Reason":             Equal("ProviderSuccess"),
+					"Message":            Equal("Provider ensured the dns record"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
 	It("can delete a record with an invalid managed zone", func(ctx SpecContext) {
@@ -104,7 +175,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
 					Name: "doesnotexist",
 				},
-				Endpoints:   getTestEndpoints(),
+				Endpoints:   getTestEndpoints("foo.example.com"),
 				HealthCheck: nil,
 			},
 		}
