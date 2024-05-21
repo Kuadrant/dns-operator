@@ -28,8 +28,7 @@ import (
 
 type InMemoryDNSProvider struct {
 	*inmemory.InMemoryProvider
-	ctx     context.Context
-	pConfig provider.Config
+	ctx context.Context
 }
 
 var client *inmemory.InMemoryClient
@@ -37,30 +36,16 @@ var client *inmemory.InMemoryClient
 var _ provider.Provider = &InMemoryDNSProvider{}
 
 func NewProviderFromSecret(ctx context.Context, _ *v1.Secret, c provider.Config) (provider.Provider, error) {
-	inmemoryProvider := inmemory.NewInMemoryProvider(inmemory.InMemoryWithClient(client), inmemory.InMemoryWithDomain(c.DomainFilter), inmemory.InMemoryWithLogging())
+	inmemoryProvider := inmemory.NewInMemoryProvider(
+		inmemory.InMemoryWithClient(client),
+		inmemory.InMemoryWithDomain(c.DomainFilter),
+		inmemory.InMemoryWithZoneIDFilter(c.ZoneIDFilter),
+		inmemory.InMemoryWithLogging())
 	p := &InMemoryDNSProvider{
 		InMemoryProvider: inmemoryProvider,
 		ctx:              ctx,
-		pConfig:          c,
 	}
 	return p, nil
-}
-
-// Zones returns filtered zones as specified by domain
-func (p *InMemoryDNSProvider) Zones() (map[string]string, error) {
-	zoneID, err := p.pConfig.GetZoneID()
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = p.GetZone(zoneID)
-	if err != nil {
-		return nil, err
-	}
-
-	zones := make(map[string]string)
-	zones[zoneID] = zoneID
-	return zones, nil
 }
 
 func (p *InMemoryDNSProvider) EnsureManagedZone(mz *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {

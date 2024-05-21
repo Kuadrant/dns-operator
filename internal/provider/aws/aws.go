@@ -57,7 +57,6 @@ type Route53DNSProvider struct {
 	route53Client         *route53.Route53
 	ctx                   context.Context
 	healthCheckReconciler provider.HealthCheckReconciler
-	pConfig               provider.Config
 }
 
 var _ provider.Provider = &Route53DNSProvider{}
@@ -81,8 +80,6 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		sess.Config.WithRegion(string(s.Data["REGION"]))
 	}
 
-	route53Client := route53.New(sess, config)
-
 	awsConfig := externaldnsprovideraws.AWSConfig{
 		DomainFilter:         c.DomainFilter,
 		ZoneIDFilter:         c.ZoneIDFilter,
@@ -95,8 +92,9 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		DryRun:               false,
 		ZoneCacheDuration:    awsZoneCacheDuration,
 	}
-
-	awsProvider, err := externaldnsprovideraws.NewAWSProvider(awsConfig, route53Client)
+	route53Client := route53.New(sess, config)
+	zonesClient := externaldnsprovideraws.NewZonesAPISingleByID(awsConfig, route53Client)
+	awsProvider, err := externaldnsprovideraws.NewAWSProvider(awsConfig, route53Client, zonesClient)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create aws provider: %s", err)
 	}
@@ -107,33 +105,8 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		logger:        log.Log.WithName("aws-route53").WithValues("region", config.Region),
 		route53Client: route53Client,
 		ctx:           ctx,
-		pConfig:       c,
 	}
 	return p, nil
-}
-
-// Zones returns the list of hosted zones.
-func (p *Route53DNSProvider) Zones(ctx context.Context) (map[string]*route53.HostedZone, error) {
-	zoneID, err := p.pConfig.GetZoneID()
-	if err != nil {
-		return nil, err
-	}
-
-	getResp, err := p.route53Client.GetHostedZoneWithContext(ctx, &route53.GetHostedZoneInput{
-		Id: &zoneID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get hosted zone %s, %w", zoneID, err)
-	}
-	if getResp.HostedZone == nil {
-		return nil, fmt.Errorf("aws zone issue. No hosted zone info in response")
-	}
-
-	zone := getResp.HostedZone
-	zones := make(map[string]*route53.HostedZone)
-	zones[aws.StringValue(zone.Id)] = zone
-
-	return zones, nil
 }
 
 // #### External DNS Provider ####

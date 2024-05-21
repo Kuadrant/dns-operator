@@ -147,8 +147,6 @@ type GoogleDNSProvider struct {
 	changesClient changesServiceInterface
 	// The context parameter to be passed for gcloud API calls.
 	ctx context.Context
-
-	pConfig provider.Config
 }
 
 func (p *GoogleDNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
@@ -187,7 +185,6 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		managedZonesClient:       managedZonesService{dnsClient.ManagedZones},
 		changesClient:            changesService{dnsClient.Changes},
 		ctx:                      ctx,
-		pConfig:                  c,
 	}
 
 	return p, nil
@@ -197,10 +194,10 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 
 // Zones returns the list of hosted zones.
 func (p *GoogleDNSProvider) Zones(_ context.Context) (map[string]*dnsv1.ManagedZone, error) {
-	zoneID, err := p.pConfig.GetZoneID()
-	if err != nil {
-		return nil, err
+	if !p.zoneIDFilter.IsConfigured() && len(p.zoneIDFilter.ZoneIDs) != 1 {
+		return nil, fmt.Errorf("invalid zone id filter configuration %s", p.zoneIDFilter)
 	}
+	zoneID := p.zoneIDFilter.ZoneIDs[0]
 
 	zone, err := p.managedZonesClient.Get(p.project, zoneID).Do()
 	if err != nil {
