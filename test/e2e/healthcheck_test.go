@@ -209,6 +209,7 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 					g.Expect(exists).To(BeFalse())
 				}
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
+			// test
 
 		})
 	})
