@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go/service/route53"
+
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -86,7 +88,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	dnsRecord := previous.DeepCopy()
 
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
-		if err = r.ReconcileHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
+		if err = r.ReconcileHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil && !strings.Contains(err.Error(), route53.ErrCodeNoSuchHealthCheck) {
 			return ctrl.Result{}, err
 		}
 		hadChanges, err := r.deleteRecord(ctx, dnsRecord)
