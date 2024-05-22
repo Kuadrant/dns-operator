@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/created-by: dns-operator
     app.kubernetes.io/part-of: dns-operator
     app.kubernetes.io/managed-by: kustomize
-  name: controller-manager-metrics-monitor
+  name: dns-operator-metrics-monitor
   namespace: system
 spec:
   endpoints:
@@ -20,4 +20,4 @@ spec:
       scheme: http
   selector:
     matchLabels:
-      control-plane: controller-manager
+      control-plane: dns-operator-controller-manager
