@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -124,8 +125,19 @@ type GoogleProvider struct {
 	ctx context.Context
 }
 
+// GoogleConfig contains configuration to create a new Google provider.
+type GoogleConfig struct {
+	Project             string
+	DomainFilter        endpoint.DomainFilter
+	ZoneIDFilter        provider.ZoneIDFilter
+	ZoneTypeFilter      provider.ZoneTypeFilter
+	BatchChangeSize     int
+	BatchChangeInterval time.Duration
+	DryRun              bool
+}
+
 // NewGoogleProvider initializes a new Google CloudDNS based Provider.
-func NewGoogleProvider(ctx context.Context, project string, domainFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, batchChangeSize int, batchChangeInterval time.Duration, zoneVisibility string, dryRun bool) (*GoogleProvider, error) {
+func NewGoogleProvider(ctx context.Context, config GoogleConfig) (*GoogleProvider, error) {
 	gcloud, err := google.DefaultClient(ctx, dns.NdevClouddnsReadwriteScope)
 	if err != nil {
 		return nil, err
@@ -143,32 +155,34 @@ func NewGoogleProvider(ctx context.Context, project string, domainFilter endpoin
 		return nil, err
 	}
 
-	if project == "" {
+	return NewGoogleProviderWithService(ctx, config, dnsClient)
+}
+
+func NewGoogleProviderWithService(ctx context.Context, config GoogleConfig, dnsClient *dns.Service) (*GoogleProvider, error) {
+	if config.Project == "" {
 		mProject, mErr := metadata.ProjectID()
 		if mErr != nil {
 			return nil, fmt.Errorf("failed to auto-detect the project id: %w", mErr)
 		}
 		log.Infof("Google project auto-detected: %s", mProject)
-		project = mProject
+		config.Project = mProject
 	}
 
-	zoneTypeFilter := provider.NewZoneTypeFilter(zoneVisibility)
-
-	provider := &GoogleProvider{
-		project:                  project,
-		dryRun:                   dryRun,
-		batchChangeSize:          batchChangeSize,
-		batchChangeInterval:      batchChangeInterval,
-		domainFilter:             domainFilter,
-		zoneTypeFilter:           zoneTypeFilter,
-		zoneIDFilter:             zoneIDFilter,
+	p := &GoogleProvider{
+		project:                  config.Project,
+		dryRun:                   config.DryRun,
+		batchChangeSize:          config.BatchChangeSize,
+		batchChangeInterval:      config.BatchChangeInterval,
+		domainFilter:             config.DomainFilter,
+		zoneTypeFilter:           config.ZoneTypeFilter,
+		zoneIDFilter:             config.ZoneIDFilter,
 		resourceRecordSetsClient: resourceRecordSetsService{dnsClient.ResourceRecordSets},
 		managedZonesClient:       managedZonesService{dnsClient.ManagedZones},
 		changesClient:            changesService{dnsClient.Changes},
 		ctx:                      ctx,
 	}
 
-	return provider, nil
+	return p, nil
 }
 
 // Zones returns the list of hosted zones.
@@ -450,15 +464,74 @@ func separateChange(zones map[string]*dns.ManagedZone, change *dns.Change) map[s
 	return changes
 }
 
-// newRecord returns a RecordSet based on the given endpoint.
+// newRecord returns a RecordSet based on the given endpoint(google format).
 func newRecord(ep *endpoint.Endpoint) *dns.ResourceRecordSet {
-	// TODO(linki): works around appending a trailing dot to TXT records. I think
-	// we should go back to storing DNS names with a trailing dot internally. This
-	// way we can use it has is here and trim it off if it exists when necessary.
+	return resourceRecordSetFromEndpoint(ep)
+}
+
+// resourceRecordSetFromEndpoint converts an endpoint(google format) into a `ResourceRecordSet`.
+func resourceRecordSetFromEndpoint(ep *endpoint.Endpoint) *dns.ResourceRecordSet {
+
+	// no annotation results in a Ttl of 0, default to 300 for backwards-compatibility
+	var ttl int64 = googleRecordTTL
+	if ep.RecordTTL.IsConfigured() {
+		ttl = int64(ep.RecordTTL)
+	}
+
+	rrs := &dns.ResourceRecordSet{
+		Name: provider.EnsureTrailingDot(ep.DNSName),
+		Ttl:  ttl,
+		Type: ep.RecordType,
+	}
+
+	if rp, ok := ep.GetProviderSpecificProperty("routingpolicy"); ok && ep.RecordType != endpoint.RecordTypeTXT {
+		if rp == "geo" {
+			rrs.RoutingPolicy = &dns.RRSetRoutingPolicy{
+				Geo: &dns.RRSetRoutingPolicyGeoPolicy{},
+			}
+			//Map location to targets, can ony have one location the same
+			targetMap := make(map[string][]string)
+			for i := range ep.Targets {
+				if location, ok := ep.GetProviderSpecificProperty(ep.Targets[i]); ok {
+					targetMap[location] = append(targetMap[location], provider.EnsureTrailingDot(ep.Targets[i]))
+				}
+			}
+			for l, t := range targetMap {
+				item := &dns.RRSetRoutingPolicyGeoPolicyGeoPolicyItem{
+					Location: l,
+					Rrdatas:  t,
+				}
+				rrs.RoutingPolicy.Geo.Items = append(rrs.RoutingPolicy.Geo.Items, item)
+			}
+		} else if rp == "weighted" {
+			rrs.RoutingPolicy = &dns.RRSetRoutingPolicy{
+				Wrr: &dns.RRSetRoutingPolicyWrrPolicy{},
+			}
+
+			for i := range ep.Targets {
+				if weightStr, ok := ep.GetProviderSpecificProperty(ep.Targets[i]); ok {
+					weight, err := strconv.ParseFloat(weightStr, 64)
+					if err != nil {
+						weight = 0.0
+					}
+					item := &dns.RRSetRoutingPolicyWrrPolicyWrrPolicyItem{
+						Rrdatas: []string{provider.EnsureTrailingDot(ep.Targets[i])},
+						Weight:  weight,
+					}
+					rrs.RoutingPolicy.Wrr.Items = append(rrs.RoutingPolicy.Wrr.Items, item)
+				}
+			}
+		}
+
+		return rrs
+	}
+
 	targets := make([]string, len(ep.Targets))
 	copy(targets, []string(ep.Targets))
 	if ep.RecordType == endpoint.RecordTypeCNAME {
-		targets[0] = provider.EnsureTrailingDot(targets[0])
+		if len(targets) > 0 {
+			targets[0] = provider.EnsureTrailingDot(targets[0])
+		}
 	}
 
 	if ep.RecordType == endpoint.RecordTypeMX {
@@ -467,16 +540,13 @@ func newRecord(ep *endpoint.Endpoint) *dns.ResourceRecordSet {
 		}
 	}
 
-	// no annotation results in a Ttl of 0, default to 300 for backwards-compatibility
-	var ttl int64 = googleRecordTTL
-	if ep.RecordTTL.IsConfigured() {
-		ttl = int64(ep.RecordTTL)
+	if ep.RecordType == endpoint.RecordTypeSRV {
+		for i, srvRecord := range ep.Targets {
+			targets[i] = provider.EnsureTrailingDot(srvRecord)
+		}
 	}
 
-	return &dns.ResourceRecordSet{
-		Name:    provider.EnsureTrailingDot(ep.DNSName),
-		Rrdatas: targets,
-		Ttl:     ttl,
-		Type:    ep.RecordType,
-	}
+	rrs.Rrdatas = targets
+
+	return rrs
 }
