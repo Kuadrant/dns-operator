@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
@@ -567,7 +569,7 @@ func TestSeparateChanges(t *testing.T) {
 		},
 	}
 
-	changes := separateChange(zones, change)
+	changes := separateChange(context.Background(), zones, change)
 	require.Len(t, changes, 2)
 
 	validateChange(t, changes["foo-example-org"], &dns.Change{
@@ -603,7 +605,7 @@ func TestGoogleBatchChangeSet(t *testing.T) {
 		})
 	}
 
-	batchCs := batchChange(cs, googleDefaultBatchChangeSize)
+	batchCs := batchChange(context.Background(), cs, googleDefaultBatchChangeSize)
 
 	require.Equal(t, 1, len(batchCs))
 
@@ -628,7 +630,7 @@ func TestGoogleBatchChangeSetExceeding(t *testing.T) {
 		})
 	}
 
-	batchCs := batchChange(cs, testLimit)
+	batchCs := batchChange(context.Background(), cs, testLimit)
 
 	require.Equal(t, expectedBatchCount, len(batchCs))
 
@@ -660,9 +662,170 @@ func TestGoogleBatchChangeSetExceedingNameChange(t *testing.T) {
 		Ttl:  20,
 	})
 
-	batchCs := batchChange(cs, testLimit)
+	batchCs := batchChange(context.Background(), cs, testLimit)
 
 	require.Equal(t, 0, len(batchCs))
+}
+
+func Test_resourceRecordSetFromEndpoint(t *testing.T) {
+	type args struct {
+		endpoint *endpoint.Endpoint
+	}
+	tests := []struct {
+		name string
+		args args
+		want *dns.ResourceRecordSet
+	}{
+		{
+			name: "test A record",
+			args: args{
+				endpoint: &endpoint.Endpoint{
+					DNSName:    "2c71gf.lb-4ej5le.unittest.google.hcpapps.net",
+					RecordType: "A",
+					RecordTTL:  60,
+					Targets: endpoint.Targets{
+						"0.0.0.0",
+					},
+					SetIdentifier: "",
+				},
+			},
+			want: &dns.ResourceRecordSet{
+				Name: "2c71gf.lb-4ej5le.unittest.google.hcpapps.net.",
+				Rrdatas: []string{
+					"0.0.0.0",
+				},
+				Ttl:  60,
+				Type: "A",
+			},
+		},
+		{
+			name: "test CNAME with weight and multiple targets",
+			args: args{
+				endpoint: &endpoint.Endpoint{
+					DNSName:    "default.lb-4ej5le.unittest.google.hcpapps.net",
+					RecordType: "CNAME",
+					RecordTTL:  60,
+					Targets: endpoint.Targets{
+						"2c71gf.lb-4ej5le.unittest.google.hcpapps.net",
+						"lrnse3.lb-4ej5le.unittest.google.hcpapps.net",
+					},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						endpoint.ProviderSpecificProperty{
+							Name:  "routingpolicy",
+							Value: "weighted",
+						},
+						endpoint.ProviderSpecificProperty{
+							Name:  "2c71gf.lb-4ej5le.unittest.google.hcpapps.net",
+							Value: "120",
+						},
+						endpoint.ProviderSpecificProperty{
+							Name:  "lrnse3.lb-4ej5le.unittest.google.hcpapps.net",
+							Value: "120",
+						},
+					},
+				},
+			},
+			want: &dns.ResourceRecordSet{
+				Name: "default.lb-4ej5le.unittest.google.hcpapps.net.",
+				RoutingPolicy: &dns.RRSetRoutingPolicy{
+					Wrr: &dns.RRSetRoutingPolicyWrrPolicy{
+						Items: []*dns.RRSetRoutingPolicyWrrPolicyWrrPolicyItem{
+							{
+								Rrdatas: []string{
+									"2c71gf.lb-4ej5le.unittest.google.hcpapps.net.",
+								},
+								Weight: 120,
+							},
+							{
+								Rrdatas: []string{
+									"lrnse3.lb-4ej5le.unittest.google.hcpapps.net.",
+								},
+								Weight: 120,
+							},
+						},
+					},
+				},
+				Ttl:  60,
+				Type: "CNAME",
+			},
+		},
+		{
+			name: "test CNAME with geo and multiple targets",
+			args: args{
+				endpoint: &endpoint.Endpoint{
+					DNSName:    "lb-4ej5le.unittest.google.hcpapps.net",
+					RecordType: "CNAME",
+					RecordTTL:  300,
+					Targets: endpoint.Targets{
+						"europe-west1.lb-4ej5le.unittest.google.hcpapps.net",
+						"us-east1.lb-4ej5le.unittest.google.hcpapps.net",
+					},
+					ProviderSpecific: endpoint.ProviderSpecific{
+						endpoint.ProviderSpecificProperty{
+							Name:  "routingpolicy",
+							Value: "geo",
+						},
+						endpoint.ProviderSpecificProperty{
+							Name:  "europe-west1.lb-4ej5le.unittest.google.hcpapps.net",
+							Value: "europe-west1",
+						},
+						endpoint.ProviderSpecificProperty{
+							Name:  "us-east1.lb-4ej5le.unittest.google.hcpapps.net",
+							Value: "us-east1",
+						},
+					},
+				},
+			},
+			want: &dns.ResourceRecordSet{
+				Name: "lb-4ej5le.unittest.google.hcpapps.net.",
+				RoutingPolicy: &dns.RRSetRoutingPolicy{
+					Geo: &dns.RRSetRoutingPolicyGeoPolicy{
+						EnableFencing: false,
+						Items: []*dns.RRSetRoutingPolicyGeoPolicyGeoPolicyItem{
+							{
+								Location: "europe-west1",
+								Rrdatas: []string{
+									"europe-west1.lb-4ej5le.unittest.google.hcpapps.net.",
+								},
+							},
+							{
+								Location: "us-east1",
+								Rrdatas: []string{
+									"us-east1.lb-4ej5le.unittest.google.hcpapps.net.",
+								},
+							},
+						},
+					},
+				},
+				Ttl:  300,
+				Type: "CNAME",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resourceRecordSetFromEndpoint(tt.args.endpoint)
+
+			//Sort the routing policy items so the equality check doesn't complain
+			if got.RoutingPolicy != nil {
+				if got.RoutingPolicy.Geo != nil {
+					sort.Slice(got.RoutingPolicy.Geo.Items, func(i, j int) bool {
+						return got.RoutingPolicy.Geo.Items[i].Rrdatas[0] < got.RoutingPolicy.Geo.Items[j].Rrdatas[0]
+					})
+				}
+
+				if got.RoutingPolicy.Wrr != nil {
+					sort.Slice(got.RoutingPolicy.Wrr.Items, func(i, j int) bool {
+						return got.RoutingPolicy.Wrr.Items[i].Rrdatas[0] < got.RoutingPolicy.Wrr.Items[j].Rrdatas[0]
+					})
+				}
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("resourceRecordSetFromEndpoint (-want +got):\n%s", diff)
+			}
+		})
+	}
 }
 
 func sortChangesByName(cs *dns.Change) {
@@ -785,6 +948,8 @@ func newGoogleProvider(t *testing.T, domainFilter endpoint.DomainFilter, zoneIDF
 		resourceRecordSetsClient: &mockResourceRecordSetsClient{},
 		managedZonesClient:       &mockManagedZonesClient{},
 		changesClient:            &mockChangesClient{},
+		ctx:                      context.Background(),
+		logger:                   logr.Discard(),
 	}
 
 	createZone(t, provider, &dns.ManagedZone{

@@ -20,15 +20,16 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
+	"github.com/go-logr/logr"
 	"github.com/linki/instrumented_http"
-	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2/google"
-	dns "google.golang.org/api/dns/v1"
-	googleapi "google.golang.org/api/googleapi"
+	"google.golang.org/api/dns/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 
 	"sigs.k8s.io/external-dns/endpoint"
@@ -122,10 +123,23 @@ type GoogleProvider struct {
 	changesClient changesServiceInterface
 	// The context parameter to be passed for gcloud API calls.
 	ctx context.Context
+
+	logger logr.Logger
+}
+
+// GoogleConfig contains configuration to create a new Google provider.
+type GoogleConfig struct {
+	Project             string
+	DomainFilter        endpoint.DomainFilter
+	ZoneIDFilter        provider.ZoneIDFilter
+	ZoneTypeFilter      provider.ZoneTypeFilter
+	BatchChangeSize     int
+	BatchChangeInterval time.Duration
+	DryRun              bool
 }
 
 // NewGoogleProvider initializes a new Google CloudDNS based Provider.
-func NewGoogleProvider(ctx context.Context, project string, domainFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, batchChangeSize int, batchChangeInterval time.Duration, zoneVisibility string, dryRun bool) (*GoogleProvider, error) {
+func NewGoogleProvider(ctx context.Context, config GoogleConfig) (*GoogleProvider, error) {
 	gcloud, err := google.DefaultClient(ctx, dns.NdevClouddnsReadwriteScope)
 	if err != nil {
 		return nil, err
@@ -143,32 +157,36 @@ func NewGoogleProvider(ctx context.Context, project string, domainFilter endpoin
 		return nil, err
 	}
 
-	if project == "" {
+	return NewGoogleProviderWithService(ctx, config, dnsClient)
+}
+
+func NewGoogleProviderWithService(ctx context.Context, config GoogleConfig, dnsClient *dns.Service) (*GoogleProvider, error) {
+	logger := logr.FromContextOrDiscard(ctx)
+	if config.Project == "" {
 		mProject, mErr := metadata.ProjectID()
 		if mErr != nil {
 			return nil, fmt.Errorf("failed to auto-detect the project id: %w", mErr)
 		}
-		log.Infof("Google project auto-detected: %s", mProject)
-		project = mProject
+		logger.Info(fmt.Sprintf("Google project auto-detected: %s", mProject))
+		config.Project = mProject
 	}
 
-	zoneTypeFilter := provider.NewZoneTypeFilter(zoneVisibility)
-
-	provider := &GoogleProvider{
-		project:                  project,
-		dryRun:                   dryRun,
-		batchChangeSize:          batchChangeSize,
-		batchChangeInterval:      batchChangeInterval,
-		domainFilter:             domainFilter,
-		zoneTypeFilter:           zoneTypeFilter,
-		zoneIDFilter:             zoneIDFilter,
+	p := &GoogleProvider{
+		logger:                   logger,
+		project:                  config.Project,
+		dryRun:                   config.DryRun,
+		batchChangeSize:          config.BatchChangeSize,
+		batchChangeInterval:      config.BatchChangeInterval,
+		domainFilter:             config.DomainFilter,
+		zoneTypeFilter:           config.ZoneTypeFilter,
+		zoneIDFilter:             config.ZoneIDFilter,
 		resourceRecordSetsClient: resourceRecordSetsService{dnsClient.ResourceRecordSets},
 		managedZonesClient:       managedZonesService{dnsClient.ManagedZones},
 		changesClient:            changesService{dnsClient.Changes},
 		ctx:                      ctx,
 	}
 
-	return provider, nil
+	return p, nil
 }
 
 // Zones returns the list of hosted zones.
@@ -180,29 +198,29 @@ func (p *GoogleProvider) Zones(ctx context.Context) (map[string]*dns.ManagedZone
 			if zone.PeeringConfig == nil {
 				if p.domainFilter.Match(zone.DnsName) && p.zoneTypeFilter.Match(zone.Visibility) && (p.zoneIDFilter.Match(fmt.Sprintf("%v", zone.Id)) || p.zoneIDFilter.Match(fmt.Sprintf("%v", zone.Name))) {
 					zones[zone.Name] = zone
-					log.Debugf("Matched %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility)
+					p.logger.V(1).Info(fmt.Sprintf("Matched %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
 				} else {
-					log.Debugf("Filtered %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility)
+					p.logger.V(1).Info(fmt.Sprintf("Filtered %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
 				}
 			} else {
-				log.Debugf("Filtered peering zone %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility)
+				p.logger.V(1).Info(fmt.Sprintf("Filtered peering zone %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
 			}
 		}
 
 		return nil
 	}
 
-	log.Debugf("Matching zones against domain filters: %v", p.domainFilter)
+	p.logger.V(1).Info(fmt.Sprintf("Matching zones against domain filters: %v", p.domainFilter))
 	if err := p.managedZonesClient.List(p.project).Pages(ctx, f); err != nil {
 		return nil, err
 	}
 
 	if len(zones) == 0 {
-		log.Warnf("No zones in the project, %s, match domain filters: %v", p.project, p.domainFilter)
+		p.logger.Info(fmt.Sprintf("No zones in the project, %s, match domain filters: %v", p.project, p.domainFilter))
 	}
 
 	for _, zone := range zones {
-		log.Debugf("Considering zone: %s (domain: %s)", zone.Name, zone.DnsName)
+		p.logger.V(1).Info(fmt.Sprintf("Considering zone: %s (domain: %s)", zone.Name, zone.DnsName))
 	}
 
 	return zones, nil
@@ -303,7 +321,7 @@ func (p *GoogleProvider) newFilteredRecords(endpoints []*endpoint.Endpoint) []*d
 // submitChange takes a zone and a Change and sends it to Google.
 func (p *GoogleProvider) submitChange(ctx context.Context, change *dns.Change) error {
 	if len(change.Additions) == 0 && len(change.Deletions) == 0 {
-		log.Info("All records are already up to date")
+		p.logger.Info("All records are already up to date")
 		return nil
 	}
 
@@ -313,16 +331,16 @@ func (p *GoogleProvider) submitChange(ctx context.Context, change *dns.Change) e
 	}
 
 	// separate into per-zone change sets to be passed to the API.
-	changes := separateChange(zones, change)
+	changes := separateChange(ctx, zones, change)
 
 	for zone, change := range changes {
-		for batch, c := range batchChange(change, p.batchChangeSize) {
-			log.Infof("Change zone: %v batch #%d", zone, batch)
+		for batch, c := range batchChange(ctx, change, p.batchChangeSize) {
+			p.logger.V(1).Info(fmt.Sprintf("Change zone: %v batch #%d", zone, batch))
 			for _, del := range c.Deletions {
-				log.Infof("Del records: %s %s %s %d", del.Name, del.Type, del.Rrdatas, del.Ttl)
+				p.logger.V(1).Info(fmt.Sprintf("Del records: %s %s %s %d", del.Name, del.Type, del.Rrdatas, del.Ttl))
 			}
 			for _, add := range c.Additions {
-				log.Infof("Add records: %s %s %s %d", add.Name, add.Type, add.Rrdatas, add.Ttl)
+				p.logger.V(1).Info(fmt.Sprintf("Add records: %s %s %s %d", add.Name, add.Type, add.Rrdatas, add.Ttl))
 			}
 
 			if p.dryRun {
@@ -341,7 +359,8 @@ func (p *GoogleProvider) submitChange(ctx context.Context, change *dns.Change) e
 }
 
 // batchChange separates a zone in multiple transaction.
-func batchChange(change *dns.Change, batchSize int) []*dns.Change {
+func batchChange(ctx context.Context, change *dns.Change, batchSize int) []*dns.Change {
+	logger := logr.FromContextOrDiscard(ctx)
 	changes := []*dns.Change{}
 
 	if batchSize == 0 {
@@ -389,8 +408,8 @@ func batchChange(change *dns.Change, batchSize int) []*dns.Change {
 		totalChangesByName := len(c.additions) + len(c.deletions)
 
 		if totalChangesByName > batchSize {
-			log.Warnf("Total changes for %s exceeds max batch size of %d, total changes: %d", name,
-				batchSize, totalChangesByName)
+			logger.Info(fmt.Sprintf("Total changes for %s exceeds max batch size of %d, total changes: %d", name,
+				batchSize, totalChangesByName))
 			continue
 		}
 
@@ -414,7 +433,8 @@ func batchChange(change *dns.Change, batchSize int) []*dns.Change {
 }
 
 // separateChange separates a multi-zone change into a single change per zone.
-func separateChange(zones map[string]*dns.ManagedZone, change *dns.Change) map[string]*dns.Change {
+func separateChange(ctx context.Context, zones map[string]*dns.ManagedZone, change *dns.Change) map[string]*dns.Change {
+	logger := logr.FromContextOrDiscard(ctx)
 	changes := make(map[string]*dns.Change)
 	zoneNameIDMapper := provider.ZoneIDName{}
 	for _, z := range zones {
@@ -428,7 +448,7 @@ func separateChange(zones map[string]*dns.ManagedZone, change *dns.Change) map[s
 		if zoneName, _ := zoneNameIDMapper.FindZone(provider.EnsureTrailingDot(a.Name)); zoneName != "" {
 			changes[zoneName].Additions = append(changes[zoneName].Additions, a)
 		} else {
-			log.Warnf("No matching zone for record addition: %s %s %s %d", a.Name, a.Type, a.Rrdatas, a.Ttl)
+			logger.Info(fmt.Sprintf("No matching zone for record addition: %s %s %s %d", a.Name, a.Type, a.Rrdatas, a.Ttl))
 		}
 	}
 
@@ -436,7 +456,7 @@ func separateChange(zones map[string]*dns.ManagedZone, change *dns.Change) map[s
 		if zoneName, _ := zoneNameIDMapper.FindZone(provider.EnsureTrailingDot(d.Name)); zoneName != "" {
 			changes[zoneName].Deletions = append(changes[zoneName].Deletions, d)
 		} else {
-			log.Warnf("No matching zone for record deletion: %s %s %s %d", d.Name, d.Type, d.Rrdatas, d.Ttl)
+			logger.Info(fmt.Sprintf("No matching zone for record deletion: %s %s %s %d", d.Name, d.Type, d.Rrdatas, d.Ttl))
 		}
 	}
 
@@ -450,15 +470,74 @@ func separateChange(zones map[string]*dns.ManagedZone, change *dns.Change) map[s
 	return changes
 }
 
-// newRecord returns a RecordSet based on the given endpoint.
+// newRecord returns a RecordSet based on the given endpoint(google format).
 func newRecord(ep *endpoint.Endpoint) *dns.ResourceRecordSet {
-	// TODO(linki): works around appending a trailing dot to TXT records. I think
-	// we should go back to storing DNS names with a trailing dot internally. This
-	// way we can use it has is here and trim it off if it exists when necessary.
+	return resourceRecordSetFromEndpoint(ep)
+}
+
+// resourceRecordSetFromEndpoint converts an endpoint(google format) into a `ResourceRecordSet`.
+func resourceRecordSetFromEndpoint(ep *endpoint.Endpoint) *dns.ResourceRecordSet {
+
+	// no annotation results in a Ttl of 0, default to 300 for backwards-compatibility
+	var ttl int64 = googleRecordTTL
+	if ep.RecordTTL.IsConfigured() {
+		ttl = int64(ep.RecordTTL)
+	}
+
+	rrs := &dns.ResourceRecordSet{
+		Name: provider.EnsureTrailingDot(ep.DNSName),
+		Ttl:  ttl,
+		Type: ep.RecordType,
+	}
+
+	if rp, ok := ep.GetProviderSpecificProperty("routingpolicy"); ok && ep.RecordType != endpoint.RecordTypeTXT {
+		if rp == "geo" {
+			rrs.RoutingPolicy = &dns.RRSetRoutingPolicy{
+				Geo: &dns.RRSetRoutingPolicyGeoPolicy{},
+			}
+			//Map location to targets, can ony have one location the same
+			targetMap := make(map[string][]string)
+			for i := range ep.Targets {
+				if location, ok := ep.GetProviderSpecificProperty(ep.Targets[i]); ok {
+					targetMap[location] = append(targetMap[location], provider.EnsureTrailingDot(ep.Targets[i]))
+				}
+			}
+			for l, t := range targetMap {
+				item := &dns.RRSetRoutingPolicyGeoPolicyGeoPolicyItem{
+					Location: l,
+					Rrdatas:  t,
+				}
+				rrs.RoutingPolicy.Geo.Items = append(rrs.RoutingPolicy.Geo.Items, item)
+			}
+		} else if rp == "weighted" {
+			rrs.RoutingPolicy = &dns.RRSetRoutingPolicy{
+				Wrr: &dns.RRSetRoutingPolicyWrrPolicy{},
+			}
+
+			for i := range ep.Targets {
+				if weightStr, ok := ep.GetProviderSpecificProperty(ep.Targets[i]); ok {
+					weight, err := strconv.ParseFloat(weightStr, 64)
+					if err != nil {
+						weight = 0.0
+					}
+					item := &dns.RRSetRoutingPolicyWrrPolicyWrrPolicyItem{
+						Rrdatas: []string{provider.EnsureTrailingDot(ep.Targets[i])},
+						Weight:  weight,
+					}
+					rrs.RoutingPolicy.Wrr.Items = append(rrs.RoutingPolicy.Wrr.Items, item)
+				}
+			}
+		}
+
+		return rrs
+	}
+
 	targets := make([]string, len(ep.Targets))
 	copy(targets, []string(ep.Targets))
 	if ep.RecordType == endpoint.RecordTypeCNAME {
-		targets[0] = provider.EnsureTrailingDot(targets[0])
+		if len(targets) > 0 {
+			targets[0] = provider.EnsureTrailingDot(targets[0])
+		}
 	}
 
 	if ep.RecordType == endpoint.RecordTypeMX {
@@ -467,16 +546,13 @@ func newRecord(ep *endpoint.Endpoint) *dns.ResourceRecordSet {
 		}
 	}
 
-	// no annotation results in a Ttl of 0, default to 300 for backwards-compatibility
-	var ttl int64 = googleRecordTTL
-	if ep.RecordTTL.IsConfigured() {
-		ttl = int64(ep.RecordTTL)
+	if ep.RecordType == endpoint.RecordTypeSRV {
+		for i, srvRecord := range ep.Targets {
+			targets[i] = provider.EnsureTrailingDot(srvRecord)
+		}
 	}
 
-	return &dns.ResourceRecordSet{
-		Name:    provider.EnsureTrailingDot(ep.DNSName),
-		Rrdatas: targets,
-		Ttl:     ttl,
-		Type:    ep.RecordType,
-	}
+	rrs.Rrdatas = targets
+
+	return rrs
 }

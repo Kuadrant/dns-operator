@@ -112,13 +112,6 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 }
 
 // #### External DNS Provider ####
-func (p *Route53DNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
-	if p.healthCheckReconciler == nil {
-		p.healthCheckReconciler = NewRoute53HealthCheckReconciler(p.route53Client)
-	}
-
-	return p.healthCheckReconciler
-}
 
 func (p *Route53DNSProvider) AdjustEndpoints(endpoints []*externaldnsendpoint.Endpoint) ([]*externaldnsendpoint.Endpoint, error) {
 	endpoints, err := p.AWSProvider.AdjustEndpoints(endpoints)
@@ -254,6 +247,14 @@ func (p *Route53DNSProvider) DeleteManagedZone(zone *v1alpha1.ManagedZone) error
 		return err
 	}
 	return nil
+}
+
+func (p *Route53DNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
+	if p.healthCheckReconciler == nil {
+		p.healthCheckReconciler = NewRoute53HealthCheckReconciler(p.route53Client)
+	}
+
+	return p.healthCheckReconciler
 }
 
 func (*Route53DNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
