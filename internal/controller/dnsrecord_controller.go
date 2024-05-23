@@ -22,8 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/service/route53"
-
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -88,10 +86,14 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	dnsRecord := previous.DeepCopy()
 
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
-		if err = r.ReconcileHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil && !strings.Contains(err.Error(), route53.ErrCodeNoSuchHealthCheck) {
+		logger.Info("BOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOP 1")
+		if err = r.ReconcileHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
+			logger.Info("BOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOP error")
+			logger.Info(err.Error())
 			return ctrl.Result{}, err
 		}
 		hadChanges, err := r.deleteRecord(ctx, dnsRecord)
+		logger.Info("BOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOP 2")
 		if err != nil {
 			logger.Error(err, "Failed to delete DNSRecord")
 			return ctrl.Result{}, err
@@ -100,6 +102,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// in this case we need to queue for validation to ensure DNS Provider retained changes
 		// before removing finalizer and deleting the DNS Record CR
 		if hadChanges {
+			logger.Info("BOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOP had changes")
 			return ctrl.Result{RequeueAfter: validationRequeueTime}, nil
 		}
 
