@@ -32,6 +32,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 )
 
 var _ = Describe("DNSRecordReconciler", func() {
@@ -140,7 +141,6 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
-			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		fixedZone := brokenZone.DeepCopy()
@@ -162,8 +162,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
-
-	It("can delete a record with an invalid managed zone", func(ctx SpecContext) {
+	It("maintains the finalizer on a deleting DNS record with a deleted managed zone", func(ctx SpecContext) {
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "foo.example.com",
@@ -173,7 +172,65 @@ var _ = Describe("DNSRecordReconciler", func() {
 				OwnerID:  "owner1",
 				RootHost: "foo.example.com",
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: "doesnotexist",
+					Name: managedZone.Name,
+				},
+				Endpoints:   getDefaultTestEndpoints(),
+				HealthCheck: nil,
+			},
+		}
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionTrue),
+					"Reason":             Equal("ProviderSuccess"),
+					"Message":            Equal("Provider ensured the dns record"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		Expect(k8sClient.Delete(ctx, managedZone)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal("ManagedZoneError"),
+					"Message":            Equal("The managedZone could not be loaded: ManagedZone.kuadrant.io \"mz-example-com\" not found"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+			g.Expect(common.Owns(managedZone, dnsRecord)).To(BeTrue())
+			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		err := k8sClient.Delete(ctx, dnsRecord)
+		Expect(err).ToNot(HaveOccurred())
+
+		Consistently(func(g Gomega, ctx context.Context) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).ToNot(HaveOccurred())
+		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
+	})
+	It("can delete a record with an valid managed zone", func(ctx SpecContext) {
+		dnsRecord = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo.example.com",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				OwnerID:  "owner1",
+				RootHost: "foo.example.com",
+				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+					Name: managedZone.Name,
 				},
 				Endpoints:   getDefaultTestEndpoints(),
 				HealthCheck: nil,
@@ -187,13 +244,12 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status":             Equal(metav1.ConditionFalse),
-					"Reason":             Equal("ProviderError"),
-					"Message":            Equal("The DNS provider failed to ensure the record: ManagedZone.kuadrant.io \"doesnotexist\" not found"),
+					"Status":             Equal(metav1.ConditionTrue),
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+			g.Expect(common.Owns(managedZone, dnsRecord)).To(BeTrue())
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		err := k8sClient.Delete(ctx, dnsRecord)
@@ -205,7 +261,6 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(err).To(MatchError(ContainSubstring("not found")))
 		}, 5*time.Second, time.Second, ctx).Should(Succeed())
 	})
-
 	It("should have ready condition with status true", func() {
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {

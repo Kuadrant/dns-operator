@@ -3,6 +3,7 @@ package common
 import (
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 )
 
@@ -22,4 +23,13 @@ func RandomizeDuration(variance float64, duration time.Duration) time.Duration {
 	return time.Millisecond * time.Duration(rand.Int63nRange(
 		int64(lowerLimit),
 		int64(upperLimit)))
+}
+
+func Owns(owner, object metav1.Object) bool {
+	for _, ref := range object.GetOwnerReferences() {
+		if ref.UID == owner.GetUID() {
+			return true
+		}
+	}
+	return false
 }
