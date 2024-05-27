@@ -1,0 +1,11 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: ManagedZone
+metadata:
+  name: dev-mz-gcp
+  namespace: ${testDeletableNamespace}
+spec:
+  description: Dev Managed Zone
+  dnsProviderSecretRef:
+    name: gcp-credentials
+  domainName: ${testZoneDomainName}
+  id: ${gcpTestZoneID}

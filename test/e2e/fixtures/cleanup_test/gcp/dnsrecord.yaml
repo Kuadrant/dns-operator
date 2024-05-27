@@ -1,0 +1,21 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: ${testID}
+  namespace: ${testDeletableNamespace}
+spec:
+  healthCheck:
+    endpoint: "/"
+    port: 80
+    protocol: "HTTPS"
+    failureThreshold: 3
+  endpoints:
+    - dnsName: ${testHostname}
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.32.200.1
+  managedZone:
+    name: dev-mz-aws
+  ownerID: 2bq03i
+  rootHost: ${testHostname}

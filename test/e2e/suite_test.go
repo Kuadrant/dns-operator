@@ -41,6 +41,12 @@ const (
 	dnsManagedZoneName      = "TEST_DNS_MANAGED_ZONE_NAME"
 	dnsNamespace            = "TEST_DNS_NAMESPACE"
 	dnsProvider             = "TEST_DNS_PROVIDER"
+	awsZoneID               = "AWS_DNS_PUBLIC_ZONE_ID"
+	awsAccessKey            = "AWS_ACCESS_KEY_ID"
+	awsSecretKey            = "AWS_SECRET_ACCESS_KEY"
+	gcpZoneID               = "GCP_PROJECT_ID"
+	gcpProjectID            = "GCP_PROJECT_ID"
+	gcpSecret               = "GCP_GOOGLE_CREDENTIALS"
 	TestTimeoutMedium       = 10 * time.Second
 	TestTimeoutLong         = 60 * time.Second
 )
@@ -54,6 +60,12 @@ var (
 	testManagedZoneName           string
 	testNamespace                 string
 	testDNSProvider               string
+	testAWSZoneID                 string
+	testAWSAccessKey              string
+	testAWSSecretKey              string
+	testGCPSecret                 string
+	testGCPProjectID              string
+	testGCPZoneID                 string
 	supportedProviders            = []string{"aws", "gcp"}
 	supportedHealthCheckProviders = []string{"aws"}
 	testManagedZone               *v1alpha1.ManagedZone
@@ -125,6 +137,25 @@ func setConfigFromEnvVars() error {
 	if testDNSProvider = os.Getenv(dnsProvider); testDNSProvider == "" {
 		return fmt.Errorf("env variable '%s' must be set", dnsProvider)
 	}
+	if testAWSZoneID = os.Getenv(awsZoneID); testAWSZoneID == "" {
+		return fmt.Errorf("env variable '%s' must be set", awsZoneID)
+	}
+	if testAWSAccessKey = os.Getenv(awsAccessKey); testAWSAccessKey == "" {
+		return fmt.Errorf("env variable '%s' must be set", awsAccessKey)
+	}
+	if testAWSSecretKey = os.Getenv(awsSecretKey); testAWSSecretKey == "" {
+		return fmt.Errorf("env variable '%s' must be set", awsSecretKey)
+	}
+	if testGCPProjectID = os.Getenv(gcpProjectID); testGCPProjectID == "" {
+		return fmt.Errorf("env variable '%s' must be set", gcpProjectID)
+	}
+	if testGCPZoneID = os.Getenv(gcpZoneID); testGCPZoneID == "" {
+		return fmt.Errorf("env variable '%s' must be set", gcpZoneID)
+	}
+	if testGCPSecret = os.Getenv(gcpSecret); testGCPSecret == "" {
+		return fmt.Errorf("env variable '%s' must be set", gcpSecret)
+	}
+
 	if !slices.Contains(supportedProviders, testDNSProvider) {
 		return fmt.Errorf("unsupported provider '%s' must be one of '%s'", testDNSProvider, supportedProviders)
 	}

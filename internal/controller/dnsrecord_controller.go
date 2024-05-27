@@ -38,6 +38,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common"
+	"github.com/kuadrant/dns-operator/internal/common/owner"
 	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
 	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
@@ -239,15 +240,15 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, val
 		For(&v1alpha1.DNSRecord{}).
 		Watches(&v1alpha1.ManagedZone{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
 			logger := log.FromContext(ctx)
-			toReconcile := []reconcile.Request{}
-			// list dns records in the maanagedzone namespace as they will be in the same namespace as the zone
+			var toReconcile []reconcile.Request
+			// list dns records in the managedzone namespace as they will be in the same namespace as the zone
 			records := &v1alpha1.DNSRecordList{}
 			if err := mgr.GetClient().List(ctx, records, &client.ListOptions{Namespace: o.GetNamespace()}); err != nil {
 				logger.Error(err, "failed to list dnsrecords ", "namespace", o.GetNamespace())
 				return toReconcile
 			}
 			for _, record := range records.Items {
-				if record.Spec.ManagedZoneRef.Name == o.GetName() {
+				if owner.Owns(o, &record) {
 					logger.Info("managed zone updated", "managedzone", o.GetNamespace()+"/"+o.GetName(), "enqueuing dnsrecord ", record.GetName())
 					toReconcile = append(toReconcile, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&record)})
 				}
@@ -270,8 +271,7 @@ func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alp
 	}
 	err := r.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone, &client.GetOptions{})
 	if err != nil {
-		// If the Managed Zone isn't found, just continue
-		return false, client.IgnoreNotFound(err)
+		return false, err
 	}
 	managedZoneReady := meta.IsStatusConditionTrue(managedZone.Status.Conditions, "Ready")
 
@@ -305,10 +305,22 @@ func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1al
 			Namespace: dnsRecord.Namespace,
 		},
 	}
+
 	err := r.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone, &client.GetOptions{})
 	if err != nil {
 		return false, err
 	}
+
+	patchFrom := client.MergeFrom(dnsRecord.DeepCopy())
+	err = owner.EnsureOwnerRef(dnsRecord, managedZone, true)
+	if err != nil {
+		return false, err
+	}
+	err = r.Client.Patch(ctx, dnsRecord, patchFrom)
+	if err != nil {
+		return false, err
+	}
+
 	managedZoneReady := meta.IsStatusConditionTrue(managedZone.Status.Conditions, "Ready")
 
 	if !managedZoneReady {
@@ -403,8 +415,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	rootDomainName, _ := strings.CutPrefix(dnsRecord.Spec.RootHost, v1alpha1.WildcardPrefix)
 	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{zoneDomainName})
 	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
-	excludeDNSRecordTypes := []string{}
-
+	var excludeDNSRecordTypes []string
 	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
 	if err != nil {
 		return false, err

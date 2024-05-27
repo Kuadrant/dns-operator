@@ -1,0 +1,11 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: ManagedZone
+metadata:
+  name: dev-mz-aws
+  namespace: ${testDeletableNamespace}
+spec:
+  description: Dev Managed Zone
+  dnsProviderSecretRef:
+    name: aws-credentials
+  domainName: ${testZoneDomainName}
+  id: ${awsTestZoneID}
