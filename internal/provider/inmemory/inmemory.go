@@ -91,5 +91,5 @@ func (i InMemoryDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels 
 // Register this Provider with the provider factory
 func init() {
 	client = inmemory.NewInMemoryClient()
-	provider.RegisterProvider("inmemory", NewProviderFromSecret)
+	provider.RegisterProvider("inmemory", NewProviderFromSecret, false)
 }

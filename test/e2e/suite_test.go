@@ -168,7 +168,11 @@ func EndpointsForHost(ctx context.Context, provider provider.Provider, host stri
 }
 
 func providerForManagedZone(ctx context.Context, mz *v1alpha1.ManagedZone) (provider.Provider, error) {
-	providerFactory := provider.NewFactory(k8sClient)
+	//ToDo mnairn: We have a mismatch in naming GCP vs Google, we need to make this consistent one way or the other
+	providerFactory, err := provider.NewFactory(k8sClient, []string{"aws", "google"})
+	if err != nil {
+		return nil, err
+	}
 	providerConfig := provider.Config{
 		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{mz.Spec.DomainName}),
 		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),

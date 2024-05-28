@@ -8,3 +8,11 @@ resources:
 
 patchesStrategicMerge:
 - manager_config_patch.yaml
+
+patches:
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --provider=aws,google,inmemory
+    target:
+      kind: Deployment

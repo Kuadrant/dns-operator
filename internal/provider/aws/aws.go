@@ -264,5 +264,5 @@ func (*Route53DNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider("aws", NewProviderFromSecret)
+	provider.RegisterProvider("aws", NewProviderFromSecret, true)
 }

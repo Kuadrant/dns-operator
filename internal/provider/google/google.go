@@ -719,5 +719,5 @@ func (p *GoogleDNSProvider) getResourceRecordSets(ctx context.Context, zoneID st
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider("google", NewProviderFromSecret)
+	provider.RegisterProvider("google", NewProviderFromSecret, true)
 }
