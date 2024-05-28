@@ -142,8 +142,13 @@ func (r *Route53HealthCheckReconciler) Reconcile(ctx context.Context, spec provi
 func (r *Route53HealthCheckReconciler) Delete(ctx context.Context, _ *externaldns.Endpoint, probeStatus *v1alpha1.HealthCheckStatusProbe) (provider.HealthCheckResult, error) {
 	healthCheck, found, err := r.findHealthCheck(ctx, probeStatus)
 	if err != nil {
-		return provider.HealthCheckResult{}, err
+		var awserror awserr.Error
+		_ = errors.As(err, &awserror)
+		if awserror.Code() != route53.ErrCodeNoSuchHealthCheck {
+			return provider.HealthCheckResult{}, err
+		}
 	}
+
 	if !found {
 		return provider.NewHealthCheckResult(provider.HealthCheckNoop, "", "", "", metav1.Condition{}), nil
 	}
