@@ -3,6 +3,7 @@ module github.com/kuadrant/dns-operator
 go 1.21
 
 require (
+	cloud.google.com/go/compute/metadata v0.2.3
 	github.com/aws/aws-sdk-go v1.44.311
 	github.com/go-logr/logr v1.3.0
 	github.com/google/go-cmp v0.6.0
@@ -15,6 +16,8 @@ require (
 	github.com/rs/xid v1.5.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.4
+	golang.org/x/net v0.23.0
+	golang.org/x/oauth2 v0.13.0
 	google.golang.org/api v0.134.0
 	k8s.io/api v0.28.3
 	k8s.io/apimachinery v0.28.3
@@ -26,7 +29,6 @@ require (
 
 require (
 	cloud.google.com/go/compute v1.20.1 // indirect
-	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	code.cloudfoundry.org/gofileutils v0.0.0-20170111115228-4d0c80011a0f // indirect
 	github.com/F5Networks/k8s-bigip-ctlr/v2 v2.13.1 // indirect
 	github.com/Masterminds/semver v1.4.2 // indirect
@@ -79,8 +81,6 @@ require (
 	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
-	golang.org/x/net v0.23.0 // indirect
-	golang.org/x/oauth2 v0.13.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/term v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
