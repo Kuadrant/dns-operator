@@ -99,7 +99,8 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	providerFactory := provider.NewFactory(mgr.GetClient())
+	providerFactory, err := provider.NewFactory(mgr.GetClient(), []string{"inmemory"})
+	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ManagedZoneReconciler{
 		Client:          mgr.GetClient(),

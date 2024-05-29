@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -67,6 +68,8 @@ func main() {
 	var minRequeueTime time.Duration
 	var validFor time.Duration
 	var maxRequeueTime time.Duration
+	var providers stringSliceFlags
+
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -81,13 +84,14 @@ func main() {
 	flag.DurationVar(&minRequeueTime, "min-requeue-time", DefaultValidationDuration,
 		"The minimal timeout between calls to the DNS Provider"+
 			"Controls if we commit to the full reconcile loop")
+	flag.Var(&providers, "provider", "DNS Provider(s) to enable. Can be passed multiple times e.g. --provider aws --provider google, or as a comma separated list e.g. --provider aws,gcp")
 	opts := zap.Options{
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
-	logger := zap.New(zap.UseFlagOptions(&opts))
-	ctrl.SetLogger(logger)
+
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	var watchNamespaces = "WATCH_NAMESPACES"
 	defaultOptions := ctrl.Options{
@@ -101,7 +105,7 @@ func main() {
 
 	if watch := os.Getenv(watchNamespaces); watch != "" {
 		namespaces := strings.Split(watch, ",")
-		logger.Info("watching namespaces set ", watchNamespaces, namespaces)
+		setupLog.Info("watching namespaces set ", watchNamespaces, namespaces)
 		cacheOpts := cache.Options{
 			DefaultNamespaces: map[string]cache.Config{},
 		}
@@ -109,7 +113,6 @@ func main() {
 			cacheOpts.DefaultNamespaces[ns] = cache.Config{}
 		}
 		defaultOptions.Cache = cacheOpts
-
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), defaultOptions)
@@ -118,7 +121,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	providerFactory := provider.NewFactory(mgr.GetClient())
+	if len(providers) == 0 {
+		defaultProviders := provider.RegisteredDefaultProviders()
+		if defaultProviders == nil {
+			setupLog.Error(fmt.Errorf("no default providers registered"), "unable to set providers")
+			os.Exit(1)
+		}
+		providers = defaultProviders
+	}
+
+	setupLog.Info("init provider factory", "providers", providers)
+	providerFactory, err := provider.NewFactory(mgr.GetClient(), providers)
+	if err != nil {
+		setupLog.Error(err, "unable to create provider factory")
+		os.Exit(1)
+	}
 
 	if err = (&controller.ManagedZoneReconciler{
 		Client:          mgr.GetClient(),
@@ -153,4 +170,25 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+type stringSliceFlags []string
+
+func (n *stringSliceFlags) String() string {
+	return strings.Join(*n, ",")
+}
+
+func (n *stringSliceFlags) Set(s string) error {
+	if len(s) == 0 {
+		return fmt.Errorf("cannot be empty")
+	}
+	for _, strVal := range strings.Split(s, ",") {
+		for _, v := range *n {
+			if v == strVal {
+				return nil
+			}
+		}
+		*n = append(*n, strVal)
+	}
+	return nil
 }
