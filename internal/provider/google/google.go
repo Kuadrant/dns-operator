@@ -193,38 +193,19 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 // #### External DNS Provider ####
 
 // Zones returns the list of hosted zones.
-func (p *GoogleDNSProvider) Zones(ctx context.Context) (map[string]*dnsv1.ManagedZone, error) {
-	zones := make(map[string]*dnsv1.ManagedZone)
-
-	f := func(resp *dnsv1.ManagedZonesListResponse) error {
-		for _, zone := range resp.ManagedZones {
-			if zone.PeeringConfig == nil {
-				if p.domainFilter.Match(zone.DnsName) && p.zoneTypeFilter.Match(zone.Visibility) && (p.zoneIDFilter.Match(fmt.Sprintf("%v", zone.Id)) || p.zoneIDFilter.Match(fmt.Sprintf("%v", zone.Name))) {
-					zones[zone.Name] = zone
-					p.logger.Info(fmt.Sprintf("Matched %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
-				} else {
-					p.logger.V(1).Info(fmt.Sprintf("Filtered %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
-				}
-			} else {
-				p.logger.V(1).Info(fmt.Sprintf("Filtered peering zone %s (zone: %s) (visibility: %s)", zone.DnsName, zone.Name, zone.Visibility))
-			}
-		}
-
-		return nil
+func (p *GoogleDNSProvider) Zones(_ context.Context) (map[string]*dnsv1.ManagedZone, error) {
+	if !p.zoneIDFilter.IsConfigured() && len(p.zoneIDFilter.ZoneIDs) != 1 {
+		return nil, fmt.Errorf("invalid zone id filter configuration %s", p.zoneIDFilter)
 	}
+	zoneID := p.zoneIDFilter.ZoneIDs[0]
 
-	p.logger.Info(fmt.Sprintf("Matching zones against domain filters: %v", p.domainFilter))
-	if err := p.managedZonesClient.List(p.project).Pages(ctx, f); err != nil {
+	zone, err := p.managedZonesClient.Get(p.project, zoneID).Do()
+	if err != nil {
 		return nil, err
 	}
 
-	if len(zones) == 0 {
-		p.logger.Info(fmt.Sprintf("No zones in the project, %s, match domain filters: %v", p.project, p.domainFilter))
-	}
-
-	for _, zone := range zones {
-		p.logger.Info(fmt.Sprintf("Considering zone: %s (domain: %s)", zone.Name, zone.DnsName))
-	}
+	zones := make(map[string]*dnsv1.ManagedZone)
+	zones[zone.Name] = zone
 
 	return zones, nil
 }

@@ -80,8 +80,6 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		sess.Config.WithRegion(string(s.Data["REGION"]))
 	}
 
-	route53Client := route53.New(sess, config)
-
 	awsConfig := externaldnsprovideraws.AWSConfig{
 		DomainFilter:         c.DomainFilter,
 		ZoneIDFilter:         c.ZoneIDFilter,
@@ -94,8 +92,9 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		DryRun:               false,
 		ZoneCacheDuration:    awsZoneCacheDuration,
 	}
-
-	awsProvider, err := externaldnsprovideraws.NewAWSProvider(awsConfig, route53Client)
+	route53Client := route53.New(sess, config)
+	zonesClient := externaldnsprovideraws.NewZonesAPISingleByID(awsConfig, route53Client)
+	awsProvider, err := externaldnsprovideraws.NewAWSProvider(awsConfig, route53Client, zonesClient)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create aws provider: %s", err)
 	}

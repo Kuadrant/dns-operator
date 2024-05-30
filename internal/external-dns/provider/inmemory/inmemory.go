@@ -19,6 +19,7 @@ package inmemory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -47,6 +48,7 @@ var (
 type InMemoryProvider struct {
 	provider.BaseProvider
 	domain         endpoint.DomainFilter
+	zoneIDFilter   provider.ZoneIDFilter
 	client         *InMemoryClient
 	filter         *filter
 	OnApplyChanges func(ctx context.Context, changes *plan.Changes)
@@ -80,6 +82,13 @@ func InMemoryWithLogging() InMemoryOption {
 func InMemoryWithDomain(domainFilter endpoint.DomainFilter) InMemoryOption {
 	return func(p *InMemoryProvider) {
 		p.domain = domainFilter
+	}
+}
+
+// InMemoryWithZoneIDFilter modifies the id on which dns zones are filtered
+func InMemoryWithZoneIDFilter(zoneIDFilter provider.ZoneIDFilter) InMemoryOption {
+	return func(p *InMemoryProvider) {
+		p.zoneIDFilter = zoneIDFilter
 	}
 }
 
@@ -134,8 +143,20 @@ func (im *InMemoryProvider) GetZone(zone string) (Zone, error) {
 }
 
 // Zones returns filtered zones as specified by domain
-func (im *InMemoryProvider) Zones() map[string]string {
-	return im.filter.Zones(im.client.Zones())
+func (im *InMemoryProvider) Zones() (map[string]string, error) {
+	if !im.zoneIDFilter.IsConfigured() && len(im.zoneIDFilter.ZoneIDs) != 1 {
+		return nil, fmt.Errorf("invalid zone id filter configuration %s", im.zoneIDFilter)
+	}
+	zoneID := im.zoneIDFilter.ZoneIDs[0]
+
+	_, err := im.GetZone(zoneID)
+	if err != nil {
+		return nil, err
+	}
+
+	zones := make(map[string]string)
+	zones[zoneID] = zoneID
+	return zones, nil
 }
 
 // Records returns the list of endpoints
@@ -144,7 +165,11 @@ func (im *InMemoryProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, 
 
 	endpoints := make([]*endpoint.Endpoint, 0)
 
-	for zoneID := range im.Zones() {
+	zones, err := im.Zones()
+	if err != nil {
+		return nil, err
+	}
+	for zoneID := range zones {
 		records, err := im.client.Records(zoneID)
 		if err != nil {
 			return nil, err
@@ -166,7 +191,10 @@ func (im *InMemoryProvider) ApplyChanges(ctx context.Context, changes *plan.Chan
 
 	perZoneChanges := map[string]*plan.Changes{}
 
-	zones := im.Zones()
+	zones, err := im.Zones()
+	if err != nil {
+		return err
+	}
 	for zoneID := range zones {
 		perZoneChanges[zoneID] = &plan.Changes{}
 	}

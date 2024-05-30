@@ -52,7 +52,7 @@ func testInMemoryRecords(t *testing.T) {
 			title:       "no records, no Zone",
 			zone:        "",
 			init:        map[string]Zone{},
-			expectError: false,
+			expectError: true,
 		},
 		{
 			title: "records, wrong Zone",
@@ -61,7 +61,7 @@ func testInMemoryRecords(t *testing.T) {
 				"org": {},
 				"com": {},
 			},
-			expectError: false,
+			expectError: true,
 		},
 		{
 			title: "records, Zone with records",
@@ -101,6 +101,7 @@ func testInMemoryRecords(t *testing.T) {
 			im.client = c
 			f := filter{domain: ti.zone}
 			im.filter = &f
+			im.zoneIDFilter = provider.ZoneIDFilter{ZoneIDs: []string{ti.zone}}
 			records, err := im.Records(context.Background())
 			if ti.expectError {
 				assert.Nil(t, records)
@@ -550,6 +551,7 @@ func testInMemoryApplyChanges(t *testing.T) {
 			c := &InMemoryClient{}
 			c.zones = getInitData()
 			im.client = c
+			im.zoneIDFilter = provider.ZoneIDFilter{ZoneIDs: []string{"org"}}
 
 			err := im.ApplyChanges(context.Background(), ti.changes)
 			if ti.expectError {

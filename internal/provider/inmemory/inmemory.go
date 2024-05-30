@@ -36,7 +36,11 @@ var client *inmemory.InMemoryClient
 var _ provider.Provider = &InMemoryDNSProvider{}
 
 func NewProviderFromSecret(ctx context.Context, _ *v1.Secret, c provider.Config) (provider.Provider, error) {
-	inmemoryProvider := inmemory.NewInMemoryProvider(inmemory.InMemoryWithClient(client), inmemory.InMemoryWithDomain(c.DomainFilter), inmemory.InMemoryWithLogging())
+	inmemoryProvider := inmemory.NewInMemoryProvider(
+		inmemory.InMemoryWithClient(client),
+		inmemory.InMemoryWithDomain(c.DomainFilter),
+		inmemory.InMemoryWithZoneIDFilter(c.ZoneIDFilter),
+		inmemory.InMemoryWithLogging())
 	p := &InMemoryDNSProvider{
 		InMemoryProvider: inmemoryProvider,
 		ctx:              ctx,
@@ -44,7 +48,7 @@ func NewProviderFromSecret(ctx context.Context, _ *v1.Secret, c provider.Config)
 	return p, nil
 }
 
-func (i InMemoryDNSProvider) EnsureManagedZone(mz *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
+func (p *InMemoryDNSProvider) EnsureManagedZone(mz *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
 	var zoneID string
 	if mz.Spec.ID != "" {
 		zoneID = mz.Spec.ID
@@ -53,7 +57,7 @@ func (i InMemoryDNSProvider) EnsureManagedZone(mz *v1alpha1.ManagedZone) (provid
 	}
 
 	if zoneID != "" {
-		z, err := i.GetZone(zoneID)
+		z, err := p.GetZone(zoneID)
 		if err != nil {
 			return provider.ManagedZoneOutput{}, err
 		}
@@ -64,7 +68,7 @@ func (i InMemoryDNSProvider) EnsureManagedZone(mz *v1alpha1.ManagedZone) (provid
 			RecordCount: int64(len(z)),
 		}, nil
 	}
-	err := i.CreateZone(mz.Spec.DomainName)
+	err := p.CreateZone(mz.Spec.DomainName)
 	if err != nil {
 		return provider.ManagedZoneOutput{}, err
 	}
@@ -76,15 +80,15 @@ func (i InMemoryDNSProvider) EnsureManagedZone(mz *v1alpha1.ManagedZone) (provid
 	}, nil
 }
 
-func (i InMemoryDNSProvider) DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error {
-	return i.DeleteZone(managedZone.Spec.DomainName)
+func (p *InMemoryDNSProvider) DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error {
+	return p.DeleteZone(managedZone.Spec.DomainName)
 }
 
-func (i InMemoryDNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
+func (p *InMemoryDNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
 	return &provider.FakeHealthCheckReconciler{}
 }
 
-func (i InMemoryDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
+func (p *InMemoryDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 	return provider.ProviderSpecificLabels{}
 }
 
