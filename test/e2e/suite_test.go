@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"io"
 	"math/big"
 	"net"
 	"os"
@@ -19,7 +18,6 @@ import (
 	"github.com/goombaio/namegenerator"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/sirupsen/logrus"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -68,9 +66,6 @@ func TestAPIs(t *testing.T) {
 
 var _ = BeforeSuite(func(ctx SpecContext) {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
-
-	//Disable default External DNS logger
-	logrus.SetOutput(io.Discard)
 
 	err := setConfigFromEnvVars()
 	Expect(err).NotTo(HaveOccurred())
