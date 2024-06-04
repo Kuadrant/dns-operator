@@ -53,7 +53,9 @@ kubectl create secret generic my-test-gcp-credentials \
 
 
 #### Google Cloud DNS Access permissions required
-See: https://cloud.google.com/dns/docs/access-control#dns.admin
+See: 
+
+https://cloud.google.com/dns/docs/access-control#dns.admin
 
 
 ### Where to create the Secrets
