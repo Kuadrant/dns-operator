@@ -19,8 +19,6 @@ package plan
 import (
 	"sort"
 
-	log "github.com/sirupsen/logrus"
-
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
@@ -94,7 +92,6 @@ func (s PerResource) ResolveRecordTypes(key planKey, row *planTableRow) map[stri
 
 	// conflict was found, remove candiates of non-preferred record types
 	if cname && other {
-		log.Infof("Domain %s contains conflicting record type candidates; discarding CNAME record", key.dnsName)
 		records := map[string]*domainEndpoints{}
 		for recordType, recs := range row.records {
 			// policy is to prefer the non-CNAME record types when a conflict is found

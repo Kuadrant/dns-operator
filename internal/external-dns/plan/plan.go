@@ -17,12 +17,13 @@ limitations under the License.
 package plan
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/go-logr/logr"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	externaldnsplan "sigs.k8s.io/external-dns/plan"
@@ -64,6 +65,27 @@ type Plan struct {
 	Errors []error
 	// RootHost the host dns name being managed by the set of records in the plan.
 	RootHost *string
+
+	logger logr.Logger
+}
+
+// NewPlan returns new Plan object
+func NewPlan(ctx context.Context, current []*endpoint.Endpoint, previous []*endpoint.Endpoint, desired []*endpoint.Endpoint, policies []Policy, domainFilter endpoint.MatchAllDomainFilters, managedRecords []string, excludeRecords []string, ownerID string, rootHost *string) *Plan {
+	logger := logr.FromContextOrDiscard(ctx)
+	logger.WithName("plan").V(1).Info("initializing plan", "ownerID", ownerID, "rooHost", rootHost, "policies", policies, "domainFilter", domainFilter)
+
+	return &Plan{
+		Current:        current,
+		Previous:       previous,
+		Desired:        desired,
+		Policies:       policies,
+		DomainFilter:   domainFilter,
+		ManagedRecords: managedRecords,
+		ExcludeRecords: excludeRecords,
+		OwnerID:        ownerID,
+		RootHost:       rootHost,
+		logger:         logger,
+	}
 }
 
 // planKey is a key for a row in `planTable`.
@@ -190,13 +212,13 @@ func (p *Plan) Calculate() *Plan {
 		p.DomainFilter = append(p.DomainFilter, &rootDomainFilter)
 	}
 
-	for _, current := range filterRecordsForPlan(p.Current, p.DomainFilter, p.ManagedRecords, p.ExcludeRecords) {
+	for _, current := range p.filterRecordsForPlan(p.Current) {
 		t.addCurrent(current)
 	}
-	for _, previous := range filterRecordsForPlan(p.Previous, p.DomainFilter, p.ManagedRecords, p.ExcludeRecords) {
+	for _, previous := range p.filterRecordsForPlan(p.Previous) {
 		t.addPrevious(previous)
 	}
-	for _, desired := range filterRecordsForPlan(p.Desired, p.DomainFilter, p.ManagedRecords, p.ExcludeRecords) {
+	for _, desired := range p.filterRecordsForPlan(p.Desired) {
 		t.addCandidate(desired)
 	}
 
@@ -208,6 +230,7 @@ func (p *Plan) Calculate() *Plan {
 		updates:          []*endpointUpdate{},
 		dnsNameOwners:    map[string][]string{},
 		errors:           []error{},
+		logger:           p.logger,
 	}
 
 	for key, row := range t.rows {
@@ -347,6 +370,30 @@ func (p *Plan) Calculate() *Plan {
 	return plan
 }
 
+// filterRecordsForPlan removes records that are not relevant to the planner.
+// Currently, this just removes TXT records to prevent them from being
+// deleted erroneously by the planner (only the TXT registry should do this.)
+//
+// Per RFC 1034, CNAME records conflict with all other records - it is the
+// only record with this property. The behavior of the planner may need to be
+// made more sophisticated to codify this.
+func (p *Plan) filterRecordsForPlan(records []*endpoint.Endpoint) []*endpoint.Endpoint {
+	filtered := []*endpoint.Endpoint{}
+
+	for _, record := range records {
+		// Ignore records that do not match the plan domain filter
+		if !p.DomainFilter.Match(record.DNSName) {
+			p.logger.V(1).Info(fmt.Sprintf("ignoring record %s that does not match domain filter", record.DNSName))
+			continue
+		}
+		if IsManagedRecord(record.RecordType, p.ManagedRecords, p.ExcludeRecords) {
+			filtered = append(filtered, record)
+		}
+	}
+
+	return filtered
+}
+
 func inheritOwner(from, to *endpoint.Endpoint) {
 	if to.Labels == nil {
 		to.Labels = map[string]string{}
@@ -375,6 +422,7 @@ type managedRecordSetChanges struct {
 	updates          []*endpointUpdate
 	dnsNameOwners    map[string][]string
 	errors           []error
+	logger           logr.Logger
 }
 
 func (e *managedRecordSetChanges) Calculate() *externaldnsplan.Changes {
@@ -425,14 +473,14 @@ func (e *managedRecordSetChanges) validTargets(ep *endpoint.Endpoint) (err error
 // calculateDesired changes the value of update.desired based on all information (desired/current/previous) available about the endpoint.
 func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 	if e.ownerID == "" {
-		log.Debugf("skipping update of desired for %s, no ownerID set for plan", update.desired.DNSName)
+		e.logger.V(1).Info(fmt.Sprintf("skipping update of desired for %s, no ownerID set for plan", update.desired.DNSName))
 		return
 	}
 
 	// If the record is using a `SetIdentifier` the provider will only ever allow a single target value for any record type (A or CNAME)
 	// In the case just return and the desired target value will be used (i.e. AWS route53 geo or weighted records)
 	if update.current.SetIdentifier != "" {
-		log.Debugf("skipping update of desired for %s, has SetIdentifier", update.desired.DNSName)
+		e.logger.V(1).Info(fmt.Sprintf("skipping update of desired for %s, has SetIdentifier", update.desired.DNSName))
 		return
 	}
 
@@ -457,7 +505,7 @@ func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 
 		//ToDo manirn Check this is actually needed, and if it is add a test that requires it to be here
 		if len(desiredCopy.Targets) <= 1 {
-			log.Debugf("skipping check for managed dnsNames for CNAME with single target value")
+			e.logger.V(1).Info("skipping check for managed dnsNames for CNAME with single target value")
 			return
 		}
 
@@ -469,9 +517,9 @@ func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 		for idx := range desiredCopy.Targets {
 			t := desiredCopy.Targets[idx]
 			tDNSName := normalizeDNSName(t)
-			log.Debugf("checking target %s owners", t)
+			e.logger.V(1).Info(fmt.Sprintf("checking target %s owners", t))
 			if tOwners, tIsManaged := e.dnsNameOwners[tDNSName]; tIsManaged {
-				log.Debugf("target dnsName %s is managed and has owners %v", tDNSName, tOwners)
+				e.logger.V(1).Info(fmt.Sprintf("target dnsName %s is managed and has owners %v", tDNSName, tOwners))
 
 				// If the target has no owners we can just remove it
 				if len(tOwners) == 0 {
@@ -570,30 +618,6 @@ func shouldUpdateProviderSpecific(desired, current *endpoint.Endpoint) bool {
 	}
 
 	return len(desiredProperties) > 0
-}
-
-// filterRecordsForPlan removes records that are not relevant to the planner.
-// Currently this just removes TXT records to prevent them from being
-// deleted erroneously by the planner (only the TXT registry should do this.)
-//
-// Per RFC 1034, CNAME records conflict with all other records - it is the
-// only record with this property. The behavior of the planner may need to be
-// made more sophisticated to codify this.
-func filterRecordsForPlan(records []*endpoint.Endpoint, domainFilter endpoint.MatchAllDomainFilters, managedRecords, excludeRecords []string) []*endpoint.Endpoint {
-	filtered := []*endpoint.Endpoint{}
-
-	for _, record := range records {
-		// Ignore records that do not match the domain filter provided
-		if !domainFilter.Match(record.DNSName) {
-			log.Debugf("ignoring record %s that does not match domain filter", record.DNSName)
-			continue
-		}
-		if IsManagedRecord(record.RecordType, managedRecords, excludeRecords) {
-			filtered = append(filtered, record)
-		}
-	}
-
-	return filtered
 }
 
 // normalizeDNSName converts a DNS name to a canonical form, so that we can use string equality

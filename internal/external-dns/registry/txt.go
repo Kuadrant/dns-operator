@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/go-logr/logr"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
@@ -56,10 +56,15 @@ type TXTRegistry struct {
 	// encrypt text records
 	txtEncryptEnabled bool
 	txtEncryptAESKey  []byte
+
+	logger logr.Logger
 }
 
 // NewTXTRegistry returns new TXTRegistry object
-func NewTXTRegistry(provider provider.Provider, txtPrefix, txtSuffix, ownerID string, cacheInterval time.Duration, txtWildcardReplacement string, managedRecordTypes, excludeRecordTypes []string, txtEncryptEnabled bool, txtEncryptAESKey []byte) (*TXTRegistry, error) {
+func NewTXTRegistry(ctx context.Context, provider provider.Provider, txtPrefix, txtSuffix, ownerID string, cacheInterval time.Duration, txtWildcardReplacement string, managedRecordTypes, excludeRecordTypes []string, txtEncryptEnabled bool, txtEncryptAESKey []byte) (*TXTRegistry, error) {
+	logger := logr.FromContextOrDiscard(ctx)
+	logger.WithName("registry").V(1).Info("initializing TXT registry", "ownerID", ownerID, "txtPrefix", txtPrefix, "txtSuffix", txtSuffix)
+
 	if ownerID == "" {
 		return nil, errors.New("owner id cannot be empty")
 	}
@@ -88,6 +93,7 @@ func NewTXTRegistry(provider provider.Provider, txtPrefix, txtSuffix, ownerID st
 		excludeRecordTypes:  excludeRecordTypes,
 		txtEncryptEnabled:   txtEncryptEnabled,
 		txtEncryptAESKey:    txtEncryptAESKey,
+		logger:              logger,
 	}, nil
 }
 
@@ -110,7 +116,7 @@ func (im *TXTRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, error
 	// If we have the zones cached AND we have refreshed the cache since the
 	// last given interval, then just use the cached results.
 	if im.recordsCache != nil && time.Since(im.recordsCacheRefreshTime) < im.cacheInterval {
-		log.Debug("Using cached records.")
+		im.logger.V(1).Info("Using cached records")
 		return im.recordsCache, nil
 	}
 

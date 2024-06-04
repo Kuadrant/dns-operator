@@ -19,9 +19,10 @@ package inmemory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/go-logr/logr"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/external-dns/endpoint"
@@ -46,6 +47,7 @@ var (
 // initialized as dns provider with no records
 type InMemoryProvider struct {
 	provider.BaseProvider
+	logger         logr.Logger
 	domain         endpoint.DomainFilter
 	client         *InMemoryClient
 	filter         *filter
@@ -61,16 +63,16 @@ func InMemoryWithLogging() InMemoryOption {
 	return func(p *InMemoryProvider) {
 		p.OnApplyChanges = func(ctx context.Context, changes *plan.Changes) {
 			for _, v := range changes.Create {
-				log.Infof("CREATE: %v", v)
+				p.logger.Info(fmt.Sprintf("CREATE: %v", v))
 			}
 			for _, v := range changes.UpdateOld {
-				log.Infof("UPDATE (old): %v", v)
+				p.logger.Info(fmt.Sprintf("UPDATE (old): %v", v))
 			}
 			for _, v := range changes.UpdateNew {
-				log.Infof("UPDATE (new): %v", v)
+				p.logger.Info(fmt.Sprintf("UPDATE (new): %v", v))
 			}
 			for _, v := range changes.Delete {
-				log.Infof("DELETE: %v", v)
+				p.logger.Info(fmt.Sprintf("DELETE: %v", v))
 			}
 		}
 	}
@@ -88,7 +90,7 @@ func InMemoryInitZones(zones []string) InMemoryOption {
 	return func(p *InMemoryProvider) {
 		for _, z := range zones {
 			if err := p.CreateZone(z); err != nil {
-				log.Warnf("Unable to initialize zones for inmemory provider")
+				p.logger.Info("Unable to initialize zones for inmemory provider")
 			}
 		}
 	}
@@ -102,8 +104,10 @@ func InMemoryWithClient(memoryClient *InMemoryClient) InMemoryOption {
 }
 
 // NewInMemoryProvider returns InMemoryProvider DNS provider interface implementation
-func NewInMemoryProvider(opts ...InMemoryOption) *InMemoryProvider {
+func NewInMemoryProvider(ctx context.Context, opts ...InMemoryOption) *InMemoryProvider {
+	logger := logr.FromContextOrDiscard(ctx)
 	im := &InMemoryProvider{
+		logger:         logger,
 		filter:         &filter{},
 		OnApplyChanges: func(ctx context.Context, changes *plan.Changes) {},
 		OnRecords:      func() {},

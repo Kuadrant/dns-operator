@@ -28,7 +28,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/route53"
-	log "github.com/sirupsen/logrus"
+	"github.com/go-logr/logr"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
@@ -226,6 +226,7 @@ type zonesListCache struct {
 type AWSProvider struct {
 	provider.BaseProvider
 	client               Route53API
+	logger               logr.Logger
 	dryRun               bool
 	batchChangeSize      int
 	batchChangeInterval  time.Duration
@@ -259,9 +260,11 @@ type AWSConfig struct {
 }
 
 // NewAWSProvider initializes a new AWS Route53 based Provider.
-func NewAWSProvider(awsConfig AWSConfig, client Route53API) (*AWSProvider, error) {
+func NewAWSProvider(ctx context.Context, awsConfig AWSConfig, client Route53API) (*AWSProvider, error) {
+	logger := logr.FromContextOrDiscard(ctx)
 	provider := &AWSProvider{
 		client:               client,
+		logger:               logger,
 		domainFilter:         awsConfig.DomainFilter,
 		zoneIDFilter:         awsConfig.ZoneIDFilter,
 		zoneTypeFilter:       awsConfig.ZoneTypeFilter,
@@ -281,10 +284,10 @@ func NewAWSProvider(awsConfig AWSConfig, client Route53API) (*AWSProvider, error
 // Zones returns the list of hosted zones.
 func (p *AWSProvider) Zones(ctx context.Context) (map[string]*route53.HostedZone, error) {
 	if p.zonesCache.zones != nil && time.Since(p.zonesCache.age) < p.zonesCache.duration {
-		log.Debug("Using cached zones list")
+		p.logger.V(1).Info("Using cached zones list")
 		return p.zonesCache.zones, nil
 	}
-	log.Debug("Refreshing zones list cache")
+	p.logger.V(1).Info("Refreshing zones list cache")
 
 	zones := make(map[string]*route53.HostedZone)
 
@@ -330,7 +333,7 @@ func (p *AWSProvider) Zones(ctx context.Context) (map[string]*route53.HostedZone
 	}
 
 	for _, zone := range zones {
-		log.Debugf("Considering zone: %s (domain: %s)", aws.StringValue(zone.Id), aws.StringValue(zone.Name))
+		p.logger.V(1).Info(fmt.Sprintf("Considering zone: %s (domain: %s)", aws.StringValue(zone.Id), aws.StringValue(zone.Name)))
 	}
 
 	if p.zonesCache.duration > time.Duration(0) {
@@ -513,14 +516,14 @@ func (p *AWSProvider) createUpdateChanges(newEndpoints, oldEndpoints []*endpoint
 func (p *AWSProvider) GetDomainFilter() endpoint.DomainFilter {
 	zones, err := p.Zones(context.Background())
 	if err != nil {
-		log.Errorf("failed to list zones: %v", err)
+		p.logger.Error(err, "failed to list zones")
 		return endpoint.DomainFilter{}
 	}
 	zoneNames := []string(nil)
 	for _, z := range zones {
 		zoneNames = append(zoneNames, aws.StringValue(z.Name), "."+aws.StringValue(z.Name))
 	}
-	log.Infof("Applying provider record filter for domains: %v", zoneNames)
+	p.logger.Info(fmt.Sprintf("Applying provider record filter for domains: %v", zoneNames))
 	return endpoint.NewDomainFilter(zoneNames)
 }
 
@@ -545,14 +548,14 @@ func (p *AWSProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) e
 func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes, zones map[string]*route53.HostedZone) error {
 	// return early if there is nothing to change
 	if len(changes) == 0 {
-		log.Info("All records are already up to date")
+		p.logger.Info("All records are already up to date")
 		return nil
 	}
 
 	// separate into per-zone change sets to be passed to the API.
-	changesByZone := changesByZone(zones, changes)
+	changesByZone := p.changesByZone(zones, changes)
 	if len(changesByZone) == 0 {
-		log.Info("All records are already up to date, there are no changes for the matching hosted zones")
+		p.logger.Info("All records are already up to date, there are no changes for the matching hosted zones")
 	}
 
 	var zoneErrors []error
@@ -562,14 +565,14 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 		retriedChanges, newChanges := findChangesInQueue(cs, p.failedChangesQueue[z])
 		p.failedChangesQueue[z] = nil
 
-		batchCs := append(batchChangeSet(newChanges, p.batchChangeSize), batchChangeSet(retriedChanges, p.batchChangeSize)...)
+		batchCs := append(p.batchChangeSet(newChanges, p.batchChangeSize), p.batchChangeSet(retriedChanges, p.batchChangeSize)...)
 		for i, b := range batchCs {
 			if len(b) == 0 {
 				continue
 			}
 
 			for _, c := range b {
-				log.Infof("Desired change: %s %s %s [Id: %s]", *c.Action, *c.ResourceRecordSet.Name, *c.ResourceRecordSet.Type, z)
+				p.logger.Info(fmt.Sprintf("Desired change: %s %s %s [Id: %s]", *c.Action, *c.ResourceRecordSet.Name, *c.ResourceRecordSet.Type, z))
 			}
 
 			if !p.dryRun {
@@ -583,7 +586,7 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 				successfulChanges := 0
 
 				if _, err := p.client.ChangeResourceRecordSetsWithContext(ctx, params); err != nil {
-					log.Errorf("Failure in zone %s [Id: %s] when submitting change batch: %v", aws.StringValue(zones[z].Name), z, err)
+					p.logger.Error(err, fmt.Sprintf("Failure in zone %s [Id: %s] when submitting change batch", aws.StringValue(zones[z].Name), z))
 
 					//ToDo mnairn: Make this optional
 					// We don't want parts of the record set being created if it fails to update
@@ -616,7 +619,7 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 
 				if successfulChanges > 0 {
 					// z is the R53 Hosted Zone ID already as aws.StringValue
-					log.Infof("%d record(s) in zone %s [Id: %s] were successfully updated", successfulChanges, aws.StringValue(zones[z].Name), z)
+					p.logger.Info(fmt.Sprintf("%d record(s) in zone %s [Id: %s] were successfully updated", successfulChanges, aws.StringValue(zones[z].Name), z))
 				}
 
 				if i != len(batchCs)-1 {
@@ -678,15 +681,15 @@ func (p *AWSProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoi
 				}
 			}
 		} else if ep.RecordType == endpoint.RecordTypeCNAME {
-			alias = useAlias(ep, p.preferCNAME)
-			log.Debugf("Modifying endpoint: %v, setting %s=%v", ep, providerSpecificAlias, alias)
+			alias = p.useAlias(ep, p.preferCNAME)
+			p.logger.V(1).Info(fmt.Sprintf("Modifying endpoint: %v, setting %s=%v", ep, providerSpecificAlias, alias))
 			ep.SetProviderSpecificProperty(providerSpecificAlias, strconv.FormatBool(alias))
 		}
 
 		if alias {
 			ep.RecordType = endpoint.RecordTypeA
 			if ep.RecordTTL.IsConfigured() {
-				log.Debugf("Modifying endpoint: %v, setting ttl=%v", ep, recordTTL)
+				p.logger.V(1).Info(fmt.Sprintf("Modifying endpoint: %v, setting ttl=%v", ep, recordTTL))
 				ep.RecordTTL = recordTTL
 			}
 			if prop, ok := ep.GetProviderSpecificProperty(providerSpecificEvaluateTargetHealth); ok {
@@ -717,7 +720,7 @@ func (p *AWSProvider) newChange(action string, ep *endpoint.Endpoint) (*Route53C
 		},
 	}
 	dualstack := false
-	if targetHostedZone := isAWSAlias(ep); targetHostedZone != "" {
+	if targetHostedZone := p.isAWSAlias(ep); targetHostedZone != "" {
 		evalTargetHealth := p.evaluateTargetHealth
 		if prop, ok := ep.GetProviderSpecificProperty(providerSpecificEvaluateTargetHealth); ok {
 			evalTargetHealth = prop == "true"
@@ -753,7 +756,7 @@ func (p *AWSProvider) newChange(action string, ep *endpoint.Endpoint) (*Route53C
 		if prop, ok := ep.GetProviderSpecificProperty(providerSpecificWeight); ok {
 			weight, err := strconv.ParseInt(prop, 10, 64)
 			if err != nil {
-				log.Errorf("Failed parsing value of %s: %s: %v; using weight of 0", providerSpecificWeight, prop, err)
+				p.logger.Error(err, fmt.Sprintf("Failed parsing value of %s: %s; using weight of 0", providerSpecificWeight, prop))
 				weight = 0
 			}
 			change.ResourceRecordSet.Weight = aws.Int64(weight)
@@ -852,7 +855,7 @@ func (p *AWSProvider) tagsForZone(ctx context.Context, zoneID string) (map[strin
 	return tagMap, nil
 }
 
-func batchChangeSet(cs Route53Changes, batchSize int) []Route53Changes {
+func (p *AWSProvider) batchChangeSet(cs Route53Changes, batchSize int) []Route53Changes {
 	if len(cs) <= batchSize {
 		res := sortChangesByActionNameType(cs)
 		return []Route53Changes{res}
@@ -872,7 +875,7 @@ func batchChangeSet(cs Route53Changes, batchSize int) []Route53Changes {
 	for k, name := range names {
 		v := changesByOwnership[name]
 		if len(v) > batchSize {
-			log.Warnf("Total changes for %v exceeds max batch size of %d, total changes: %d; changes will not be performed", k, batchSize, len(v))
+			p.logger.Info(fmt.Sprintf("Total changes for %v exceeds max batch size of %d, total changes: %d; changes will not be performed", k, batchSize, len(v)))
 			continue
 		}
 
@@ -914,7 +917,7 @@ func sortChangesByActionNameType(cs Route53Changes) Route53Changes {
 }
 
 // changesByZone separates a multi-zone change into a single change per zone.
-func changesByZone(zones map[string]*route53.HostedZone, changeSet Route53Changes) map[string]Route53Changes {
+func (p *AWSProvider) changesByZone(zones map[string]*route53.HostedZone, changeSet Route53Changes) map[string]Route53Changes {
 	changes := make(map[string]Route53Changes)
 
 	for _, z := range zones {
@@ -926,7 +929,7 @@ func changesByZone(zones map[string]*route53.HostedZone, changeSet Route53Change
 
 		zones := suitableZones(hostname, zones)
 		if len(zones) == 0 {
-			log.Debugf("Skipping record %s because no hosted zone matching record DNS Name was detected", c.String())
+			p.logger.V(1).Info(fmt.Sprintf("Skipping record %s because no hosted zone matching record DNS Name was detected", c.String()))
 			continue
 		}
 		for _, z := range zones {
@@ -945,7 +948,7 @@ func changesByZone(zones map[string]*route53.HostedZone, changeSet Route53Change
 				}
 			}
 			changes[aws.StringValue(z.Id)] = append(changes[aws.StringValue(z.Id)], c)
-			log.Debugf("Adding %s to zone %s [Id: %s]", hostname, aws.StringValue(z.Name), aws.StringValue(z.Id))
+			p.logger.V(1).Info(fmt.Sprintf("Adding %s to zone %s [Id: %s]", hostname, aws.StringValue(z.Name), aws.StringValue(z.Id)))
 		}
 	}
 
@@ -988,13 +991,13 @@ func suitableZones(hostname string, zones map[string]*route53.HostedZone) []*rou
 }
 
 // useAlias determines if AWS ALIAS should be used.
-func useAlias(ep *endpoint.Endpoint, preferCNAME bool) bool {
+func (p *AWSProvider) useAlias(ep *endpoint.Endpoint, preferCNAME bool) bool {
 	if preferCNAME {
 		return false
 	}
 
 	if ep.RecordType == endpoint.RecordTypeCNAME && len(ep.Targets) > 0 {
-		return canonicalHostedZone(ep.Targets[0]) != ""
+		return p.canonicalHostedZone(ep.Targets[0]) != ""
 	}
 
 	return false
@@ -1002,7 +1005,7 @@ func useAlias(ep *endpoint.Endpoint, preferCNAME bool) bool {
 
 // isAWSAlias determines if a given endpoint is supposed to create an AWS Alias record
 // and (if so) returns the target hosted zone ID
-func isAWSAlias(ep *endpoint.Endpoint) string {
+func (p *AWSProvider) isAWSAlias(ep *endpoint.Endpoint) string {
 	isAlias, exists := ep.GetProviderSpecificProperty(providerSpecificAlias)
 	if exists && isAlias == "true" && ep.RecordType == endpoint.RecordTypeA && len(ep.Targets) > 0 {
 		// alias records can only point to canonical hosted zones (e.g. to ELBs) or other records in the same zone
@@ -1013,7 +1016,7 @@ func isAWSAlias(ep *endpoint.Endpoint) string {
 		}
 
 		// check if the target is in a canonical hosted zone
-		if canonicalHostedZone := canonicalHostedZone(ep.Targets[0]); canonicalHostedZone != "" {
+		if canonicalHostedZone := p.canonicalHostedZone(ep.Targets[0]); canonicalHostedZone != "" {
 			return canonicalHostedZone
 		}
 
@@ -1024,7 +1027,7 @@ func isAWSAlias(ep *endpoint.Endpoint) string {
 }
 
 // canonicalHostedZone returns the matching canonical zone for a given hostname.
-func canonicalHostedZone(hostname string) string {
+func (p *AWSProvider) canonicalHostedZone(hostname string) string {
 	for suffix, zone := range canonicalHostedZones {
 		if strings.HasSuffix(hostname, suffix) {
 			return zone
@@ -1034,7 +1037,7 @@ func canonicalHostedZone(hostname string) string {
 	if strings.HasSuffix(hostname, ".amazonaws.com") {
 		// hostname is an AWS hostname, but could not find canonical hosted zone.
 		// This could mean that a new region has been added but is not supported yet.
-		log.Warnf("Could not find canonical hosted zone for domain %s. This may be because your region is not supported yet.", hostname)
+		p.logger.Info(fmt.Sprintf("Could not find canonical hosted zone for domain %s. This may be because your region is not supported yet.", hostname))
 	}
 
 	return ""

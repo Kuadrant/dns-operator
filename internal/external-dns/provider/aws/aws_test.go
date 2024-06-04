@@ -1341,7 +1341,9 @@ func TestAWSChangesByZones(t *testing.T) {
 		},
 	}
 
-	changesByZone := changesByZone(zones, changes)
+	p, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, nil)
+
+	changesByZone := p.changesByZone(zones, changes)
 	require.Len(t, changesByZone, 3)
 
 	validateAWSChangeRecords(t, changesByZone["foo-example-org"], Route53Changes{
@@ -1528,7 +1530,8 @@ func TestAWSBatchChangeSet(t *testing.T) {
 		})
 	}
 
-	batchCs := batchChangeSet(cs, defaultBatchChangeSize)
+	p, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, nil)
+	batchCs := p.batchChangeSet(cs, defaultBatchChangeSize)
 
 	require.Equal(t, 1, len(batchCs))
 
@@ -1566,7 +1569,9 @@ func TestAWSBatchChangeSetExceeding(t *testing.T) {
 		)
 	}
 
-	batchCs := batchChangeSet(cs, testLimit)
+	p, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, nil)
+
+	batchCs := p.batchChangeSet(cs, testLimit)
 
 	require.Equal(t, expectedBatchCount, len(batchCs))
 
@@ -1604,7 +1609,9 @@ func TestAWSBatchChangeSetExceedingNameChange(t *testing.T) {
 		)
 	}
 
-	batchCs := batchChangeSet(cs, testLimit)
+	p, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, nil)
+
+	batchCs := p.batchChangeSet(cs, testLimit)
 
 	require.Equal(t, 0, len(batchCs))
 }
@@ -1753,6 +1760,8 @@ func TestAWSCreateRecordsWithALIAS(t *testing.T) {
 }
 
 func TestAWSisLoadBalancer(t *testing.T) {
+	p, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, nil)
+
 	for _, tc := range []struct {
 		target      string
 		recordType  string
@@ -1768,11 +1777,13 @@ func TestAWSisLoadBalancer(t *testing.T) {
 			Targets:    endpoint.Targets{tc.target},
 			RecordType: tc.recordType,
 		}
-		assert.Equal(t, tc.expected, useAlias(ep, tc.preferCNAME))
+		assert.Equal(t, tc.expected, p.useAlias(ep, tc.preferCNAME))
 	}
 }
 
 func TestAWSisAWSAlias(t *testing.T) {
+	p, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, nil)
+
 	for _, tc := range []struct {
 		target     string
 		recordType string
@@ -1792,17 +1803,19 @@ func TestAWSisAWSAlias(t *testing.T) {
 			ep = ep.WithProviderSpecific(providerSpecificAlias, "true")
 			ep = ep.WithProviderSpecific(providerSpecificTargetHostedZone, tc.hz)
 		}
-		assert.Equal(t, tc.hz, isAWSAlias(ep), "%v", tc)
+		assert.Equal(t, tc.hz, p.isAWSAlias(ep), "%v", tc)
 	}
 }
 
 func TestAWSCanonicalHostedZone(t *testing.T) {
+	p, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, nil)
+
 	for suffix, id := range canonicalHostedZones {
-		zone := canonicalHostedZone(fmt.Sprintf("foo.%s", suffix))
+		zone := p.canonicalHostedZone(fmt.Sprintf("foo.%s", suffix))
 		assert.Equal(t, id, zone)
 	}
 
-	zone := canonicalHostedZone("foo.example.org")
+	zone := p.canonicalHostedZone("foo.example.org")
 	assert.Equal(t, "", zone, "no canonical zone should be returned for a non-aws hostname")
 }
 
