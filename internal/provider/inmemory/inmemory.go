@@ -20,6 +20,7 @@ import (
 	"context"
 
 	v1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/external-dns/provider/inmemory"
@@ -28,7 +29,6 @@ import (
 
 type InMemoryDNSProvider struct {
 	*inmemory.InMemoryProvider
-	ctx context.Context
 }
 
 var client *inmemory.InMemoryClient
@@ -36,10 +36,16 @@ var client *inmemory.InMemoryClient
 var _ provider.Provider = &InMemoryDNSProvider{}
 
 func NewProviderFromSecret(ctx context.Context, _ *v1.Secret, c provider.Config) (provider.Provider, error) {
-	inmemoryProvider := inmemory.NewInMemoryProvider(inmemory.InMemoryWithClient(client), inmemory.InMemoryWithDomain(c.DomainFilter), inmemory.InMemoryWithLogging())
+	logger := log.FromContext(ctx).WithName("inmemory-dns")
+	ctx = log.IntoContext(ctx, logger)
+
+	inmemoryProvider := inmemory.NewInMemoryProvider(
+		ctx,
+		inmemory.InMemoryWithClient(client),
+		inmemory.InMemoryWithDomain(c.DomainFilter),
+		inmemory.InMemoryWithLogging())
 	p := &InMemoryDNSProvider{
 		InMemoryProvider: inmemoryProvider,
-		ctx:              ctx,
 	}
 	return p, nil
 }

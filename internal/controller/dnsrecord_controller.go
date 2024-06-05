@@ -39,12 +39,20 @@ import (
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common"
 	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
+	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
 const (
 	DNSRecordFinalizer        = "kuadrant.io/dns-record"
 	validationRequeueVariance = 0.5
+
+	txtRegistryPrefix              = "kuadrant-"
+	txtRegistrySuffix              = ""
+	txtRegistryWildcardReplacement = "wildcard"
+	txtRegistryEncryptEnabled      = false
+	txtRegistryEncryptAESKey       = ""
+	txtRegistryCacheInterval       = time.Duration(0)
 )
 
 var (
@@ -67,7 +75,10 @@ type DNSRecordReconciler struct {
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/finalizers,verbs=update
 
 func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
+	logger := log.FromContext(ctx).WithName("dnsrecord_controller")
+	ctx = log.IntoContext(ctx, logger)
+
+	logger.V(1).Info("Reconciling DNSRecord")
 
 	reconcileStart = metav1.Now()
 
@@ -271,15 +282,15 @@ func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alp
 	hadChanges, err := r.applyChanges(ctx, dnsRecord, managedZone, true)
 	if err != nil {
 		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
-			logger.Info("Record not found in managed zone, continuing", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+			logger.Info("Record not found in managed zone, continuing", "managedZone", managedZone.Name)
 			return false, nil
 		} else if strings.Contains(err.Error(), "no endpoints") {
-			logger.Info("DNS record had no endpoint, continuing", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+			logger.Info("DNS record had no endpoint, continuing", "managedZone", managedZone.Name)
 			return false, nil
 		}
 		return false, err
 	}
-	logger.Info("Deleted DNSRecord in manage zone", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+	logger.Info("Deleted DNSRecord in manage zone", "managedZone", managedZone.Name)
 
 	return hadChanges, nil
 }
@@ -305,7 +316,7 @@ func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1al
 	}
 
 	if prematurely, _ := recordReceivedPrematurely(dnsRecord); prematurely {
-		logger.V(1).Info("Skipping managed zone to which the DNS dnsRecord is already published and is still valid", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+		logger.V(1).Info("Skipping managed zone to which the DNS dnsRecord is already published and is still valid", "managedZone", managedZone.Name)
 		return false, nil
 	}
 
@@ -313,7 +324,7 @@ func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1al
 	if err != nil {
 		return hadChanges, err
 	}
-	logger.Info("Published DNSRecord to manage zone", "dnsRecord", dnsRecord.Name, "managedZone", managedZone.Name)
+	logger.Info("Published DNSRecord to manage zone", "managedZone", managedZone.Name)
 
 	return hadChanges, nil
 }
@@ -399,7 +410,9 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return false, err
 	}
 
-	registry, err := dnsRecord.GetRegistry(dnsProvider, managedDNSRecordTypes, excludeDNSRecordTypes)
+	registry, err := externaldnsregistry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
+		dnsRecord.Spec.OwnerID, txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
+		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
 	if err != nil {
 		return false, err
 	}
@@ -434,21 +447,13 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	}
 
 	//Note: All endpoint lists should be in the same provider specific format at this point
-	logger.V(1).Info("applyChanges", "zoneEndpoints", zoneEndpoints)
-	logger.V(1).Info("applyChanges", "specEndpoints", specEndpoints)
-	logger.V(1).Info("applyChanges", "statusEndpoints", statusEndpoints)
+	logger.V(1).Info("applyChanges", "zoneEndpoints", zoneEndpoints,
+		"specEndpoints", specEndpoints, "statusEndpoints", statusEndpoints)
 
-	plan := &externaldnsplan.Plan{
-		Policies:       []externaldnsplan.Policy{policy},
-		Current:        zoneEndpoints,
-		Desired:        specEndpoints,
-		Previous:       statusEndpoints,
-		DomainFilter:   externaldnsendpoint.MatchAllDomainFilters{&zoneDomainFilter},
-		ManagedRecords: managedDNSRecordTypes,
-		ExcludeRecords: excludeDNSRecordTypes,
-		OwnerID:        registry.OwnerID(),
-		RootHost:       &rootDomainName,
-	}
+	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, specEndpoints, []externaldnsplan.Policy{policy},
+		externaldnsendpoint.MatchAllDomainFilters{&zoneDomainFilter}, managedDNSRecordTypes, excludeDNSRecordTypes,
+		registry.OwnerID(), &rootDomainName,
+	)
 
 	plan = plan.Calculate()
 

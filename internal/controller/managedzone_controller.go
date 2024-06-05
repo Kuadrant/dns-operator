@@ -57,7 +57,11 @@ type ManagedZoneReconciler struct {
 //+kubebuilder:rbac:groups=kuadrant.io,resources=managedzones/finalizers,verbs=update
 
 func (r *ManagedZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx).WithName("managedzone_controller")
+	ctx = log.IntoContext(ctx, logger)
+
+	logger.V(1).Info("Reconciling ManagedZone")
+
 	previous := &v1alpha1.ManagedZone{}
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, previous)
 	if err != nil {
@@ -69,15 +73,13 @@ func (r *ManagedZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 	managedZone := previous.DeepCopy()
 
-	log.Log.V(3).Info("ManagedZoneReconciler Reconcile", "managedZone", managedZone)
-
 	if managedZone.DeletionTimestamp != nil && !managedZone.DeletionTimestamp.IsZero() {
 		if err := r.deleteParentZoneNSRecord(ctx, managedZone); err != nil {
-			log.Log.Error(err, "Failed to delete parent Zone NS Record", "managedZone", managedZone)
+			logger.Error(err, "Failed to delete parent Zone NS Record")
 			return ctrl.Result{}, err
 		}
 		if err := r.deleteManagedZone(ctx, managedZone); err != nil {
-			log.Log.Error(err, "Failed to delete ManagedZone", "managedZone", managedZone)
+			logger.Error(err, "Failed to delete ManagedZone")
 			return ctrl.Result{}, err
 		}
 		controllerutil.RemoveFinalizer(managedZone, ManagedZoneFinalizer)
@@ -90,7 +92,6 @@ func (r *ManagedZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if !controllerutil.ContainsFinalizer(managedZone, ManagedZoneFinalizer) {
-
 		controllerutil.AddFinalizer(managedZone, ManagedZoneFinalizer)
 
 		err = r.setParentZoneOwner(ctx, managedZone)
@@ -156,7 +157,7 @@ func (r *ManagedZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.Log.Info("Reconciled ManagedZone", "managedZone", managedZone.Name)
+	logger.Info("Reconciled ManagedZone")
 	return ctrl.Result{}, nil
 }
 
@@ -197,8 +198,10 @@ func (r *ManagedZoneReconciler) publishManagedZone(ctx context.Context, managedZ
 }
 
 func (r *ManagedZoneReconciler) deleteManagedZone(ctx context.Context, managedZone *v1alpha1.ManagedZone) error {
+	logger := log.FromContext(ctx)
+
 	if managedZone.Spec.ID != "" {
-		log.Log.Info("Skipping deletion of managed zone with provider ID specified in spec", "managedZone", managedZone.Name)
+		logger.Info("Skipping deletion of managed zone with provider ID specified in spec")
 		return nil
 	}
 
@@ -209,12 +212,12 @@ func (r *ManagedZoneReconciler) deleteManagedZone(ctx context.Context, managedZo
 	err = dnsProvider.DeleteManagedZone(managedZone)
 	if err != nil {
 		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
-			log.Log.Info("ManagedZone was not found, continuing", "managedZone", managedZone.Name)
+			logger.Info("ManagedZone was not found, continuing")
 			return nil
 		}
 		return fmt.Errorf("%w, Failed to delete from provider. Provider Error: %v", ErrProvider, provider.SanitizeError(err))
 	}
-	log.Log.Info("Deleted ManagedZone", "managedZone", managedZone.Name)
+	logger.Info("Deleted ManagedZone")
 
 	return nil
 }

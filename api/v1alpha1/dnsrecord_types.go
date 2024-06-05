@@ -19,14 +19,9 @@ package v1alpha1
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
-	externaldnsprovider "sigs.k8s.io/external-dns/provider"
-	externaldnsregistry "sigs.k8s.io/external-dns/registry"
-
-	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 )
 
 type HealthProtocol string
@@ -162,13 +157,6 @@ const (
 	NSRecordType DNSRecordType = "NS"
 
 	DefaultGeo string = "default"
-
-	txtRegistryPrefix              = "kuadrant-"
-	txtRegistrySuffix              = ""
-	txtRegistryWildcardReplacement = "wildcard"
-	txtRegistryEncryptEnabled      = false
-	txtRegistryEncryptAESKey       = ""
-	txtRegistryCacheInterval       = time.Duration(0)
 )
 
 const WildcardPrefix = "*."
@@ -200,11 +188,6 @@ func (s *DNSRecord) Validate() error {
 		return fmt.Errorf("invalid endpoint set. rootHost is set but found no endpoint defining a record for the rootHost %s", root)
 	}
 	return nil
-}
-
-func (s *DNSRecord) GetRegistry(provider externaldnsprovider.Provider, managedDNSRecordTypes, excludeDNSRecordTypes []string) (externaldnsregistry.Registry, error) {
-	return registry.NewTXTRegistry(provider, txtRegistryPrefix, txtRegistrySuffix, s.Spec.OwnerID, txtRegistryCacheInterval,
-		txtRegistryWildcardReplacement, managedDNSRecordTypes, excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
 }
 
 func init() {

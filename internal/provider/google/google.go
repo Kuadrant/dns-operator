@@ -170,10 +170,13 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		return nil, err
 	}
 
-	var project = string(s.Data["PROJECT_ID"])
+	project := string(s.Data["PROJECT_ID"])
+
+	logger := log.FromContext(ctx).WithName("google-dns").WithValues("project", project)
+	ctx = log.IntoContext(ctx, logger)
 
 	p := &GoogleDNSProvider{
-		logger:                   log.Log.WithName("google-dns").WithValues("project", project),
+		logger:                   logger,
 		project:                  project,
 		dryRun:                   DryRun,
 		batchChangeSize:          GoogleBatchChangeSize,

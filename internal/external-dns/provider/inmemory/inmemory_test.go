@@ -97,7 +97,7 @@ func testInMemoryRecords(t *testing.T) {
 		t.Run(ti.title, func(t *testing.T) {
 			c := NewInMemoryClient()
 			c.zones = ti.init
-			im := NewInMemoryProvider()
+			im := NewInMemoryProvider(context.Background())
 			im.client = c
 			f := filter{domain: ti.zone}
 			im.filter = &f
@@ -546,7 +546,7 @@ func testInMemoryApplyChanges(t *testing.T) {
 		},
 	} {
 		t.Run(ti.title, func(t *testing.T) {
-			im := NewInMemoryProvider()
+			im := NewInMemoryProvider(context.Background())
 			c := &InMemoryClient{}
 			c.zones = getInitData()
 			im.client = c
@@ -563,12 +563,12 @@ func testInMemoryApplyChanges(t *testing.T) {
 }
 
 func testNewInMemoryProvider(t *testing.T) {
-	cfg := NewInMemoryProvider()
+	cfg := NewInMemoryProvider(context.Background())
 	assert.NotNil(t, cfg.client)
 }
 
 func testInMemoryCreateZone(t *testing.T) {
-	im := NewInMemoryProvider()
+	im := NewInMemoryProvider(context.Background())
 	err := im.CreateZone("Zone")
 	assert.NoError(t, err)
 	err = im.CreateZone("Zone")

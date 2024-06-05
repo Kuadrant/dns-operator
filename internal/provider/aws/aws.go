@@ -55,7 +55,6 @@ type Route53DNSProvider struct {
 	awsConfig             externaldnsprovideraws.AWSConfig
 	logger                logr.Logger
 	route53Client         *route53.Route53
-	ctx                   context.Context
 	healthCheckReconciler provider.HealthCheckReconciler
 }
 
@@ -95,7 +94,10 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		ZoneCacheDuration:    awsZoneCacheDuration,
 	}
 
-	awsProvider, err := externaldnsprovideraws.NewAWSProvider(awsConfig, route53Client)
+	logger := log.FromContext(ctx).WithName("aws-dns").WithValues("region", config.Region)
+	ctx = log.IntoContext(ctx, logger)
+
+	awsProvider, err := externaldnsprovideraws.NewAWSProvider(ctx, awsConfig, route53Client)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create aws provider: %s", err)
 	}
@@ -103,9 +105,8 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 	p := &Route53DNSProvider{
 		AWSProvider:   awsProvider,
 		awsConfig:     awsConfig,
-		logger:        log.Log.WithName("aws-route53").WithValues("region", config.Region),
+		logger:        logger,
 		route53Client: route53Client,
-		ctx:           ctx,
 	}
 	return p, nil
 }
@@ -160,13 +161,13 @@ func (p *Route53DNSProvider) EnsureManagedZone(zone *v1alpha1.ManagedZone) (prov
 			Id: &zoneID,
 		})
 		if err != nil {
-			log.Log.Error(err, "failed to get hosted zone")
+			p.logger.Error(err, "failed to get hosted zone")
 			return managedZoneOutput, err
 		}
 
 		if getResp.HostedZone == nil {
 			err = fmt.Errorf("aws zone issue. No hosted zone info in response")
-			log.Log.Error(err, "unexpected response")
+			p.logger.Error(err, "unexpected response")
 			return managedZoneOutput, err
 		}
 		if getResp.HostedZone.Id == nil {
@@ -183,7 +184,7 @@ func (p *Route53DNSProvider) EnsureManagedZone(zone *v1alpha1.ManagedZone) (prov
 			Id:      &zoneID,
 		})
 		if err != nil {
-			log.Log.Error(err, "failed to update hosted zone comment")
+			p.logger.Error(err, "failed to update hosted zone comment")
 		}
 
 		managedZoneOutput.ID = *getResp.HostedZone.Id
@@ -214,12 +215,12 @@ func (p *Route53DNSProvider) EnsureManagedZone(zone *v1alpha1.ManagedZone) (prov
 		},
 	})
 	if err != nil {
-		log.Log.Error(err, "failed to create hosted zone")
+		p.logger.Error(err, "failed to create hosted zone")
 		return managedZoneOutput, err
 	}
 	if createResp.HostedZone == nil {
 		err = fmt.Errorf("aws zone creation issue. No hosted zone info in response")
-		log.Log.Error(err, "unexpected response")
+		p.logger.Error(err, "unexpected response")
 		return managedZoneOutput, err
 	}
 	if createResp.HostedZone.Id == nil {
@@ -249,7 +250,7 @@ func (p *Route53DNSProvider) DeleteManagedZone(zone *v1alpha1.ManagedZone) error
 		Id: &zone.Status.ID,
 	})
 	if err != nil {
-		log.Log.Error(err, "failed to delete hosted zone")
+		p.logger.Error(err, "failed to delete hosted zone")
 		return err
 	}
 	return nil
