@@ -32,7 +32,7 @@ kubectl create secret generic my-aws-credentials \
 #### AWS IAM Permissions Required 
 We have tested using the available policy `AmazonRoute53FullAccess` however it should also be possible to restrict the credential down to a particular zone. More info can be found in the AWS docs:
 
-https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/access-control-managing-permissions.html
+[https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/access-control-managing-permissions.html](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/access-control-managing-permissions.html)
 
 ### Google Cloud DNS Provider
 
@@ -55,7 +55,7 @@ kubectl create secret generic my-test-gcp-credentials \
 #### Google Cloud DNS Access permissions required
 See: 
 
-https://cloud.google.com/dns/docs/access-control#dns.admin
+[https://cloud.google.com/dns/docs/access-control#dns.admin](https://cloud.google.com/dns/docs/access-control#dns.admin)
 
 
 ### Where to create the Secrets
