@@ -17,9 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"fmt"
-	"strings"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 )
@@ -53,6 +50,8 @@ type HealthCheckStatusProbe struct {
 }
 
 // DNSRecordSpec defines the desired state of DNSRecord
+// +kubebuilder:validation:XValidation:rule="has(self.endpoints) ? self.endpoints.all(ep, ep.dnsName.endsWith(self.rootHost.replace(\"*.\",\"\"))) : true",message="All endpoints should be equal to or end with the rootHost"
+// +kubebuilder:validation:XValidation:rule="has(self.endpoints) ? self.endpoints.exists(ep, ep.dnsName == self.rootHost) : true",message="No endpoint defining a record for the rootHost"
 type DNSRecordSpec struct {
 	// ownerID is a unique string used to identify the owner of this record.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="OwnerID is immutable"
@@ -62,7 +61,8 @@ type DNSRecordSpec struct {
 
 	// rootHost is the single root for all endpoints in a DNSRecord.
 	// it is expected all defined endpoints are children of or equal to this rootHost
-	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=255
+	// +kubebuilder:validation:Pattern="^.*\\..*$"
 	RootHost string `json:"rootHost"`
 
 	// managedZone is a reference to a ManagedZone instance to which this record will publish its endpoints.
@@ -70,6 +70,7 @@ type DNSRecordSpec struct {
 
 	// endpoints is a list of endpoints that will be published into the dns provider.
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=250
 	// +optional
 	Endpoints []*externaldns.Endpoint `json:"endpoints,omitempty"`
 
@@ -160,35 +161,6 @@ const (
 )
 
 const WildcardPrefix = "*."
-
-func (s *DNSRecord) Validate() error {
-	root := s.Spec.RootHost
-	if len(strings.Split(root, ".")) <= 1 {
-		return fmt.Errorf("invalid domain format no tld discovered")
-	}
-	if len(s.Spec.Endpoints) == 0 {
-		return fmt.Errorf("no endpoints defined for DNSRecord. Nothing to do")
-	}
-
-	root, _ = strings.CutPrefix(root, WildcardPrefix)
-
-	rootEndpointFound := false
-	for _, ep := range s.Spec.Endpoints {
-		if !strings.HasSuffix(ep.DNSName, root) {
-			return fmt.Errorf("invalid endpoint discovered %s all endpoints should be equal to or end with the rootHost %s", ep.DNSName, root)
-		}
-		if !rootEndpointFound {
-			//check original root
-			if ep.DNSName == s.Spec.RootHost {
-				rootEndpointFound = true
-			}
-		}
-	}
-	if !rootEndpointFound {
-		return fmt.Errorf("invalid endpoint set. rootHost is set but found no endpoint defining a record for the rootHost %s", root)
-	}
-	return nil
-}
 
 func init() {
 	SchemeBuilder.Register(&DNSRecord{}, &DNSRecordList{})

@@ -135,13 +135,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	var reason, message string
-	err = dnsRecord.Validate()
-	if err != nil {
-		reason = "ValidationError"
-		message = fmt.Sprintf("validation of DNSRecord failed: %v", err)
-		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, reason, message)
-		return r.updateStatus(ctx, previous, dnsRecord, false, err)
-	}
 
 	// Publish the record
 	hadChanges, err := r.publishRecord(ctx, dnsRecord)

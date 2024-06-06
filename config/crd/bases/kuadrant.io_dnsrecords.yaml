@@ -90,6 +90,7 @@ spec:
                         type: string
                       type: array
                   type: object
+                maxItems: 250
                 minItems: 1
                 type: array
               healthCheck:
@@ -132,13 +133,21 @@ spec:
                 description: |-
                   rootHost is the single root for all endpoints in a DNSRecord.
                   it is expected all defined endpoints are children of or equal to this rootHost
-                minLength: 1
+                maxLength: 255
+                pattern: ^.*\..*$
                 type: string
             required:
             - managedZone
             - ownerID
             - rootHost
             type: object
+            x-kubernetes-validations:
+            - message: All endpoints should be equal to or end with the rootHost
+              rule: 'has(self.endpoints) ? self.endpoints.all(ep, ep.dnsName.endsWith(self.rootHost.replace("*.","")))
+                : true'
+            - message: No endpoint defining a record for the rootHost
+              rule: 'has(self.endpoints) ? self.endpoints.exists(ep, ep.dnsName ==
+                self.rootHost) : true'
           status:
             description: DNSRecordStatus defines the observed state of DNSRecord
             properties:
