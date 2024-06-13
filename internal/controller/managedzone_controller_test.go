@@ -228,5 +228,23 @@ var _ = Describe("ManagedZoneReconciler", func() {
 				return nil
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
+		It("reports an error when managed zone secret is absent", func(ctx SpecContext) {
+			badSecretMZ := testBuildManagedZone("mz-example-com", testNamespace, "example.com", "badSecretName")
+			Expect(k8sClient.Create(ctx, badSecretMZ)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(badSecretMZ), badSecretMZ)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(badSecretMZ.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionFalse),
+						"ObservedGeneration": Equal(badSecretMZ.Generation),
+						"Reason":             Equal("DNSProviderSecretNotFound"),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		})
 	})
 })

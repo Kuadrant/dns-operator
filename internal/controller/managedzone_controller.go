@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strings"
 
+	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,10 +30,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
@@ -41,8 +45,9 @@ const (
 )
 
 var (
-	ErrProvider       = errors.New("ProviderError")
-	ErrZoneValidation = errors.New("ZoneValidationError")
+	ErrProvider              = errors.New("ProviderError")
+	ErrZoneValidation        = errors.New("ZoneValidationError")
+	ErrProviderSecretMissing = errors.New("ProviderSecretMissing")
 )
 
 // ManagedZoneReconciler reconciles a ManagedZone object
@@ -71,6 +76,7 @@ func (r *ManagedZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 	}
+
 	managedZone := previous.DeepCopy()
 
 	if managedZone.DeletionTimestamp != nil && !managedZone.DeletionTimestamp.IsZero() {
@@ -117,6 +123,17 @@ func (r *ManagedZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			reason = ErrZoneValidation.Error()
 			message = err.Error()
 		}
+		if errors.Is(err, ErrProviderSecretMissing) {
+			metrics.SecretMissing.WithLabelValues(managedZone.Name, managedZone.Namespace, managedZone.Spec.SecretRef.Name).Set(1)
+			reason = "DNSProviderSecretNotFound"
+			message = fmt.Sprintf(
+				"Could not find secret: %v/%v for managedzone: %v/%v",
+				managedZone.Namespace, managedZone.Spec.SecretRef.Name,
+				managedZone.Namespace, managedZone.Name)
+		} else {
+			metrics.SecretMissing.WithLabelValues(managedZone.Name, managedZone.Namespace, managedZone.Spec.SecretRef.Name).Set(0)
+		}
+
 		setManagedZoneCondition(managedZone, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, reason, message)
 		statusUpdateErr := r.Status().Update(ctx, managedZone)
 		if statusUpdateErr != nil {
@@ -166,6 +183,24 @@ func (r *ManagedZoneReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.ManagedZone{}).
 		Owns(&v1alpha1.ManagedZone{}).
+		Owns(&v1alpha1.DNSRecord{}).
+		Watches(&v1.Secret{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+			logger := log.FromContext(ctx)
+			var toReconcile []reconcile.Request
+
+			zones := &v1alpha1.ManagedZoneList{}
+			if err := mgr.GetClient().List(ctx, zones, &client.ListOptions{Namespace: o.GetNamespace()}); err != nil {
+				logger.Error(err, "failed to list zones ", "namespace", o.GetNamespace())
+				return toReconcile
+			}
+			for _, zone := range zones.Items {
+				if zone.Spec.SecretRef.Name == o.GetName() {
+					logger.Info("managed zone secret updated", "secret", o.GetNamespace()+"/"+o.GetName(), "enqueuing zone ", zone.GetName())
+					toReconcile = append(toReconcile, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&zone)})
+				}
+			}
+			return toReconcile
+		})).
 		Complete(r)
 }
 
@@ -173,7 +208,13 @@ func (r *ManagedZoneReconciler) publishManagedZone(ctx context.Context, managedZ
 
 	dnsProvider, err := r.ProviderFactory.ProviderFor(ctx, managedZone, provider.Config{})
 	if err != nil {
-		return fmt.Errorf("failed to get provider for the zone: %v", provider.SanitizeError(err))
+		if k8serrors.IsNotFound(err) {
+			return fmt.Errorf("%w, the secret '%s/%s', referenced in the managedZone '%s/%s' does not exist",
+				ErrProviderSecretMissing,
+				managedZone.Namespace, managedZone.Spec.SecretRef.Name,
+				managedZone.Namespace, managedZone.Name)
+		}
+		return fmt.Errorf("failed to get provider for the zone: %w", provider.SanitizeError(err))
 	}
 
 	mzResp, err := dnsProvider.EnsureManagedZone(managedZone)
