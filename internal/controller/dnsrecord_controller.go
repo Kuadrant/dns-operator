@@ -164,7 +164,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if !common.Owns(managedZone, dnsRecord) {
-		err = controllerutil.SetOwnerReference(managedZone, dnsRecord, r.Scheme)
+		err = common.EnsureOwnerRef(managedZone, dnsRecord, true)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
