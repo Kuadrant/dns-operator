@@ -178,3 +178,170 @@ func TestOwns(t *testing.T) {
 		})
 	}
 }
+
+func TestEnsureOwnerRef(t *testing.T) {
+	RegisterTestingT(t)
+	testCases := []struct {
+		Name        string
+		Owned       metav1.Object
+		Owner       metav1.Object
+		BlockDelete bool
+		Verify      func(t *testing.T, err error, obj metav1.Object)
+	}{
+		{
+			Name:  "Owner is added",
+			Owned: &v1alpha1.DNSRecord{},
+			Owner: &v1alpha1.ManagedZone{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-zone",
+					UID:  "unique-uid",
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ManagedZone",
+					APIVersion: "v1beta1",
+				},
+			},
+			BlockDelete: true,
+			Verify: func(t *testing.T, err error, obj metav1.Object) {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(len(obj.GetOwnerReferences())).To(Equal(1))
+
+				expectedOwnerRef := metav1.OwnerReference{
+					APIVersion:         "v1beta1",
+					Kind:               "ManagedZone",
+					Name:               "test-zone",
+					UID:                "unique-uid",
+					BlockOwnerDeletion: ptr.To(true),
+				}
+				Expect(obj.GetOwnerReferences()[0]).To(Equal(expectedOwnerRef))
+			},
+		},
+		{
+			Name: "Does not duplicate owner ref",
+			Owned: &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion:         "v1beta1",
+							Kind:               "ManagedZone",
+							Name:               "test-zone",
+							UID:                "unique-uid",
+							BlockOwnerDeletion: ptr.To(true),
+						},
+					},
+				},
+			},
+			Owner: &v1alpha1.ManagedZone{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-zone",
+					UID:  "unique-uid",
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ManagedZone",
+					APIVersion: "v1beta1",
+				},
+			},
+			BlockDelete: true,
+			Verify: func(t *testing.T, err error, obj metav1.Object) {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(len(obj.GetOwnerReferences())).To(Equal(1))
+
+				expectedOwnerRef := metav1.OwnerReference{
+					APIVersion:         "v1beta1",
+					Kind:               "ManagedZone",
+					Name:               "test-zone",
+					UID:                "unique-uid",
+					BlockOwnerDeletion: ptr.To(true),
+				}
+				Expect(obj.GetOwnerReferences()[0]).To(Equal(expectedOwnerRef))
+			},
+		},
+		{
+			Name: "Does update owner ref",
+			Owned: &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion:         "v1beta1",
+							Kind:               "ManagedZone",
+							Name:               "test-zone",
+							UID:                "unique-uid",
+							BlockOwnerDeletion: ptr.To(false),
+						},
+					},
+				},
+			},
+			Owner: &v1alpha1.ManagedZone{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-zone",
+					UID:  "unique-uid",
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ManagedZone",
+					APIVersion: "v1beta1",
+				},
+			},
+			BlockDelete: true,
+			Verify: func(t *testing.T, err error, obj metav1.Object) {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(len(obj.GetOwnerReferences())).To(Equal(1))
+
+				expectedOwnerRef := metav1.OwnerReference{
+					APIVersion:         "v1beta1",
+					Kind:               "ManagedZone",
+					Name:               "test-zone",
+					UID:                "unique-uid",
+					BlockOwnerDeletion: ptr.To(true),
+				}
+				Expect(obj.GetOwnerReferences()[0]).To(Equal(expectedOwnerRef))
+			},
+		},
+		{
+			Name: "Does append owner ref",
+			Owned: &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion:         "v1",
+							Kind:               "OtherThing",
+							Name:               "otherName",
+							UID:                "other-unique-uid",
+							BlockOwnerDeletion: ptr.To(false),
+						},
+					},
+				},
+			},
+			Owner: &v1alpha1.ManagedZone{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-zone",
+					UID:  "unique-uid",
+				},
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "ManagedZone",
+					APIVersion: "v1beta1",
+				},
+			},
+			BlockDelete: true,
+			Verify: func(t *testing.T, err error, obj metav1.Object) {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(len(obj.GetOwnerReferences())).To(Equal(2))
+
+				expectedOwnerRef := metav1.OwnerReference{
+					APIVersion:         "v1beta1",
+					Kind:               "ManagedZone",
+					Name:               "test-zone",
+					UID:                "unique-uid",
+					BlockOwnerDeletion: ptr.To(true),
+				}
+				Expect(obj.GetOwnerReferences()[1]).To(Equal(expectedOwnerRef))
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			err := EnsureOwnerRef(testCase.Owner, testCase.Owned, testCase.BlockDelete)
+			testCase.Verify(t, err, testCase.Owned)
+		})
+	}
+}
