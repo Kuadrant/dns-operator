@@ -36,6 +36,7 @@ import (
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
@@ -84,6 +85,15 @@ func (r *ManagedZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			logger.Error(err, "Failed to delete parent Zone NS Record")
 			return ctrl.Result{}, err
 		}
+
+		if remainingRecordsCount, err := r.deleteOwnedDNSRecords(ctx, managedZone); err != nil {
+			logger.Error(err, "Failed to delete ManagedZone Owned DNS Records")
+			return ctrl.Result{}, err
+		} else if remainingRecordsCount > 0 {
+			logger.Info("ManagedZone deletion awaiting removal of owned DNS records")
+			return ctrl.Result{Requeue: true}, nil
+		}
+
 		if err := r.deleteManagedZone(ctx, managedZone); err != nil {
 			logger.Error(err, "Failed to delete ManagedZone")
 			return ctrl.Result{}, err
@@ -396,6 +406,24 @@ func (r *ManagedZoneReconciler) parentZoneNSRecordReady(ctx context.Context, man
 		return fmt.Errorf("the ns record is not in a ready state : %s", nsRecord.Name)
 	}
 	return nil
+}
+
+func (r *ManagedZoneReconciler) deleteOwnedDNSRecords(ctx context.Context, managedZone *v1alpha1.ManagedZone) (int, error) {
+	remainingRecords := 0
+	records := &v1alpha1.DNSRecordList{}
+	if err := r.List(ctx, records, client.InNamespace(managedZone.GetNamespace())); err != nil {
+		return remainingRecords, err
+	}
+
+	for _, record := range records.Items {
+		if common.Owns(managedZone, &record) {
+			remainingRecords++
+			if err := r.Delete(ctx, &record); err != nil {
+				return remainingRecords, err
+			}
+		}
+	}
+	return remainingRecords, nil
 }
 
 // setManagedZoneCondition adds or updates a given condition in the ManagedZone status.

@@ -38,6 +38,7 @@ var _ = Describe("ManagedZoneReconciler", func() {
 	Context("testing ManagedZone controller", func() {
 		var dnsProviderSecret *v1.Secret
 		var managedZone *v1alpha1.ManagedZone
+		var dnsRecord *v1alpha1.DNSRecord
 		var testNamespace string
 
 		BeforeEach(func() {
@@ -45,8 +46,22 @@ var _ = Describe("ManagedZoneReconciler", func() {
 
 			dnsProviderSecret = testBuildInMemoryCredentialsSecret("inmemory-credentials", testNamespace)
 			managedZone = testBuildManagedZone("mz-example-com", testNamespace, "example.com", dnsProviderSecret.Name)
-
 			Expect(k8sClient.Create(ctx, dnsProviderSecret)).To(Succeed())
+
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo.example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					OwnerID:  "owner1",
+					RootHost: "foo.example.com",
+					ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+						Name: managedZone.Name,
+					},
+					Endpoints: getDefaultTestEndpoints(),
+				},
+			}
 		})
 
 		AfterEach(func() {
@@ -61,6 +76,11 @@ var _ = Describe("ManagedZoneReconciler", func() {
 
 			if dnsProviderSecret != nil {
 				err := k8sClient.Delete(ctx, dnsProviderSecret)
+				Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+			}
+
+			if dnsRecord != nil {
+				err := k8sClient.Delete(ctx, dnsRecord)
 				Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 			}
 		})
@@ -245,6 +265,55 @@ var _ = Describe("ManagedZoneReconciler", func() {
 				)
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 
+		})
+		It("deleting a managedzone deletes owned DNS Record", func(ctx SpecContext) {
+			// create managed zone
+			Expect(k8sClient.Create(ctx, managedZone)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(managedZone.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status": Equal(metav1.ConditionTrue),
+					})),
+				)
+				g.Expect(managedZone.Finalizers).To(ContainElement(ManagedZoneFinalizer))
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			// create DNS Record
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			// Delete managed zone
+			Expect(k8sClient.Delete(ctx, managedZone)).To(Succeed())
+
+			// confirm DNS Record and managed zone deleted
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+		It("Can delete a DNS Record that never used a ManagedZone", func(ctx SpecContext) {
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Consistently(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(dnsRecord.Finalizers)).To(BeZero())
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
 	})
 })
