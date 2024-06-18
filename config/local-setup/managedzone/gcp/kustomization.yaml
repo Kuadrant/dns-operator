@@ -1,16 +1,21 @@
 resources:
-  - managed_zone.yaml
+  - ../base
+
+nameSuffix: -gcp
 
 generatorOptions:
   disableNameSuffixHash: true
 
 configMapGenerator:
-  - name: gcp-managed-zone-config
+  - name: managed-zone-config
     envs:
       - managed-zone-config.env
+    options:
+      annotations:
+        config.kubernetes.io/local-config: "true"
 
 secretGenerator:
-  - name: gcp-credentials
+  - name: dns-provider-credentials
     envs:
       - gcp-credentials.env
     type: "kuadrant.io/gcp"
@@ -18,7 +23,7 @@ secretGenerator:
 replacements:
   - source:
       kind: ConfigMap
-      name: gcp-managed-zone-config
+      name: managed-zone-config
       version: v1
       fieldPath: data.GCP_ZONE_NAME
     targets:
@@ -29,7 +34,7 @@ replacements:
           - spec.id
   - source:
       kind: ConfigMap
-      name: gcp-managed-zone-config
+      name: managed-zone-config
       version: v1
       fieldPath: data.GCP_ZONE_DNS_NAME
     targets:

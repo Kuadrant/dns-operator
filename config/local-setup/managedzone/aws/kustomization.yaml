@@ -1,16 +1,21 @@
 resources:
-  - managed_zone.yaml
+  - ../base
+
+nameSuffix: -aws
 
 generatorOptions:
   disableNameSuffixHash: true
 
 configMapGenerator:
-  - name: aws-managed-zone-config
+  - name: managed-zone-config
     envs:
       - managed-zone-config.env
+    options:
+      annotations:
+        config.kubernetes.io/local-config: "true"
 
 secretGenerator:
-  - name: aws-credentials
+  - name: dns-provider-credentials
     envs:
       - aws-credentials.env
     type: "kuadrant.io/aws"
@@ -18,7 +23,7 @@ secretGenerator:
 replacements:
   - source:
       kind: ConfigMap
-      name: aws-managed-zone-config
+      name: managed-zone-config
       version: v1
       fieldPath: data.AWS_DNS_PUBLIC_ZONE_ID
     targets:
@@ -29,7 +34,7 @@ replacements:
           - spec.id
   - source:
       kind: ConfigMap
-      name: aws-managed-zone-config
+      name: managed-zone-config
       version: v1
       fieldPath: data.AWS_ZONE_ROOT_DOMAIN
     targets:

@@ -1,0 +1,5 @@
+resources:
+  - managed_zone.yaml
+
+configurations:
+  - name-reference.yaml

@@ -1,0 +1,24 @@
+resources:
+  - ../base
+
+nameSuffix: -inmemory
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+secretGenerator:
+  - name: dns-provider-credentials
+    type: "kuadrant.io/inmemory"
+
+patches:
+  - patch: |-
+      - op: remove
+        path: /spec/id
+    target:
+      kind: ManagedZone
+  - patch: |-
+      - op: replace
+        path: /spec/domainName
+        value: dev.kuadrant.local
+    target:
+      kind: ManagedZone

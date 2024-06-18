@@ -147,36 +147,53 @@ test-integration: manifests generate fmt vet envtest ginkgo ## Run integration t
 test-e2e: ginkgo
 	$(GINKGO) -tags=e2e -v ./test/e2e
 
+.PHONY: test-e2e-multi
+test-e2e-multi: ginkgo
+	$(GINKGO) -tags=e2e_multi_instance -v ./test/e2e/multi_instance
+
 .PHONY: local-setup
 local-setup: DEPLOY=false
 local-setup: TEST_NAMESPACE=dnstest
+local-setup: DEPLOYMENT_SCOPE=cluster
 local-setup: $(KIND) ## Setup local development kind cluster, dependencies and optionally deploy the dns operator DEPLOY=false|true
-	@echo "local-setup: KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOY=${DEPLOY} TEST_NAMESPACE=${TEST_NAMESPACE} "
+	@echo "local-setup: KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOY=${DEPLOY} DEPLOYMENT_SCOPE=${DEPLOYMENT_SCOPE} TEST_NAMESPACE=${TEST_NAMESPACE}"
 	@$(MAKE) -s kind-delete-cluster
 	@$(MAKE) -s kind-create-cluster
 	@$(MAKE) -s install
 	@$(KUBECTL) create namespace ${TEST_NAMESPACE} --dry-run=client -o yaml | $(KUBECTL) apply -f -
 	@$(MAKE) -s local-setup-managedzones TARGET_NAMESPACE=${TEST_NAMESPACE}
 	@if [ ${DEPLOY} = "true" ]; then\
-		echo "local-setup: deploying operator to ${KIND_CLUSTER_NAME}";\
-    	$(MAKE) -s local-deploy;\
-    	echo "local-setup: waiting for dns operator deployments in namespace 'dns-operator-system'";\
-    	$(KUBECTL) -n dns-operator-system wait --timeout=60s --for=condition=Available deployments --all;\
+		if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
+			echo "local-setup: deploying operator (cluster scoped) to ${KIND_CLUSTER_NAME}" ;\
+    		$(MAKE) -s local-deploy ;\
+		else\
+			echo "local-setup: deploying operator (namespace scoped) to ${KIND_CLUSTER_NAME}" ;\
+			$(MAKE) -s local-deploy-namespaced ;\
+		fi ;\
+		echo "local-setup: waiting for dns operator deployments" ;\
+		$(KUBECTL) wait --timeout=60s --for=condition=Available deployments --all -l app.kubernetes.io/part-of=dns-operator -A ;\
     fi
+
 	@echo "local-setup: Check dns operator deployments"
-	$(KUBECTL) -n dns-operator-system get deployments
+	$(KUBECTL) get deployments -l app.kubernetes.io/part-of=dns-operator -A
 	@echo "local-setup: Check managedzones"
-	$(KUBECTL) -n ${TEST_NAMESPACE} get managedzones
+	$(KUBECTL) get managedzones -A
 	@echo "local-setup: Complete!!"
 
 .PHONY: local-cleanup
 local-cleanup: ## Delete local cluster
 	$(MAKE) kind-delete-cluster
+	$(MAKE) remove-cluster-overlay
 
 .PHONY: local-deploy
 local-deploy: docker-build kind-load-image ## Deploy the dns operator into local kind cluster from the current code
 	$(KUBECTL) config use-context kind-$(KIND_CLUSTER_NAME)
 	$(MAKE) deploy
+
+.PHONY: local-deploy-namespaced
+local-deploy-namespaced: docker-build kind-load-image ## Deploy the dns operator(s) into local kind cluster using the generated deployment overlays
+	$(KUBECTL) config use-context kind-$(KIND_CLUSTER_NAME)
+	$(MAKE) deploy-namespaced
 
 ##@ Build
 
@@ -234,6 +251,11 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/deploy/local | $(KUBECTL) apply -f -
+
+.PHONY: deploy-namespaced
+deploy-namespaced: manifests kustomize generate-cluster-overlay ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
