@@ -16,6 +16,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
 // Test Cases covering multiple DNSRecords updating a set of records in a zone
@@ -123,7 +124,7 @@ var _ = Describe("Multi Record Test", func() {
 			err = k8sClient.Create(ctx, dnsRecord2)
 			Expect(err).ToNot(HaveOccurred())
 
-			By("checking dns records becomes ready")
+			By("checking dns records become ready")
 			Eventually(func(g Gomega, ctx context.Context) {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord1), dnsRecord1)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -151,7 +152,7 @@ var _ = Describe("Multi Record Test", func() {
 			Expect(dnsRecord1.Status.OwnerID).To(Equal(dnsRecord1.GetUIDHash()))
 			Expect(dnsRecord2.Status.OwnerID).To(Equal(dnsRecord2.GetUIDHash()))
 
-			testProvider, err := providerForManagedZone(ctx, testManagedZone)
+			testProvider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("ensuring zone records are created as expected")
@@ -442,7 +443,7 @@ var _ = Describe("Multi Record Test", func() {
 			Expect(dnsRecord1.Status.OwnerID).To(Equal(dnsRecord1.GetUIDHash()))
 			Expect(dnsRecord2.Status.OwnerID).To(Equal(dnsRecord2.GetUIDHash()))
 
-			testProvider, err := providerForManagedZone(ctx, testManagedZone)
+			testProvider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("ensuring zone records are created as expected")

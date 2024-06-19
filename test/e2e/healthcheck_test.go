@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
-	"github.com/kuadrant/dns-operator/test/e2e/helpers"
+	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
 // Test Cases covering multiple creation and deletion of health checks
@@ -34,9 +34,9 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 		testID = "t-health-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
-		helpers.SetTestEnv("testID", testID)
-		helpers.SetTestEnv("testHostname", testHostname)
-		helpers.SetTestEnv("testNamespace", testNamespace)
+		SetTestEnv("testID", testID)
+		SetTestEnv("testHostname", testHostname)
+		SetTestEnv("testNamespace", testNamespace)
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -54,12 +54,12 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 				healthChecksSupported = true
 			}
 
-			provider, err := providerForManagedZone(ctx, testManagedZone)
+			provider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
 			Expect(err).To(BeNil())
 
 			By("creating a DNS Record")
 			dnsRecord = &v1alpha1.DNSRecord{}
-			err = helpers.ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", dnsRecord, helpers.GetTestEnv)
+			err = ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", dnsRecord, GetTestEnv)
 			Expect(err).ToNot(HaveOccurred())
 
 			err = k8sClient.Create(ctx, dnsRecord)
@@ -138,7 +138,7 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 			By("Adding a health check spec")
 			Eventually(func(g Gomega) {
 				patchFrom := client.MergeFrom(dnsRecord.DeepCopy())
-				err = helpers.ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", dnsRecord, helpers.GetTestEnv)
+				err = ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", dnsRecord, GetTestEnv)
 				g.Expect(err).ToNot(HaveOccurred())
 				err := k8sClient.Patch(ctx, dnsRecord, patchFrom)
 				g.Expect(err).To(BeNil())
@@ -191,7 +191,7 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 
 			By("Deleting the DNS Record")
 			oldHealthCheckStatus = dnsRecord.Status.HealthCheck.DeepCopy()
-			err = helpers.ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", dnsRecord, helpers.GetTestEnv)
+			err = ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", dnsRecord, GetTestEnv)
 			Expect(err).ToNot(HaveOccurred())
 			Eventually(func(g Gomega) {
 				err := k8sClient.Delete(ctx, dnsRecord)

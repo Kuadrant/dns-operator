@@ -16,6 +16,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
 // Test Cases covering known provider errors that can be expected with misconfigured DNSRecord resource.

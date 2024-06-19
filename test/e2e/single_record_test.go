@@ -16,6 +16,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
 // Test Cases covering a single DNSRecord updating a set of records in a zone
@@ -111,7 +112,7 @@ var _ = Describe("Single Record Test", func() {
 		Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
 		By("ensuring zone records are created as expected")
-		testProvider, err := providerForManagedZone(ctx, testManagedZone)
+		testProvider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
 		Expect(err).NotTo(HaveOccurred())
 		zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 		Expect(err).NotTo(HaveOccurred())
@@ -197,7 +198,7 @@ var _ = Describe("Single Record Test", func() {
 			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
 			By("ensuring zone records are created as expected")
-			testProvider, err := providerForManagedZone(ctx, testManagedZone)
+			testProvider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
@@ -337,7 +338,7 @@ var _ = Describe("Single Record Test", func() {
 			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
 			By("ensuring zone records are created as expected")
-			testProvider, err := providerForManagedZone(ctx, testManagedZone)
+			testProvider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
