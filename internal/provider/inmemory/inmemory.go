@@ -50,7 +50,7 @@ func NewProviderFromSecret(ctx context.Context, _ *v1.Secret, c provider.Config)
 	return p, nil
 }
 
-func (i InMemoryDNSProvider) EnsureManagedZone(mz *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
+func (i InMemoryDNSProvider) EnsureManagedZone(_ context.Context, mz *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
 	var zoneID string
 	if mz.Spec.ID != "" {
 		zoneID = mz.Spec.ID

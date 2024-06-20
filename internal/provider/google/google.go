@@ -145,8 +145,6 @@ type GoogleDNSProvider struct {
 	managedZonesClient managedZonesServiceInterface
 	// A client for managing change sets
 	changesClient changesServiceInterface
-	// The context parameter to be passed for gcloud API calls.
-	ctx context.Context
 }
 
 func (p *GoogleDNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
@@ -187,7 +185,6 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		resourceRecordSetsClient: resourceRecordSetsService{dnsClient.ResourceRecordSets},
 		managedZonesClient:       managedZonesService{dnsClient.ManagedZones},
 		changesClient:            changesService{dnsClient.Changes},
-		ctx:                      ctx,
 	}
 
 	return p, nil
@@ -637,7 +634,7 @@ func newRecord(ep *externaldnsendpoint.Endpoint) *dnsv1.ResourceRecordSet {
 
 // #### DNS Operator Provider ####
 
-func (p *GoogleDNSProvider) EnsureManagedZone(managedZone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
+func (p *GoogleDNSProvider) EnsureManagedZone(ctx context.Context, managedZone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
 	var zoneID string
 
 	if managedZone.Spec.ID != "" {
@@ -648,10 +645,10 @@ func (p *GoogleDNSProvider) EnsureManagedZone(managedZone *v1alpha1.ManagedZone)
 
 	if zoneID != "" {
 		//Get existing managed zone
-		return p.getManagedZone(zoneID)
+		return p.getManagedZone(ctx, zoneID)
 	}
 	//Create new managed zone
-	return p.createManagedZone(managedZone)
+	return p.createManagedZone(ctx, managedZone)
 }
 
 func (p *GoogleDNSProvider) DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error {
@@ -660,7 +657,7 @@ func (p *GoogleDNSProvider) DeleteManagedZone(managedZone *v1alpha1.ManagedZone)
 
 // ManagedZones
 
-func (p *GoogleDNSProvider) createManagedZone(managedZone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
+func (p *GoogleDNSProvider) createManagedZone(ctx context.Context, managedZone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
 	zoneID := strings.Replace(managedZone.Spec.DomainName, ".", "-", -1)
 	zone := dnsv1.ManagedZone{
 		Name:        zoneID,
@@ -671,18 +668,18 @@ func (p *GoogleDNSProvider) createManagedZone(managedZone *v1alpha1.ManagedZone)
 	if err != nil {
 		return provider.ManagedZoneOutput{}, err
 	}
-	return p.toManagedZoneOutput(mz)
+	return p.toManagedZoneOutput(ctx, mz)
 }
 
-func (p *GoogleDNSProvider) getManagedZone(zoneID string) (provider.ManagedZoneOutput, error) {
+func (p *GoogleDNSProvider) getManagedZone(ctx context.Context, zoneID string) (provider.ManagedZoneOutput, error) {
 	mz, err := p.managedZonesClient.Get(p.project, zoneID).Do()
 	if err != nil {
 		return provider.ManagedZoneOutput{}, err
 	}
-	return p.toManagedZoneOutput(mz)
+	return p.toManagedZoneOutput(ctx, mz)
 }
 
-func (p *GoogleDNSProvider) toManagedZoneOutput(mz *dnsv1.ManagedZone) (provider.ManagedZoneOutput, error) {
+func (p *GoogleDNSProvider) toManagedZoneOutput(ctx context.Context, mz *dnsv1.ManagedZone) (provider.ManagedZoneOutput, error) {
 	var managedZoneOutput provider.ManagedZoneOutput
 
 	zoneID := mz.Name
@@ -694,7 +691,7 @@ func (p *GoogleDNSProvider) toManagedZoneOutput(mz *dnsv1.ManagedZone) (provider
 	managedZoneOutput.DNSName = strings.ToLower(strings.TrimSuffix(mz.DnsName, "."))
 	managedZoneOutput.NameServers = nameservers
 
-	currentRecords, err := p.getResourceRecordSets(p.ctx, zoneID)
+	currentRecords, err := p.getResourceRecordSets(ctx, zoneID)
 	if err != nil {
 		return managedZoneOutput, err
 	}
