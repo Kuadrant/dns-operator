@@ -120,7 +120,7 @@ func TestGoogleDNSProvider_toManagedZoneOutput(t *testing.T) {
 			g := &GoogleDNSProvider{
 				resourceRecordSetsClient: tt.fields.resourceRecordSetsClient,
 			}
-			got, err := g.toManagedZoneOutput(tt.args.mz)
+			got, err := g.toManagedZoneOutput(context.Background(), tt.args.mz)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GoogleDNSProvider.toManagedZoneOutput() error = %v, wantErr %v", err, tt.wantErr)
 				return

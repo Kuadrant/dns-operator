@@ -146,7 +146,7 @@ func (p *Route53DNSProvider) AdjustEndpoints(endpoints []*externaldnsendpoint.En
 
 // #### DNS Operator Provider ####
 
-func (p *Route53DNSProvider) EnsureManagedZone(zone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
+func (p *Route53DNSProvider) EnsureManagedZone(_ context.Context, zone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
 	var zoneID string
 	if zone.Spec.ID != "" {
 		zoneID = zone.Spec.ID

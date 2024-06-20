@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"regexp"
 	"strings"
@@ -22,7 +23,7 @@ type Provider interface {
 	externaldnsprovider.Provider
 
 	// Ensure will create or update a managed zone, returns an array of NameServers for that zone.
-	EnsureManagedZone(managedZone *v1alpha1.ManagedZone) (ManagedZoneOutput, error)
+	EnsureManagedZone(ctx context.Context, managedZone *v1alpha1.ManagedZone) (ManagedZoneOutput, error)
 
 	// Delete will delete a managed zone.
 	DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error

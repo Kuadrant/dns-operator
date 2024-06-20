@@ -217,7 +217,7 @@ func (r *ManagedZoneReconciler) publishManagedZone(ctx context.Context, managedZ
 		return fmt.Errorf("failed to get provider for the zone: %w", provider.SanitizeError(err))
 	}
 
-	mzResp, err := dnsProvider.EnsureManagedZone(managedZone)
+	mzResp, err := dnsProvider.EnsureManagedZone(ctx, managedZone)
 	if err != nil {
 		err = fmt.Errorf("%w, The DNS provider failed to ensure the managed zone: %v", ErrProvider, provider.SanitizeError(err))
 	} else if managedZone.Spec.ID != "" && mzResp.DNSName != managedZone.Spec.DomainName {
