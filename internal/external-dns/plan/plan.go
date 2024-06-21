@@ -281,7 +281,7 @@ func (p *Plan) Calculate() *Plan {
 						//ToDo Need a test that tests the deletion of a record with two owners who are adding the same value
 						// If you delete one owner record, it currently removes the endpoint form desired causing an invalid record
 
-						managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous})
+						managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous, isDelete: true})
 						managedChanges.dnsNameOwners[key.dnsName] = append(managedChanges.dnsNameOwners[key.dnsName], owners...)
 					}
 				}
@@ -329,7 +329,7 @@ func (p *Plan) Calculate() *Plan {
 						}
 					}
 					inheritOwner(current, candidate)
-					managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous})
+					managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous, isDelete: false})
 					managedChanges.dnsNameOwners[key.dnsName] = append(managedChanges.dnsNameOwners[key.dnsName], owners...)
 				}
 			}
@@ -405,6 +405,7 @@ func inheritOwner(from, to *endpoint.Endpoint) {
 }
 
 type endpointUpdate struct {
+	isDelete bool
 	current  *endpoint.Endpoint
 	previous *endpoint.Endpoint
 	desired  *endpoint.Endpoint
@@ -412,6 +413,10 @@ type endpointUpdate struct {
 
 func (e *endpointUpdate) ShouldUpdate() bool {
 	return shouldUpdateOwner(e.desired, e.current) || shouldUpdateTTL(e.desired, e.current) || targetChanged(e.desired, e.current) || shouldUpdateProviderSpecific(e.desired, e.current)
+}
+
+func (e *endpointUpdate) IsDeleting() bool {
+	return e.isDelete
 }
 
 type managedRecordSetChanges struct {
@@ -441,12 +446,14 @@ func (e *managedRecordSetChanges) Calculate() *externaldnsplan.Changes {
 	for _, update := range e.updates {
 		e.calculateDesired(update)
 		if update.ShouldUpdate() {
-			if err := e.validTargets(update.desired); err != nil {
-				e.errors = append(e.errors, err)
-			} else {
-				changes.UpdateNew = append(changes.UpdateNew, update.desired)
-				changes.UpdateOld = append(changes.UpdateOld, update.current)
+			if !update.IsDeleting() {
+				if err := e.validTargets(update.desired); err != nil {
+					e.errors = append(e.errors, err)
+					continue
+				}
 			}
+			changes.UpdateNew = append(changes.UpdateNew, update.desired)
+			changes.UpdateOld = append(changes.UpdateOld, update.current)
 		}
 	}
 
