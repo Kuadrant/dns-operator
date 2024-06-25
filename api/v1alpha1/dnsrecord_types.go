@@ -22,6 +22,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
+
+	"github.com/kuadrant/dns-operator/internal/common/hash"
 )
 
 type HealthProtocol string
@@ -53,12 +55,15 @@ type HealthCheckStatusProbe struct {
 }
 
 // DNSRecordSpec defines the desired state of DNSRecord
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.ownerID) || has(self.ownerID)", message="OwnerID is required once set"
 type DNSRecordSpec struct {
 	// ownerID is a unique string used to identify the owner of this record.
+	// If unset or set to an empty string the record UID will be used.
+	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="OwnerID is immutable"
 	// +kubebuilder:validation:MinLength=6
-	// +kubebuilder:validation:MaxLength=12
-	OwnerID string `json:"ownerID"`
+	// +kubebuilder:validation:MaxLength=36
+	OwnerID string `json:"ownerID,omitempty"`
 
 	// rootHost is the single root for all endpoints in a DNSRecord.
 	// it is expected all defined endpoints are children of or equal to this rootHost
@@ -188,6 +193,11 @@ func (s *DNSRecord) Validate() error {
 		return fmt.Errorf("invalid endpoint set. rootHost is set but found no endpoint defining a record for the rootHost %s", root)
 	}
 	return nil
+}
+
+// GetUIDHash returns a hash of the current records UID with a fixed length of 8.
+func (s *DNSRecord) GetUIDHash() string {
+	return hash.ToBase36HashLen(string(s.GetUID()), 8)
 }
 
 func init() {

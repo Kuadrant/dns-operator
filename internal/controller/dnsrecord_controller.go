@@ -111,6 +111,11 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, false, err)
 	}
 
+	logger = log.FromContext(ctx).
+		WithValues("ownerID", dnsRecord.Spec.OwnerID).
+		WithValues("zoneID", managedZone.Status.ID)
+	ctx = log.IntoContext(ctx, logger)
+
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
 		if err = r.ReconcileHealthChecks(ctx, dnsRecord, managedZone); client.IgnoreNotFound(err) != nil {
 			return ctrl.Result{}, err
@@ -138,10 +143,33 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
+	updateRequired := false
+
+	//Ensure Finalizer is added
 	if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
 		dnsRecord.Status.QueuedFor = metav1.NewTime(reconcileStart.Add(randomizedValidationRequeue))
 		logger.Info("Adding Finalizer", "name", DNSRecordFinalizer)
 		controllerutil.AddFinalizer(dnsRecord, DNSRecordFinalizer)
+		updateRequired = true
+	}
+
+	//Ensure OwnerID is set
+	if dnsRecord.Spec.OwnerID == "" {
+		dnsRecord.Spec.OwnerID = dnsRecord.GetUIDHash()
+		updateRequired = true
+	}
+
+	//Ensure Owner reference is created
+	if !common.Owns(managedZone, dnsRecord) {
+		err = controllerutil.SetOwnerReference(managedZone, dnsRecord, r.Scheme)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		updateRequired = true
+	}
+
+	//Update spec/metadata if required and return
+	if updateRequired {
 		err = r.Update(ctx, dnsRecord)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -149,14 +177,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
 	}
 
-	if !common.Owns(managedZone, dnsRecord) {
-		err = controllerutil.SetOwnerReference(managedZone, dnsRecord, r.Scheme)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		err = r.Client.Update(ctx, dnsRecord)
-		return ctrl.Result{}, err
-	}
 	var reason, message string
 	err = dnsRecord.Validate()
 	if err != nil {
