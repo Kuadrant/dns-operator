@@ -125,8 +125,8 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: lint
-lint: ## Run golangci-lint against code.
-	golangci-lint run ./...
+lint: golangci-lint ## Run golangci-lint against code.
+	$(GOLANGCI_LINT) -v run ./...
 
 .PHONY: imports
 imports: openshift-goimports ## Run openshift goimports against code.
@@ -270,6 +270,7 @@ KIND = $(LOCALBIN)/kind
 ACT = $(LOCALBIN)/act
 YQ = $(LOCALBIN)/yq
 GINKGO ?= $(LOCALBIN)/ginkgo
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
@@ -279,6 +280,7 @@ KIND_VERSION = v0.20.0
 ACT_VERSION = latest
 YQ_VERSION := v4.34.2
 GINKGO_VERSION ?= v2.13.2
+GOLANGCI_LINT_VERSION ?= v1.55.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -341,6 +343,11 @@ $(YQ): $(LOCALBIN)
 ginkgo: $(GINKGO) ## Download ginkgo locally if necessary
 $(GINKGO): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@$(GINKGO_VERSION)
+
+.PHONY: golangci-lint
+golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+$(GOLANGCI_LINT): $(LOCALBIN)
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
 
 .PHONY: bundle
 bundle: manifests manifests-gen-base-csv kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
