@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/go-logr/logr"
 
@@ -265,14 +266,18 @@ func (f *filter) EndpointZoneID(endpoint *endpoint.Endpoint, zones map[string]st
 type Zone map[endpoint.EndpointKey]*endpoint.Endpoint
 
 type InMemoryClient struct {
+	sync.RWMutex
 	zones map[string]Zone
 }
 
 func NewInMemoryClient() *InMemoryClient {
-	return &InMemoryClient{map[string]Zone{}}
+	return &InMemoryClient{zones: map[string]Zone{}}
 }
 
 func (c *InMemoryClient) Records(zone string) ([]*endpoint.Endpoint, error) {
+	c.RLock()
+	defer c.RUnlock()
+
 	if _, ok := c.zones[zone]; !ok {
 		return nil, ErrZoneNotFound
 	}
@@ -285,6 +290,9 @@ func (c *InMemoryClient) Records(zone string) ([]*endpoint.Endpoint, error) {
 }
 
 func (c *InMemoryClient) Zones() map[string]string {
+	c.RLock()
+	defer c.RUnlock()
+
 	zones := map[string]string{}
 	for zone := range c.zones {
 		zones[zone] = zone
@@ -293,6 +301,9 @@ func (c *InMemoryClient) Zones() map[string]string {
 }
 
 func (c *InMemoryClient) CreateZone(zone string) error {
+	c.Lock()
+	defer c.Unlock()
+
 	if _, ok := c.zones[zone]; ok {
 		return ErrZoneAlreadyExists
 	}
@@ -302,6 +313,9 @@ func (c *InMemoryClient) CreateZone(zone string) error {
 }
 
 func (c *InMemoryClient) DeleteZone(zone string) error {
+	c.Lock()
+	defer c.Unlock()
+
 	if _, ok := c.zones[zone]; ok {
 		delete(c.zones, zone)
 		return nil
@@ -310,6 +324,9 @@ func (c *InMemoryClient) DeleteZone(zone string) error {
 }
 
 func (c *InMemoryClient) GetZone(zone string) (Zone, error) {
+	c.RLock()
+	defer c.RUnlock()
+
 	if _, ok := c.zones[zone]; ok {
 		return c.zones[zone], nil
 	}
@@ -317,6 +334,9 @@ func (c *InMemoryClient) GetZone(zone string) (Zone, error) {
 }
 
 func (c *InMemoryClient) ApplyChanges(ctx context.Context, zoneID string, changes *plan.Changes) error {
+	c.Lock()
+	defer c.Unlock()
+
 	if err := c.validateChangeBatch(zoneID, changes); err != nil {
 		return err
 	}
