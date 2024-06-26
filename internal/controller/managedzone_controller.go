@@ -36,6 +36,7 @@ import (
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
@@ -84,6 +85,15 @@ func (r *ManagedZoneReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			logger.Error(err, "Failed to delete parent Zone NS Record")
 			return ctrl.Result{}, err
 		}
+
+		if recordsExist, err := r.hasOwnedRecords(ctx, managedZone); err != nil {
+			logger.Error(err, "Failed to check owned records")
+			return ctrl.Result{}, err
+		} else if recordsExist {
+			logger.Info("ManagedZone deletion awaiting removal of owned DNS records")
+			return ctrl.Result{Requeue: true}, nil
+		}
+
 		if err := r.deleteManagedZone(ctx, managedZone); err != nil {
 			logger.Error(err, "Failed to delete ManagedZone")
 			return ctrl.Result{}, err
@@ -252,7 +262,7 @@ func (r *ManagedZoneReconciler) deleteManagedZone(ctx context.Context, managedZo
 	}
 	err = dnsProvider.DeleteManagedZone(managedZone)
 	if err != nil {
-		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
+		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "notFound") {
 			logger.Info("ManagedZone was not found, continuing")
 			return nil
 		}
@@ -396,6 +406,20 @@ func (r *ManagedZoneReconciler) parentZoneNSRecordReady(ctx context.Context, man
 		return fmt.Errorf("the ns record is not in a ready state : %s", nsRecord.Name)
 	}
 	return nil
+}
+
+func (r *ManagedZoneReconciler) hasOwnedRecords(ctx context.Context, zone *v1alpha1.ManagedZone) (bool, error) {
+	records := &v1alpha1.DNSRecordList{}
+	if err := r.List(ctx, records, client.InNamespace(zone.GetNamespace())); err != nil {
+		return false, err
+	}
+
+	for _, record := range records.Items {
+		if common.Owns(zone, &record) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // setManagedZoneCondition adds or updates a given condition in the ManagedZone status.
