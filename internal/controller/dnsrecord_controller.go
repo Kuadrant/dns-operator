@@ -97,6 +97,15 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	dnsRecord := previous.DeepCopy()
 
+	//Ensure OwnerID is set in the status
+	if dnsRecord.Status.OwnerID == "" {
+		if dnsRecord.Spec.OwnerID != "" {
+			dnsRecord.Status.OwnerID = dnsRecord.Spec.OwnerID
+		} else {
+			dnsRecord.Status.OwnerID = dnsRecord.GetUIDHash()
+		}
+	}
+
 	managedZone := &v1alpha1.ManagedZone{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dnsRecord.Spec.ManagedZoneRef.Name,
@@ -110,6 +119,11 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, reason, message)
 		return r.updateStatus(ctx, previous, dnsRecord, false, err)
 	}
+
+	logger = log.FromContext(ctx).
+		WithValues("ownerID", dnsRecord.Status.OwnerID).
+		WithValues("zoneID", managedZone.Status.ID)
+	ctx = log.IntoContext(ctx, logger)
 
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
 		if err = r.ReconcileHealthChecks(ctx, dnsRecord, managedZone); client.IgnoreNotFound(err) != nil {
@@ -402,7 +416,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	}
 
 	registry, err := externaldnsregistry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
-		dnsRecord.Spec.OwnerID, txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
+		dnsRecord.Status.OwnerID, txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
 		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
 	if err != nil {
 		return false, err
