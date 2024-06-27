@@ -13,13 +13,13 @@
 
 ## DNSRecordSpec
 
-| **Field**        | **Type**                                                                                 | **Required** | **Description**                                                                     |
-|------------------|------------------------------------------------------------------------------------------|:------------:|-------------------------------------------------------------------------------------|
-| `ownerID`        | String                                                                                   |     Yes      | Unique string used to identify the owner of this record                             | 
-| `rootHost`       | String                                                                                   |     Yes      | Single root host of all endpoints in a DNSRecord                                    |
-| `managedZone`    | [ManagedZoneReference](#managedzonereference)                                            |     Yes      | Reference to a ManagedZone instance to which this record will publish its endpoints |
-| `endpoints`      | [][ExternalDNS Endpoint](https://pkg.go.dev/sigs.k8s.io/external-dns/endpoint#Endpoint)  |      No      | Endpoints to manage in the dns provider                                             |
-| `healthCheck`    | [HealthCheckSpec](#healthcheckspec)                                                      |      No      | Health check configuration                                                          |
+| **Field**        | **Type**                                                                                 | **Required** | **Description**                                                                                                        |
+|------------------|------------------------------------------------------------------------------------------|:------------:|------------------------------------------------------------------------------------------------------------------------|
+| `ownerID`        | String                                                                                   |      No      | Unique string used to identify the owner of this record. If unset an ownerID will be generated based on the record UID | 
+| `rootHost`       | String                                                                                   |     Yes      | Single root host of all endpoints in a DNSRecord                                                                       |
+| `managedZone`    | [ManagedZoneReference](#managedzonereference)                                            |     Yes      | Reference to a ManagedZone instance to which this record will publish its endpoints                                    |
+| `endpoints`      | [][ExternalDNS Endpoint](https://pkg.go.dev/sigs.k8s.io/external-dns/endpoint#Endpoint)  |      No      | Endpoints to manage in the dns provider                                                                                |
+| `healthCheck`    | [HealthCheckSpec](#healthcheckspec)                                                      |      No      | Health check configuration                                                                                             |
 
 ## ManagedZoneReference
 
@@ -49,6 +49,7 @@
 | `writeCounter`       | Number                                                                                              | WriteCounter represent a number of consecutive write attempts on the same generation of the record                                 |
 | `endpoints`          | [][ExternalDNS Endpoint](https://pkg.go.dev/sigs.k8s.io/external-dns/endpoint#Endpoint)             | Endpoints are the last endpoints that were successfully published by the provider                                                  |
 | `healthCheck`        | [HealthCheckStatus](#healthcheckstatus)                                                             | Health check status                                                                                                                |
+| `ownerID`            | String                                                                                              | Unique string used to identify the owner of this record                                                                                                            |
 
 ## HealthCheckStatus
 
