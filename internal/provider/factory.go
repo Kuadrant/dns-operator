@@ -84,7 +84,7 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 		return nil, err
 	}
 
-	provider, err := nameForProviderSecret(providerSecret)
+	provider, err := NameForProviderSecret(providerSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 	return nil, fmt.Errorf("provider '%s' not registered", provider)
 }
 
-func nameForProviderSecret(secret *v1.Secret) (string, error) {
+func NameForProviderSecret(secret *v1.Secret) (string, error) {
 	switch secret.Type {
 	case "kuadrant.io/aws":
 		return "aws", nil

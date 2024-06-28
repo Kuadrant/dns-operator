@@ -43,6 +43,9 @@ spec:
         - /manager
         args:
         - --leader-elect
+        env:
+        - name: WATCH_NAMESPACES
+          value: ""
         image: controller:latest
         name: manager
         securityContext:

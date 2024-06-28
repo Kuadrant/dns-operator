@@ -6,9 +6,6 @@
 resources:
   - ../../default
 
-patchesStrategicMerge:
-- manager_config_patch.yaml
-
 patches:
   - patch: |-
       - op: add
@@ -16,3 +13,4 @@ patches:
         value: --provider=aws,google,inmemory
     target:
       kind: Deployment
+  - path: manager_config_patch.yaml
