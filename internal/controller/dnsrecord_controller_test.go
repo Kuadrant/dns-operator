@@ -28,6 +28,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
@@ -109,6 +110,35 @@ var _ = Describe("DNSRecordReconciler", func() {
 			err := k8sClient.Delete(ctx, brokenZone)
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 		}
+	})
+
+	It("prevents creation of invalid records", func(ctx SpecContext) {
+		dnsRecord = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "bar.example.com",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				RootHost: "bar.example .com",
+				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
+					Name: managedZone.Name,
+				},
+				Endpoints: getTestEndpoints("bar.example.com", "127.0.0.1"),
+				HealthCheck: &v1alpha1.HealthCheckSpec{
+					Endpoint:         "health",
+					Port:             ptr.To(5),
+					Protocol:         ptr.To(v1alpha1.HealthProtocol("cat")),
+					FailureThreshold: ptr.To(-1),
+				},
+			},
+		}
+		err := k8sClient.Create(ctx, dnsRecord)
+		Expect(err).To(MatchError(ContainSubstring("spec.rootHost: Invalid value")))
+		Expect(err).To(MatchError(ContainSubstring("spec.healthCheck.endpoint: Invalid value")))
+		Expect(err).To(MatchError(ContainSubstring("Only ports 80, 443, 1024-49151 are allowed")))
+		Expect(err).To(MatchError(ContainSubstring("Only HTTP or HTTPS protocols are allowed")))
+		Expect(err).To(MatchError(ContainSubstring("Failure threshold must be greater than 0")))
+
 	})
 
 	It("handles records with similar root hosts", func(ctx SpecContext) {

@@ -35,10 +35,22 @@ const HttpsProtocol HealthProtocol = "HTTPS"
 // By default this health check will be applied to each unique DNS A Record for
 // the listeners assigned to the target gateway
 type HealthCheckSpec struct {
-	Endpoint         string          `json:"endpoint,omitempty"`
-	Port             *int            `json:"port,omitempty"`
-	Protocol         *HealthProtocol `json:"protocol,omitempty"`
-	FailureThreshold *int            `json:"failureThreshold,omitempty"`
+	// Endpoint is the path to append to the host to reach the expected health check.
+	// Must start with "?" or "/", contain only valid URL characters and end with alphanumeric char or "/". For example "/" or "/healthz" are common
+	// +kubebuilder:validation:Pattern=`^(?:\?|\/)[\w\-.~:\/?#\[\]@!$&'()*+,;=]+(?:[a-zA-Z0-9]|\/){1}$`
+	Endpoint string `json:"endpoint,omitempty"`
+
+	// Port to connect to the host on. Must be either 80, 443 or 1024-49151
+	// +kubebuilder:validation:XValidation:rule="self in [80, 443] || (self >= 1024 && self <= 49151)",message="Only ports 80, 443, 1024-49151 are allowed"
+	Port *int `json:"port,omitempty"`
+
+	// Protocol to use when connecting to the host, valid values are "HTTP" or "HTTPS"
+	// +kubebuilder:validation:XValidation:rule="self in ['HTTP','HTTPS']",message="Only HTTP or HTTPS protocols are allowed"
+	Protocol *HealthProtocol `json:"protocol,omitempty"`
+
+	// FailureThreshold is a limit of consecutive failures that must occur for a host to be considered unhealthy
+	// +kubebuilder:validation:XValidation:rule="self > 0",message="Failure threshold must be greater than 0"
+	FailureThreshold *int `json:"failureThreshold,omitempty"`
 }
 
 type HealthCheckStatus struct {
@@ -68,7 +80,10 @@ type DNSRecordSpec struct {
 
 	// rootHost is the single root for all endpoints in a DNSRecord.
 	// it is expected all defined endpoints are children of or equal to this rootHost
+	// Must contain at least two groups of valid URL characters separated by a "."
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=255
+	// +kubebuilder:validation:Pattern=`^(?:[\w\-.~:\/?#[\]@!$&'()*+,;=]+)\.(?:[\w\-.~:\/?#[\]@!$&'()*+,;=]+)$`
 	RootHost string `json:"rootHost"`
 
 	// managedZone is a reference to a ManagedZone instance to which this record will publish its endpoints.
@@ -172,9 +187,6 @@ const WildcardPrefix = "*."
 
 func (s *DNSRecord) Validate() error {
 	root := s.Spec.RootHost
-	if len(strings.Split(root, ".")) <= 1 {
-		return fmt.Errorf("invalid domain format no tld discovered")
-	}
 	if len(s.Spec.Endpoints) == 0 {
 		return fmt.Errorf("no endpoints defined for DNSRecord. Nothing to do")
 	}

@@ -5,7 +5,7 @@ metadata:
   namespace: ${testNamespace}
 spec:
   healthCheck:
-    endpoint: "/"
+    endpoint: "/health"
     port: 80
     protocol: "HTTPS"
     failureThreshold: 3
