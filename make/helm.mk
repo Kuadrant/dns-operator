@@ -1,9 +1,25 @@
 ##@ Helm Charts
 
+# TODO: If this is found useful, consider adding it to the main Makefile
+# Semantic versioning (i.e. Major.Minor.Patch)
+is_semantic_version = $(shell [[ $(1) =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$$ ]] && echo "true")
+
+
+# OPERATOR_IMG defines the dns-operator image with version tag.
+# If the version is not semantic, will use the default one
+bundle_is_semantic := $(call is_semantic_version,$(VERSION))
+ifeq (0.0.0,$(VERSION))
+OPERATOR_IMG = $(IMAGE_TAG_BASE):latest
+else ifeq ($(bundle_is_semantic),true)
+OPERATOR_IMG = $(IMAGE_TAG_BASE):v$(VERSION)
+else
+OPERATOR_IMG ?= $(DEFAULT_IMAGE_TAG)
+endif
+
 .PHONY: helm-build
 helm-build: yq manifests kustomize operator-sdk ## Build the helm chart from kustomize manifests
 	# Replace the controller image
-	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(OPERATOR_IMG)
 	# Build the helm chart templates from kustomize manifests
 	$(KUSTOMIZE) build config/helm > charts/dns-operator/templates/manifests.yaml
 	V="$(VERSION)" $(YQ) eval '.version = strenv(V)' -i charts/dns-operator/Chart.yaml
