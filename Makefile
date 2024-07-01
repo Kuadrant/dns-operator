@@ -293,6 +293,7 @@ ACT = $(LOCALBIN)/act
 YQ = $(LOCALBIN)/yq
 GINKGO ?= $(LOCALBIN)/ginkgo
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
+HELM ?= $(LOCALBIN)/helm
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
@@ -303,6 +304,7 @@ ACT_VERSION = latest
 YQ_VERSION := v4.34.2
 GINKGO_VERSION ?= v2.13.2
 GOLANGCI_LINT_VERSION ?= v1.55.2
+HELM_VERSION = v3.15.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -360,6 +362,20 @@ $(ACT): $(LOCALBIN)
 yq: $(YQ) ## Download yq locally if necessary.
 $(YQ): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@$(YQ_VERSION)
+
+.PHONY: helm
+helm: $(HELM) ## Download helm locally if necessary.
+$(HELM):
+	@{ \
+	set -e ;\
+	mkdir -p $(dir $(HELM)) ;\
+	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
+	wget -O helm.tar.gz https://get.helm.sh/helm-$(HELM_VERSION)-$${OS}-$${ARCH}.tar.gz ;\
+	tar -zxvf helm.tar.gz ;\
+	mv $${OS}-$${ARCH}/helm $(HELM) ;\
+	chmod +x $(HELM) ;\
+	rm -rf $${OS}-$${ARCH} helm.tar.gz ;\
+	}
 
 .PHONY: ginkgo
 ginkgo: $(GINKGO) ## Download ginkgo locally if necessary
