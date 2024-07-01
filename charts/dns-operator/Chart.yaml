@@ -1,0 +1,25 @@
+apiVersion: v2
+name: dns-operator
+description: Kubernetes operator responsible for reconciling DNS Record and Managed Zone custom resources.
+home: https://kuadrant.io
+icon: https://raw.githubusercontent.com/Kuadrant/kuadrant.github.io/main/static/img/apple-touch-icon.png
+keywords:
+  - dns
+  - managed zone
+  - kubernetes
+  - kuadrant
+sources:
+  - https://github.com/Kuadrant/dns-operator/
+kubeVersion: ">=1.19.0-0"
+type: application
+# The version will be properly set when the chart is released matching the operator version
+version: "0.0.0"
+maintainers:
+  - email: mnairn@redhat.com
+    name: Michael Nairn
+  - email: cbrookes@redhat.com
+    name: Craig Brookes
+  - email: pbrookes@redhat.com
+    name: Phil Brookes
+  - email: didier@redhat.com
+    name: Didier Di Cesare
