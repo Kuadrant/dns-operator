@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/goombaio/namegenerator"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -86,5 +87,6 @@ func ProviderForManagedZone(ctx context.Context, mz *v1alpha1.ManagedZone, c cli
 		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),
 		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{mz.Status.ID}),
 	}
-	return providerFactory.ProviderFor(ctx, mz, providerConfig)
+	//Disable provider logging in test output
+	return providerFactory.ProviderFor(logr.NewContext(ctx, logr.Discard()), mz, providerConfig)
 }

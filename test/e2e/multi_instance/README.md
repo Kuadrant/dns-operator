@@ -10,7 +10,7 @@ Deploy the operator on a local kind cluster with X operator instances (DEPLOYMEN
 make local-setup DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2
 ```
 
-The above will create two dns operator deployments on the kind cluster, each configured to watch its own namespace, with the developmnet managedzones (Assuming you have configured them locally) created in each deployment namespace.
+The above will create two dns operator deployments on the kind cluster, each configured to watch its own namespace, with the development managedzones (Assuming you have configured them locally) created in each deployment namespace.
 
 DNS Operator Deployments:
 ```shell

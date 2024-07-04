@@ -180,6 +180,14 @@ local-setup: $(KIND) ## Setup local development kind cluster, dependencies and o
 	$(KUBECTL) get managedzones -A
 	@echo "local-setup: Complete!!"
 
+.PHONY: local-setup-multi
+local-setup-multi: CLUSTER_COUNT=1
+local-setup-multi: ## Setup multiple local development kind clusters
+	@n=1 ; while [[ $$n -le $(CLUSTER_COUNT) ]] ; do \
+		$(MAKE) -s local-setup KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME_PREFIX}-$$n;\
+		((n = n + 1)) ;\
+	done ;\
+
 .PHONY: local-cleanup
 local-cleanup: ## Delete local cluster
 	$(MAKE) kind-delete-cluster
