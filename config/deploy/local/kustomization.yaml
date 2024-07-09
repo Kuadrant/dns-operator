@@ -11,6 +11,9 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/args/-
         value: --provider=aws,google,inmemory
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --zap-log-level=debug
     target:
       kind: Deployment
   - path: manager_config_patch.yaml
