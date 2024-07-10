@@ -85,9 +85,7 @@ func main() {
 		"The minimal timeout between calls to the DNS Provider"+
 			"Controls if we commit to the full reconcile loop")
 	flag.Var(&providers, "provider", "DNS Provider(s) to enable. Can be passed multiple times e.g. --provider aws --provider google, or as a comma separated list e.g. --provider aws,gcp")
-	opts := zap.Options{
-		Development: true,
-	}
+	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
