@@ -105,6 +105,8 @@ func NameForProviderSecret(secret *v1.Secret) (string, error) {
 	switch secret.Type {
 	case "kuadrant.io/aws":
 		return "aws", nil
+	case "kuadrant.io/azure":
+		return "azure", nil
 	case "kuadrant.io/gcp":
 		return "google", nil
 	case "kuadrant.io/inmemory":

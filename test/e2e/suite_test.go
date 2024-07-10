@@ -20,6 +20,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
+	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
@@ -41,7 +42,7 @@ var (
 	testManagedZoneName           string
 	testNamespace                 string
 	testDNSProvider               string
-	supportedProviders            = []string{"aws", "gcp"}
+	supportedProviders            = []string{"aws", "gcp", "azure"}
 	supportedHealthCheckProviders = []string{"aws"}
 	testManagedZone               *v1alpha1.ManagedZone
 )
