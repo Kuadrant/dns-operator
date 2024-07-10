@@ -17,6 +17,7 @@ limitations under the License.
 package azure
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -25,12 +26,15 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	log "github.com/sirupsen/logrus"
+	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v2"
+
+	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/provider"
 )
 
-// config represents common config items for Azure DNS and Azure Private DNS
-type config struct {
+// Config represents common config items for Azure DNS and Azure Private DNS
+type Config struct {
 	Cloud                        string `json:"cloud" yaml:"cloud"`
 	TenantID                     string `json:"tenantId" yaml:"tenantId"`
 	SubscriptionID               string `json:"subscriptionId" yaml:"subscriptionId"`
@@ -41,14 +45,18 @@ type config struct {
 	UseManagedIdentityExtension  bool   `json:"useManagedIdentityExtension" yaml:"useManagedIdentityExtension"`
 	UseWorkloadIdentityExtension bool   `json:"useWorkloadIdentityExtension" yaml:"useWorkloadIdentityExtension"`
 	UserAssignedIdentityID       string `json:"userAssignedIdentityID" yaml:"userAssignedIdentityID"`
+	DomainFilter                 endpoint.DomainFilter
+	ZoneNameFilter               endpoint.DomainFilter
+	IDFilter                     provider.ZoneIDFilter
+	DryRun                       bool
 }
 
-func getConfig(configFile, resourceGroup, userAssignedIdentityClientID string) (*config, error) {
+func getConfig(configFile, resourceGroup, userAssignedIdentityClientID string) (*Config, error) {
 	contents, err := os.ReadFile(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read Azure config file '%s': %v", configFile, err)
 	}
-	cfg := &config{}
+	cfg := &Config{}
 	err = yaml.Unmarshal(contents, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read Azure config file '%s': %v", configFile, err)
@@ -66,7 +74,8 @@ func getConfig(configFile, resourceGroup, userAssignedIdentityClientID string) (
 }
 
 // getAccessToken retrieves Azure API access token.
-func getCredentials(cfg config) (azcore.TokenCredential, *arm.ClientOptions, error) {
+func getCredentials(ctx context.Context, cfg Config) (azcore.TokenCredential, *arm.ClientOptions, error) {
+	logger := logr.FromContextOrDiscard(ctx).WithName("getCredentials")
 	cloudCfg, err := getCloudConfiguration(cfg.Cloud)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get cloud configuration: %w", err)
@@ -88,7 +97,7 @@ func getCredentials(cfg config) (azcore.TokenCredential, *arm.ClientOptions, err
 		// In this case, we shouldn't try to use SPN to authenticate.
 		!strings.EqualFold(cfg.ClientID, "msi") &&
 		!strings.EqualFold(cfg.ClientSecret, "msi") {
-		log.Info("Using client_id+client_secret to retrieve access token for Azure API.")
+		logger.Info("using client_id and client_secret to retrieve access token for Azure API")
 		opts := &azidentity.ClientSecretCredentialOptions{
 			ClientOptions: clientOpts,
 		}
@@ -101,7 +110,7 @@ func getCredentials(cfg config) (azcore.TokenCredential, *arm.ClientOptions, err
 
 	// Try to retrieve token with Workload Identity.
 	if cfg.UseWorkloadIdentityExtension {
-		log.Info("Using workload identity extension to retrieve access token for Azure API.")
+		logger.Info("using workload identity extension to retrieve access token for Azure API")
 
 		wiOpt := azidentity.WorkloadIdentityCredentialOptions{
 			ClientOptions: clientOpts,
@@ -123,7 +132,7 @@ func getCredentials(cfg config) (azcore.TokenCredential, *arm.ClientOptions, err
 
 	// Try to retrieve token with MSI.
 	if cfg.UseManagedIdentityExtension {
-		log.Info("Using managed identity extension to retrieve access token for Azure API.")
+		logger.Info("using managed identity extension to retrieve access token for Azure API")
 		msiOpt := azidentity.ManagedIdentityCredentialOptions{
 			ClientOptions: clientOpts,
 		}

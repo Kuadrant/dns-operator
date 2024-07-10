@@ -256,6 +256,9 @@ var _ = Describe("Multi Record Test", func() {
 
 	Context("loadbalanced", func() {
 		It("makes available a hostname that can be resolved", func(ctx SpecContext) {
+			if testDNSProvider == "azure" {
+				Skip("not yet supported for azure")
+			}
 			By("creating two dns records")
 			klbHostName := "klb." + testHostname
 

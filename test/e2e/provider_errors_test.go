@@ -53,6 +53,8 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			//GCP
 			expectedProviderErr = "location': 'notageocode', invalid"
 			validGeoCode = "us-east1"
+		} else if testDNSProvider == "azure" {
+			Skip("not yet supported for azure")
 		} else {
 			//AWS
 			expectedProviderErr = "Value 'notageocode' with length = '11' is not facet-valid with respect to length '2' for type 'ContinentCode'"
@@ -142,6 +144,8 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		if testDNSProvider == "gcp" {
 			//GCP
 			expectedProviderErr = "weight': '-1.0' Reason: backendError, Message: Invalid Value"
+		} else if testDNSProvider == "azure" {
+			Skip("not yet supported for azure")
 		} else {
 			//AWS
 			expectedProviderErr = "weight' failed to satisfy constraint: Member must have value greater than or equal to 0"

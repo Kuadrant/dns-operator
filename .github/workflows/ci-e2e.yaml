@@ -45,10 +45,14 @@ jobs:
       - name: Create GCP provider configuration
         run: |
           make local-setup-gcp-mz-clean local-setup-gcp-mz-generate GCP_ZONE_NAME=e2e-google-hcpapps-net GCP_ZONE_DNS_NAME=e2e.google.hcpapps.net GCP_GOOGLE_CREDENTIALS='${{ secrets.E2E_GCP_GOOGLE_CREDENTIALS }}' GCP_PROJECT_ID=${{ secrets.E2E_GCP_PROJECT_ID }}
+      - name: Create Azure provider configuration
+        run: |
+          make local-setup-azure-mz-clean local-setup-azure-mz-generate KUADRANT_AZURE_DNS_ZONE_ID='${{ secrets.E2E_AZURE_ZONE_ID }}' KUADRANT_AZURE_ZONE_ROOT_DOMAIN=e2e.azure.hcpapps.net KUADRANT_AZURE_CREDENTIALS='${{ secrets.E2E_AZURE_CREDENTIALS }}'
       - name: Setup environment
         run: |
           make local-setup DEPLOY=true TEST_NAMESPACE=${{ env.TEST_NAMESPACE }}
           kubectl -n ${{ env.TEST_NAMESPACE }} wait --timeout=60s --for=condition=Ready managedzone/dev-mz-aws
+          kubectl -n ${{ env.TEST_NAMESPACE }} wait --timeout=60s --for=condition=Ready managedzone/dev-mz-azure
           kubectl -n ${{ env.TEST_NAMESPACE }} wait --timeout=60s --for=condition=Ready managedzone/dev-mz-gcp
       - name: Run suite AWS
         run: |
@@ -63,6 +67,13 @@ jobs:
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.google.hcpapps.net
           export TEST_DNS_NAMESPACE=${{ env.TEST_NAMESPACE }}
           export TEST_DNS_PROVIDER=gcp
+          make test-e2e
+      - name: Run suite Azure
+        run: |
+          export TEST_DNS_MANAGED_ZONE_NAME=dev-mz-azure
+          export TEST_DNS_ZONE_DOMAIN_NAME=e2e.azure.hcpapps.net
+          export TEST_DNS_NAMESPACE=${{ env.TEST_NAMESPACE }}
+          export TEST_DNS_PROVIDER=azure
           make test-e2e
       - name: Dump Controller logs
         if: ${{ failure() }}

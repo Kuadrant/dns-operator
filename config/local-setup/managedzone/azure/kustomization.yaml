@@ -1,0 +1,40 @@
+resources:
+  - managed_zone.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: azure-managed-zone-config
+    envs:
+      - managed-zone-config.env
+
+secretGenerator:
+  - name: azure-credentials
+    envs:
+      - azure-credentials.env
+    type: "kuadrant.io/azure"
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: azure-managed-zone-config
+      version: v1
+      fieldPath: data.AZURE_DNS_ZONE_ID
+    targets:
+      - select:
+          kind: ManagedZone
+          name: dev-mz-azure
+        fieldPaths:
+          - spec.id
+  - source:
+      kind: ConfigMap
+      name: azure-managed-zone-config
+      version: v1
+      fieldPath: data.AZURE_ZONE_ROOT_DOMAIN
+    targets:
+      - select:
+          kind: ManagedZone
+          name: dev-mz-azure
+        fieldPaths:
+          - spec.domainName
