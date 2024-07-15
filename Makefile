@@ -212,7 +212,7 @@ build: DNS_OPERATOR_VERSION=0.4.0-dev # change as version increases .
 build: COMMIT=$(shell git rev-parse HEAD || echo "unknown") 
 build: DIRTY=$(shell /hack/check-git-dirty.sh || echo "unknown")
 build: manifests generate fmt vet ## Build manager binary.
-	go build "-X main.version=${DNS_OPERATOR_VERSION} -X main.commit=${COMMIT} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
+	go build -ldflags "-X main.version=${DNS_OPERATOR_VERSION} -X main.commit=${COMMIT} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
 
 .PHONY: run
 run: DNS_OPERATOR_VERSION=0.4.0-dev # change as version increases .

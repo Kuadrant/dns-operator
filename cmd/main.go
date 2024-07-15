@@ -46,6 +46,9 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+	version  string // Change as versions are released
+	commit   string // pass ldflag here to display commit hash
+	dirty    string // must be string as passed in by ldflag to determine display .
 )
 
 const (
@@ -127,6 +130,16 @@ func main() {
 		}
 		providers = defaultProviders
 	}
+
+	// Display version here.
+
+	dnsInfoDisplay := fmt.Sprintf("dns-operator %s (%s-dirty)", version, commit)
+
+	if dirty == "false" {
+		dnsInfoDisplay = fmt.Sprintf("dns-operator %s (%s)", version, commit)
+	}
+
+	setupLog.Info(dnsInfoDisplay)
 
 	setupLog.Info("init provider factory", "providers", providers)
 	providerFactory, err := provider.NewFactory(mgr.GetClient(), providers)
