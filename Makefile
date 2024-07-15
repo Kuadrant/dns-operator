@@ -5,6 +5,8 @@
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= 0.0.0
 
+PROJECT_PATH := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
+
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
 # To re-generate a bundle for other specific channels without changing the standard setup, you can:
@@ -206,12 +208,18 @@ local-deploy-namespaced: docker-build kind-load-image ## Deploy the dns operator
 ##@ Build
 
 .PHONY: build
+build: DNS_OPERATOR_VERSION=0.4.0-dev # change as version increases .
+build: COMMIT=$(shell git rev-parse HEAD || echo "unknown") 
+build: DIRTY=$(shell /hack/check-git-dirty.sh || echo "unknown")
 build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+	go build "-X main.version=${DNS_OPERATOR_VERSION} -X main.commit=${COMMIT} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
 
 .PHONY: run
+run: DNS_OPERATOR_VERSION=0.4.0-dev # change as version increases .
+run: COMMIT=$(shell git rev-parse HEAD || echo "unknown") 
+run: DIRTY=$(shell /hack/check-git-dirty.sh || echo "unknown")
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go --zap-devel --provider inmemory,aws,google
+	go run -ldflags "-X main.version=${DNS_OPERATOR_VERSION} -X main.commit=${COMMIT} -X main.dirty=${DIRTY}" ./cmd/main.go --zap-devel --provider inmemory,aws,google
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
