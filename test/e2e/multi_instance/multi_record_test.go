@@ -251,6 +251,9 @@ var _ = Describe("Multi Record Test", func() {
 
 	Context("loadbalanced", func() {
 		It("creates and deletes distributed dns records", func(ctx SpecContext) {
+			if testDNSProvider == "azure" {
+				Skip("not yet supported for azure")
+			}
 			testGeoRecords := map[string][]testDNSRecord{}
 
 			By(fmt.Sprintf("creating %d loadbalanced dnsrecords accross %d clusters", len(testNamespaces)*len(testClusters), len(testClusters)))

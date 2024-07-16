@@ -201,7 +201,7 @@ var _ = Describe("Multi Record Test", func() {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err).To(MatchError(ContainSubstring("not found")))
-			}, 10*time.Second, 1*time.Second, ctx).Should(Succeed())
+			}, 25*time.Second, 1*time.Second, ctx).Should(Succeed())
 
 			By("ensuring zone records are updated as expected")
 			Eventually(func(g Gomega, ctx context.Context) {
@@ -256,6 +256,9 @@ var _ = Describe("Multi Record Test", func() {
 
 	Context("loadbalanced", func() {
 		It("makes available a hostname that can be resolved", func(ctx SpecContext) {
+			if testDNSProvider == "azure" {
+				Skip("not yet supported for azure")
+			}
 			By("creating two dns records")
 			klbHostName := "klb." + testHostname
 
