@@ -2,11 +2,15 @@
 FROM golang:1.21 as builder
 ARG TARGETOS
 ARG TARGETARCH
+
 ARG DNS_OPERATOR_VERSION
 ARG COMMIT
 ARG DIRTY
 
-# TODO env var implementation here
+ENV DNS_OPERATOR_VERSION=${DNS_OPERATOR_VERSION:-unknown}
+ENV COMMIT=${COMMIT:-unknown}
+ENV DIRTY=${DIRTY:-unknown}
+
 
 WORKDIR /workspace
 # Copy the Go Modules manifests

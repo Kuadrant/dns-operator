@@ -225,8 +225,11 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
+docker-build: DNS_OPERATOR_VERSION=0.4.0-dev # change as version increases .
+docker-build: COMMIT=$(shell git rev-parse HEAD || echo "unknown") 
+docker-build: DIRTY=$(shell /hack/check-git-dirty.sh || echo "unknown")
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build -t ${IMG} . --build-arg DNS_OPERATOR_VERSION=$(DNS_OPERATOR_VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DIRTY=$(DIRTY)
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
