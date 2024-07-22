@@ -930,7 +930,7 @@ spec:
         env:
         - name: WATCH_NAMESPACES
           value: ""
-        image: quay.io/kuadrant/dns-operator:latest
+        image: quay.io/kuadrant/dns-operator:v0.4.0-alpha1
         livenessProbe:
           httpGet:
             path: /healthz
