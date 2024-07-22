@@ -1,0 +1,19 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: simple-dns
+spec:
+  healthCheck:
+    endpoint: "/"
+    port: 80
+    protocol: "HTTPS"
+    failureThreshold: 3
+  endpoints:
+    - dnsName: ${KUADRANT_SUB_DOMAIN}
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.32.200.17
+  managedZone:
+    name: dev-mz-azure
+  rootHost: ${KUADRANT_SUB_DOMAIN}

@@ -38,6 +38,7 @@ import (
 	"github.com/kuadrant/dns-operator/internal/controller"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
+	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
 	//+kubebuilder:scaffold:imports
@@ -46,9 +47,9 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
-	version  string // Change as versions are released
-	commit   string // pass ldflag here to display commit hash
-	dirty    string // must be string as passed in by ldflag to determine display .
+	version  = "0.4.0-dev" // Change as versions are released
+	commit   string        // pass ldflag here to display commit hash
+	dirty    string        // must be string as passed in by ldflag to determine display .
 )
 
 const (

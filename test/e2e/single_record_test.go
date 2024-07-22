@@ -234,6 +234,9 @@ var _ = Describe("Single Record Test", func() {
 
 	Context("loadbalanced", func() {
 		It("makes available a hostname that can be resolved", func(ctx SpecContext) {
+			if testDNSProvider == "azure" {
+				Skip("not yet supported for azure")
+			}
 			testTargetIP := "127.0.0.1"
 
 			klbHostName := "klb." + testHostname

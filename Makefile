@@ -208,28 +208,25 @@ local-deploy-namespaced: docker-build kind-load-image ## Deploy the dns operator
 ##@ Build
 
 .PHONY: build
-build: DNS_OPERATOR_VERSION=0.4.0-dev # change as version increases .
 build: COMMIT=$(shell git rev-parse HEAD || echo "unknown") 
-build: DIRTY=$(shell /hack/check-git-dirty.sh || echo "unknown")
+build: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 build: manifests generate fmt vet ## Build manager binary.
-	go build -ldflags "-X main.version=${DNS_OPERATOR_VERSION} -X main.commit=${COMMIT} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
+	go build -ldflags "-X main.commit=${COMMIT} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
 
 .PHONY: run
-run: DNS_OPERATOR_VERSION=0.4.0-dev # change as version increases .
 run: COMMIT=$(shell git rev-parse HEAD || echo "unknown") 
-run: DIRTY=$(shell /hack/check-git-dirty.sh || echo "unknown")
+run: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "-X main.version=${DNS_OPERATOR_VERSION} -X main.commit=${COMMIT} -X main.dirty=${DIRTY}" ./cmd/main.go --zap-devel --provider inmemory,aws,google
+	go run -ldflags "-X main.commit=${COMMIT} -X main.dirty=${DIRTY}" ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: DNS_OPERATOR_VERSION=0.4.0-dev # change as version increases .
 docker-build: COMMIT=$(shell git rev-parse HEAD || echo "unknown") 
-docker-build: DIRTY=$(shell /hack/check-git-dirty.sh || echo "unknown")
+docker-build: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} . --build-arg DNS_OPERATOR_VERSION=$(DNS_OPERATOR_VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DIRTY=$(DIRTY)
+	$(CONTAINER_TOOL) build -t ${IMG} . --build-arg COMMIT=$(COMMIT) --build-arg DIRTY=$(DIRTY)
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

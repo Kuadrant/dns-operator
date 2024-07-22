@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	SupportedProviders = []string{"aws", "gcp"}
+	SupportedProviders = []string{"aws", "gcp", "azure"}
 )
 
 const (
@@ -78,7 +78,7 @@ func EndpointsForHost(ctx context.Context, provider provider.Provider, host stri
 
 func ProviderForManagedZone(ctx context.Context, mz *v1alpha1.ManagedZone, c client.Client) (provider.Provider, error) {
 	//ToDo mnairn: We have a mismatch in naming GCP vs Google, we need to make this consistent one way or the other
-	providerFactory, err := provider.NewFactory(c, []string{"aws", "google"})
+	providerFactory, err := provider.NewFactory(c, []string{"aws", "google", "azure"})
 	if err != nil {
 		return nil, err
 	}

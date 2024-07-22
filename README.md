@@ -24,6 +24,19 @@ make local-setup-gcp-mz-clean local-setup-gcp-mz-generate GCP_ZONE_NAME=<My GCP 
 ```
 More details about the GCP provider can be found [here](./docs/provider.md#google-cloud-dns-provider)
 
+##### AZURE Provider
+
+```bash
+make local-setup-azure-mz-clean local-setup-azure-mz-generate KUADRANT_AZURE_CREDENTIALS='<My Azure Credentials.json>' KUADRANT_AZURE_DNS_ZONE_ID=<My Azure Zone ID> KUADRANT_AZURE_ZONE_ROOT_DOMAIN='<My Azure Domain Name>'
+```
+
+Info on generating service principal credentials [here](https://github.com/kubernetes-sigs/external-dns/blob/master/docs/tutorials/azure.md)
+
+Getting the zone ID can be achieved using the below command:
+```bash
+az network dns zone show --name <my domain name> --resource-group <my resource group> --query "{id:id,domain:name}"
+```
+
 ### Running controller locally (default)
 
 1. Create local environment(creates kind cluster)
