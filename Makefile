@@ -484,6 +484,8 @@ prepare-release: ## Generates a makefile that will override environment variable
 	CATALOG_IMG=$(IMAGE_TAG_BASE)-catalog:$(IMG_TAG)\nCHANNELS=$(CHANNELS)\nBUNDLE_CHANNELS=--channels=$(CHANNELS)\n\
 	VERSION=$(VERSION)\nREPLACES_VERSION=$(REPLACES_VERSION)" > $(RELEASE_FILE)
 	$(MAKE) bundle
+	$(MAKE) helm-build VERSION=$(VERSION)
+
 
 # Include last to avoid changing MAKEFILE_LIST used above
 include ./make/*.mk
