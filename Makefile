@@ -197,9 +197,9 @@ local-setup-multi: ## Setup multiple local development kind clusters
 	done ;\
 
 .PHONY: local-cleanup
-local-cleanup: ## Delete local cluster
-	$(MAKE) kind-delete-cluster
-	$(MAKE) remove-cluster-overlay
+local-cleanup: ## Delete local clusters
+	$(MAKE) kind-delete-all-clusters
+	$(MAKE) remove-all-cluster-overlays
 
 .PHONY: local-deploy
 local-deploy: docker-build kind-load-image ## Deploy the dns operator into local kind cluster from the current code

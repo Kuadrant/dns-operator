@@ -5,6 +5,8 @@ The suite allows runtime configuration to alter the number of instances that are
 
 ## Local Setup
 
+### Namespaced on single cluster
+
 Deploy the operator on a local kind cluster with X operator instances (DEPLOYMENT_COUNT):
 ```shell
 make local-setup DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2
@@ -32,9 +34,23 @@ dnstest          dev-mz-aws   mn.hcpapps.net
 dnstest          dev-mz-gcp   mn.google.hcpapps.net
 ```
 
-## Run the test suite
+### Namespaced on multiple clusters
+
+Deploy the operator on N local kind cluster (CLUSTER_COUNT) with X operator instances (DEPLOYMENT_COUNT):
 ```shell
-make test-e2e-multi TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2
+make local-setup-multi DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2 CLUSTER_COUNT=2
+```
+
+## Run the test suite
+
+### Namespaced on single cluster
+```shell
+make test-e2e-multi TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2 CLUSTER_COUNT=2
+```
+
+### Namespaced on multiple clusters
+```shell
+make test-e2e-multi TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2 CLUSTER_COUNT=2
 ```
 
 ## Tailing operator pod logs
