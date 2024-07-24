@@ -301,6 +301,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(err).To(MatchError(ContainSubstring("not found")))
 		}, 5*time.Second, time.Second, ctx).Should(Succeed())
 	})
+
 	It("should have ready condition with status true", func() {
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {

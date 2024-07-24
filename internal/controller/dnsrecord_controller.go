@@ -79,7 +79,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	logger := log.FromContext(ctx).WithName("dnsrecord_controller")
 	ctx = log.IntoContext(ctx, logger)
 
-	logger.V(1).Info("Reconciling DNSRecord")
+	logger.Info("Reconciling DNSRecord")
 
 	reconcileStart = metav1.Now()
 
@@ -126,6 +126,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	ctx = log.IntoContext(ctx, logger)
 
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
+		logger.Info("Deleting DNSRecord")
 		if err = r.ReconcileHealthChecks(ctx, dnsRecord, managedZone); client.IgnoreNotFound(err) != nil {
 			return ctrl.Result{}, err
 		}
@@ -141,7 +142,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
 		}
 
-		logger.Info("Removing Finalizer", "name", DNSRecordFinalizer)
+		logger.Info("Removing Finalizer", "finalizer_name", DNSRecordFinalizer)
 		controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
 		if err = r.Update(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
 			if apierrors.IsConflict(err) {
@@ -154,7 +155,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
 		dnsRecord.Status.QueuedFor = metav1.NewTime(reconcileStart.Add(randomizedValidationRequeue))
-		logger.Info("Adding Finalizer", "name", DNSRecordFinalizer)
+		logger.Info("Adding Finalizer", "finalizer_name", DNSRecordFinalizer)
 		controllerutil.AddFinalizer(dnsRecord, DNSRecordFinalizer)
 		err = r.Update(ctx, dnsRecord)
 		if err != nil {
@@ -164,6 +165,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if !common.Owns(managedZone, dnsRecord) {
+		logger.V(1).Info("Record is not owned by ManagedZone", "ManagedZoneName", managedZone.Name)
 		err = common.EnsureOwnerRef(managedZone, dnsRecord, true)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -207,6 +209,7 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 
 	// failure
 	if specErr != nil {
+		logger.Error(specErr, "Error reconciling DNS Record")
 		var updateError error
 		if !equality.Semantic.DeepEqual(previous.Status, current.Status) {
 			if updateError = r.Status().Update(ctx, current); updateError != nil && apierrors.IsConflict(updateError) {
@@ -255,6 +258,7 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 
 	// update the record after setting the status
 	if !equality.Semantic.DeepEqual(previous.Status, current.Status) {
+		logger.V(1).Info("Updating status of DNSRecord")
 		if updateError := r.Status().Update(ctx, current); updateError != nil {
 			if apierrors.IsConflict(updateError) {
 				return ctrl.Result{Requeue: true}, nil
@@ -262,7 +266,7 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 			return ctrl.Result{}, updateError
 		}
 	}
-
+	logger.V(1).Info(fmt.Sprintf("Requeue in %s", requeueTime.String()))
 	return ctrl.Result{RequeueAfter: requeueTime}, nil
 }
 
@@ -333,7 +337,7 @@ func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1al
 	}
 
 	if prematurely, _ := recordReceivedPrematurely(dnsRecord); prematurely {
-		logger.V(1).Info("Skipping managed zone to which the DNS dnsRecord is already published and is still valid", "managedZone", managedZone.Name)
+		logger.V(1).Info("Skipping DNSRecord - is still valid", "managedZone", managedZone.Name)
 		return false, nil
 	}
 

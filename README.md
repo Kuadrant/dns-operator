@@ -103,6 +103,52 @@ make manifests
 
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
 
+## Logging
+Logs are following the general guidelines: 
+- `logger.Info()` describe a high-level state of the resource such as creation, deletion and which reconciliation path was taken.  
+- `logger.Error()` describe only those errors that are not returned in the result of the reconciliation. If error is occurred there should be only one error message. 
+- `logger.V(1).Info()` debug level logs to give information about every change or event caused by the resource as well as every update of the resource.
+
+The `--zap-devel` argument will enable debug level logs for the output. Otherwise, all `V()` logs are ignored.
+
+### Common metadata 
+Not exhaustive list of metadata for DNSRecord controller:
+- `level` - logging level. Values are: `info`,`debug` or `error`
+- `ts` - timestamp
+- `logger` - logger name
+- `msg`
+- `controller` and `controllerKind` - controller name, and it's kind respectively to output the log
+- `DNSRecord` - name and namespace of the DNS Record CR that is being reconciled
+- `reconcileID`
+- `ownerID` - ID the of owner of the DNS Record 
+- `txtPrefix`/`txtSuffix` - prefix and suffix of the TXT record in provider. 
+- `zoneEndpoints` - endpoints that exist in the provider
+- `specEdnoinds` - endpoints defined in the spec
+- `statusEndpoints` - endpoints that were processed previously
+
+> Note that not all the metadata values are present at each of the logs statements. 
+
+### Examples
+To query logs locally you can use `jq`. For example:
+Retrieve logs by 
+```shell
+kubectl get deployments -l app.kubernetes.io/part-of=dns-operator -A
+
+NAMESPACE             NAME                              READY 
+dns-operator-system   dns-operator-controller-manager   1/1   
+```
+And query them. For example:
+```shell
+kubectl logs -l control-plane=dns-operator-controller-manager -n dns-operator-system --tail -1 | sed '/^{/!d' | jq 'select(.controller=="dnsrecord" and .level=="info")'
+```
+or 
+```shell
+kubectl logs -l control-plane=dns-operator-controller-manager -n dns-operator-system --tail -1 | sed '/^{/!d' | jq 'select(.controller=="dnsrecord" and .DNSRecord.name=="test" and .reconcileID=="2be16b6d-b90f-430e-9996-8b5ec4855d53")' | jq '.level, .msg, .zoneEndpoints, .specEndpoints, .statusEndpoints '
+
+```
+You could use selector in the `jq` with `and`/`not`/`or` to restrict.
+
+
 ## License
 
 Copyright 2024.
