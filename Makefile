@@ -5,6 +5,10 @@
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= 0.0.0
 
+# Repo in the container registry
+DEFAULT_REPO = dns-operator
+REPO ?= $(DEFAULT_REPO)
+
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
 # To re-generate a bundle for other specific channels without changing the standard setup, you can:
