@@ -5,6 +5,10 @@
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= 0.0.0
 
+# Organization in the container resgistry
+DEFAULT_ORG = kuadrant
+ORG ?= $(DEFAULT_ORG)
+
 # Repo in the container registry
 DEFAULT_REPO = dns-operator
 REPO ?= $(DEFAULT_REPO)
