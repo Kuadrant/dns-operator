@@ -157,7 +157,7 @@ test-e2e: ginkgo
 
 .PHONY: test-e2e-multi
 test-e2e-multi: ginkgo
-	$(GINKGO) -tags=e2e_multi_instance -v ./test/e2e/multi_instance
+	$(GINKGO) -tags=e2e -v --label-filter=multi_record -v ./test/e2e
 
 .PHONY: local-setup
 local-setup: DEPLOY=false

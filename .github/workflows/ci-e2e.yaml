@@ -57,23 +57,17 @@ jobs:
       - name: Run suite AWS
         run: |
           export TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws
-          export TEST_DNS_ZONE_DOMAIN_NAME=e2e.hcpapps.net
-          export TEST_DNS_NAMESPACE=${{ env.TEST_NAMESPACE }}
-          export TEST_DNS_PROVIDER=aws
+          export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
           make test-e2e
       - name: Run suite GCP
         run: |
           export TEST_DNS_MANAGED_ZONE_NAME=dev-mz-gcp
-          export TEST_DNS_ZONE_DOMAIN_NAME=e2e.google.hcpapps.net
-          export TEST_DNS_NAMESPACE=${{ env.TEST_NAMESPACE }}
-          export TEST_DNS_PROVIDER=gcp
+          export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
           make test-e2e
       - name: Run suite Azure
         run: |
           export TEST_DNS_MANAGED_ZONE_NAME=dev-mz-azure
-          export TEST_DNS_ZONE_DOMAIN_NAME=e2e.azure.hcpapps.net
-          export TEST_DNS_NAMESPACE=${{ env.TEST_NAMESPACE }}
-          export TEST_DNS_PROVIDER=azure
+          export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
           make test-e2e
       - name: Dump Controller logs
         if: ${{ failure() }}

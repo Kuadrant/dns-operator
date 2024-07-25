@@ -30,15 +30,19 @@ var _ = Describe("Single Record Test", func() {
 	// testHostname generated hostname for this test e.g. t-gw-mgc-12345.t-e2e-12345.e2e.hcpapps.net
 	var testHostname string
 
-	var dnsRecord *v1alpha1.DNSRecord
+	var k8sClient client.Client
+	var testManagedZone *v1alpha1.ManagedZone
 	var geoCode string
+
+	var dnsRecord *v1alpha1.DNSRecord
 
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-single-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
-
-		if testDNSProvider == "gcp" {
+		k8sClient = testClusters[0].k8sClient
+		testManagedZone = testClusters[0].testManagedZones[0]
+		if testDNSProvider == "google" {
 			geoCode = "us-east1"
 		} else {
 			geoCode = "US"
@@ -61,12 +65,12 @@ var _ = Describe("Single Record Test", func() {
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      testID,
-				Namespace: testNamespace,
+				Namespace: testManagedZone.Namespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: testWCHostname,
 				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: testManagedZoneName,
+					Name: testManagedZone.Name,
 				},
 				Endpoints: []*externaldnsendpoint.Endpoint{
 					{
@@ -156,12 +160,12 @@ var _ = Describe("Single Record Test", func() {
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testID,
-					Namespace: testNamespace,
+					Namespace: testManagedZone.Namespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
 					RootHost: testHostname,
 					ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-						Name: testManagedZoneName,
+						Name: testManagedZone.Name,
 					},
 					Endpoints: []*externaldnsendpoint.Endpoint{
 						{
@@ -246,12 +250,12 @@ var _ = Describe("Single Record Test", func() {
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testID,
-					Namespace: testNamespace,
+					Namespace: testManagedZone.Namespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
 					RootHost: testHostname,
 					ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-						Name: testManagedZoneName,
+						Name: testManagedZone.Name,
 					},
 					Endpoints: []*externaldnsendpoint.Endpoint{
 						{
@@ -345,7 +349,7 @@ var _ = Describe("Single Record Test", func() {
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
-			if testDNSProvider == "gcp" {
+			if testDNSProvider == "google" {
 				Expect(zoneEndpoints).To(HaveLen(8))
 				Expect(zoneEndpoints).To(ContainElements(
 					PointTo(MatchFields(IgnoreExtras, Fields{

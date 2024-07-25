@@ -84,15 +84,13 @@ kubectl logs -f deployments/dns-operator-controller-manager -n dns-operator-syst
 The e2e test suite can be executed against any cluster running the DNS Operator with configuration added for any supported provider.
 
 ```
-make test-e2e TEST_DNS_MANAGED_ZONE_NAME=<My managed zone name> TEST_DNS_ZONE_DOMAIN_NAME=<My domain name> TEST_DNS_NAMESPACE=<My test namesapace> TEST_DNS_PROVIDER=<aws|gcp>
+make test-e2e TEST_DNS_MANAGED_ZONE_NAME=<My managed zone name> TEST_DNS_NAMESPACES=<My test namesapace(s)>
 ```
 
-| Environment Variable       | Description                                                                                                                                            |
-|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
-| TEST_DNS_MANAGED_ZONE_NAME | Name of the managed zone relevant for the test domain (TEST_DNS_ZONE_DOMAIN_NAME). If using local-setup Managed zones, one of [dev-mz-aws; dev-mz-gcp] | 
-| TEST_DNS_ZONE_DOMAIN_NAME  | Domain name being used for the test, must match the domain of the managed zone (TEST_DNS_MANAGED_ZONE_NAME)                                            | 
-| TEST_DNS_NAMESPACE         | The namespace to run the test in, must be the same namespace as the TEST_DNS_MANAGED_ZONE_NAME                                                         | 
-| TEST_DNS_PROVIDER          | DNS Provider currently being tested, one of [aws; gcp]                                                                                                 | 
+| Environment Variable       | Description                                                                                          |
+|----------------------------|------------------------------------------------------------------------------------------------------|
+| TEST_DNS_MANAGED_ZONE_NAME | Name of the managed zone to use. If using local-setup Managed zones, one of [dev-mz-aws; dev-mz-gcp] | 
+| TEST_DNS_NAMESPACES        | The namespace(s) where the managed zone with the name (TEST_DNS_MANAGED_ZONE_NAME) can be found      | 
 
 ### Modifying the API definitions
 If you are editing the API definitions, generate the manifests such as CRs or CRDs using:

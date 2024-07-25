@@ -1,13 +1,20 @@
-# Multi Instance Test Suite
+# E2E Test Suite
 
-The multi instance test suite intended to test scenarios where multiple instances of the dns operator are running, each reconciling DNSRecord resources contributing to the same shared dns zone. 
+The e2e test suite is used to test common scenarios in each supported dns provider. The suite contains tests for single instance tests (single_record) where only a single running controller are expected as well as multi instance tests (multi_record) that are intended to test scenarios where multiple instances of the dns operator are running, each reconciling DNSRecord resources contributing to the same shared dns zone. 
 The suite allows runtime configuration to alter the number of instances that are under test allowing stress testing scenarios to be executed using more extreme numbers of instances and records.
 
 ## Local Setup
 
-### Namespaced on single cluster
+### Cluster scoped on single cluster
 
-Deploy the operator on a local kind cluster with X operator instances (DEPLOYMENT_COUNT):
+Deploy the operator on a single kind cluster with one operator instance watching all namespaces:
+```shell
+make local-setup DEPLOY=true
+```
+
+### Namespace scoped on single cluster
+
+Deploy the operator on a single kind cluster with two operator instances in two namespaces watching their own namespace only:
 ```shell
 make local-setup DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2
 ```
@@ -34,23 +41,40 @@ dnstest          dev-mz-aws   mn.hcpapps.net
 dnstest          dev-mz-gcp   mn.google.hcpapps.net
 ```
 
-### Namespaced on multiple clusters
+### Cluster scoped on multiple clusters
 
-Deploy the operator on N local kind cluster (CLUSTER_COUNT) with X operator instances (DEPLOYMENT_COUNT):
+Deploy the operator on two kind cluster each with one operator instance watching all namespaces:
+```shell
+make local-setup-multi DEPLOY=true CLUSTER_COUNT=2
+```
+
+### Namespace scoped on multiple clusters
+
+Deploy the operator on two local kind cluster with two operator instances in two namespaces watching their own namespace only:
 ```shell
 make local-setup-multi DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2 CLUSTER_COUNT=2
 ```
 
 ## Run the test suite
 
-### Namespaced on single cluster
+### Cluster scoped on single cluster
 ```shell
-make test-e2e-multi TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2 CLUSTER_COUNT=2
+make test-e2e TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dnstest
 ```
 
-### Namespaced on multiple clusters
+### Namespace scoped on single cluster
 ```shell
-make test-e2e-multi TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2 CLUSTER_COUNT=2
+make test-e2e TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2
+```
+
+### Cluster scoped on multiple clusters
+```shell
+make test-e2e TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dnstest TEST_DNS_CLUSTER_CONTEXTS=kind-kuadrant-dns-local CLUSTER_COUNT=2
+```
+
+### Namespace scoped on multiple clusters
+```shell
+make test-e2e TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2 TEST_DNS_CLUSTER_CONTEXTS=kind-kuadrant-dns-local CLUSTER_COUNT=2
 ```
 
 ## Tailing operator pod logs
