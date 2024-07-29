@@ -41,15 +41,15 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
+	"github.com/kuadrant/dns-operator/version"
 	//+kubebuilder:scaffold:imports
 )
 
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
-	version  = "0.4.0-dev" // Change as versions are released
-	commit   string        // pass ldflag here to display commit hash
-	dirty    string        // must be string as passed in by ldflag to determine display .
+	gitSHA   string // pass ldflag here to display gitSHA hash
+	dirty    string // must be string as passed in by ldflag to determine display .
 )
 
 const (
@@ -134,10 +134,10 @@ func main() {
 
 	// Display version here.
 
-	dnsInfoDisplay := fmt.Sprintf("dns-operator %s (%s-dirty)", version, commit)
+	dnsInfoDisplay := fmt.Sprintf("dns-operator %s (%s-dirty)", version.Version, gitSHA)
 
 	if dirty == "false" {
-		dnsInfoDisplay = fmt.Sprintf("dns-operator %s (%s)", version, commit)
+		dnsInfoDisplay = fmt.Sprintf("dns-operator %s (%s)", version.Version, gitSHA)
 	}
 
 	setupLog.Info(dnsInfoDisplay)
