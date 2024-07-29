@@ -20,13 +20,15 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/runtime"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/utils/env"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -46,8 +48,10 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
+	scheme   = k8sruntime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+	logLevel = env.GetString("LOG_LEVEL", "info")
+	logMode  = env.GetString("LOG_MODE", "production")
 	gitSHA   string // pass ldflag here to display gitSHA hash
 	dirty    string // must be string as passed in by ldflag to determine display .
 )
@@ -66,6 +70,7 @@ func init() {
 }
 
 func main() {
+	printControllerMetaInfo()
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -132,16 +137,6 @@ func main() {
 		providers = defaultProviders
 	}
 
-	// Display version here.
-
-	dnsInfoDisplay := fmt.Sprintf("dns-operator %s (%s-dirty)", version.Version, gitSHA)
-
-	if dirty == "false" {
-		dnsInfoDisplay = fmt.Sprintf("dns-operator %s (%s)", version.Version, gitSHA)
-	}
-
-	setupLog.Info(dnsInfoDisplay)
-
 	setupLog.Info("init provider factory", "providers", providers)
 	providerFactory, err := provider.NewFactory(mgr.GetClient(), providers)
 	if err != nil {
@@ -203,4 +198,11 @@ func (n *stringSliceFlags) Set(s string) error {
 		*n = append(*n, strVal)
 	}
 	return nil
+}
+
+func printControllerMetaInfo() {
+	setupLog.Info(fmt.Sprintf("go version: %s", runtime.Version()))
+	setupLog.Info(fmt.Sprintf("go os/arch: %s/%s", runtime.GOOS, runtime.GOARCH))
+	setupLog.Info("base logger", "log level", logLevel, "log mode", logMode)
+	setupLog.Info("", "version", version.Version, "commit", gitSHA, "dirty", dirty)
 }
