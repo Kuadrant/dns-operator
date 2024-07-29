@@ -47,7 +47,7 @@ jobs:
           tags: ${{ env.IMG_TAGS }}
           platforms: linux/amd64,linux/arm64
           build-args: |
-            COMMIT=${{ github.sha }}
+            GIT_SHA=${{ github.sha }}
             DIRTY=false
 
           dockerfiles: |
@@ -97,7 +97,7 @@ jobs:
           tags: ${{ needs.build.outputs.build-tags }}
           platforms: linux/amd64,linux/arm64
           build-args: |
-            COMMIT=${{ github.sha }}
+            GIT_SHA=${{ github.sha }}
             DIRTY=false
           dockerfiles: |
             ./bundle.Dockerfile
