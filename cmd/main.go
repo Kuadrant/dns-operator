@@ -43,6 +43,7 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
+	"github.com/kuadrant/dns-operator/pkg/log"
 	"github.com/kuadrant/dns-operator/version"
 	//+kubebuilder:scaffold:imports
 )
@@ -67,6 +68,20 @@ func init() {
 
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
+
+	logger := log.NewLogger(
+		log.SetLevel(log.ToLevel(logLevel)),
+		log.SetMode(log.ToMode(logMode)),
+		log.WriteTo(os.Stdout),
+	)
+	log.SetLogger(logger)
+}
+
+func printControllerMetaInfo() {
+	setupLog.Info(fmt.Sprintf("go version: %s", runtime.Version()))
+	setupLog.Info(fmt.Sprintf("go os/arch: %s/%s", runtime.GOOS, runtime.GOARCH))
+	setupLog.Info("base logger", "log level", logLevel, "log mode", logMode)
+	setupLog.Info("", "version", version.Version, "commit", gitSHA, "dirty", dirty)
 }
 
 func main() {
@@ -198,11 +213,4 @@ func (n *stringSliceFlags) Set(s string) error {
 		*n = append(*n, strVal)
 	}
 	return nil
-}
-
-func printControllerMetaInfo() {
-	setupLog.Info(fmt.Sprintf("go version: %s", runtime.Version()))
-	setupLog.Info(fmt.Sprintf("go os/arch: %s/%s", runtime.GOOS, runtime.GOARCH))
-	setupLog.Info("base logger", "log level", logLevel, "log mode", logMode)
-	setupLog.Info("", "version", version.Version, "commit", gitSHA, "dirty", dirty)
 }
