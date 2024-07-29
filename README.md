@@ -84,7 +84,7 @@ kubectl logs -f deployments/dns-operator-controller-manager -n dns-operator-syst
 The e2e test suite can be executed against any cluster running the DNS Operator with configuration added for any supported provider.
 
 ```
-make test-e2e TEST_DNS_MANAGED_ZONE_NAME=<My managed zone name> TEST_DNS_NAMESPACES=<My test namesapace(s)>
+make test-e2e TEST_DNS_MANAGED_ZONE_NAME=<My managed zone name> TEST_DNS_NAMESPACES=<My test namespace(s)>
 ```
 
 | Environment Variable       | Description                                                                                          |

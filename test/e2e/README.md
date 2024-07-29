@@ -43,16 +43,16 @@ dnstest          dev-mz-gcp   mn.google.hcpapps.net
 
 ### Cluster scoped on multiple clusters
 
-Deploy the operator on two kind cluster each with one operator instance watching all namespaces:
+Deploy the operator on two kind clusters each with one operator instance watching all namespaces:
 ```shell
-make local-setup-multi DEPLOY=true CLUSTER_COUNT=2
+make local-setup DEPLOY=true CLUSTER_COUNT=2
 ```
 
 ### Namespace scoped on multiple clusters
 
-Deploy the operator on two local kind cluster with two operator instances in two namespaces watching their own namespace only:
+Deploy the operator on two local kind clusters with two operator instances in two namespaces watching their own namespace only:
 ```shell
-make local-setup-multi DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2 CLUSTER_COUNT=2
+make local-setup DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2 CLUSTER_COUNT=2
 ```
 
 ## Run the test suite

@@ -159,11 +159,11 @@ test-e2e: ginkgo
 test-e2e-multi: ginkgo
 	$(GINKGO) -tags=e2e -v --label-filter=multi_record -v ./test/e2e
 
-.PHONY: local-setup
-local-setup: DEPLOY=false
-local-setup: TEST_NAMESPACE=dnstest
-local-setup: DEPLOYMENT_SCOPE=cluster
-local-setup: $(KIND) ## Setup local development kind cluster, dependencies and optionally deploy the dns operator DEPLOY=false|true
+.PHONY: local-setup-cluster
+local-setup-cluster: DEPLOY=false
+local-setup-cluster: TEST_NAMESPACE=dnstest
+local-setup-cluster: DEPLOYMENT_SCOPE=cluster
+local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependencies and optionally deploy the dns operator DEPLOY=false|true
 	@echo "local-setup: KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOY=${DEPLOY} DEPLOYMENT_SCOPE=${DEPLOYMENT_SCOPE} TEST_NAMESPACE=${TEST_NAMESPACE}"
 	@$(MAKE) -s kind-delete-cluster
 	@$(MAKE) -s kind-create-cluster
@@ -188,11 +188,11 @@ local-setup: $(KIND) ## Setup local development kind cluster, dependencies and o
 	$(KUBECTL) get managedzones -A
 	@echo "local-setup: Complete!!"
 
-.PHONY: local-setup-multi
-local-setup-multi: CLUSTER_COUNT=1
-local-setup-multi: ## Setup multiple local development kind clusters
+.PHONY: local-setup
+local-setup: CLUSTER_COUNT=1
+local-setup: ## Setup local development kind cluster(s)
 	@n=1 ; while [[ $$n -le $(CLUSTER_COUNT) ]] ; do \
-		$(MAKE) -s local-setup KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME_PREFIX}-$$n;\
+		$(MAKE) -s local-setup-cluster KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME_PREFIX}-$$n;\
 		((n = n + 1)) ;\
 	done ;\
 

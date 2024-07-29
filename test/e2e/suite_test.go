@@ -116,27 +116,28 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 })
 
 // setConfigFromEnvVars loads test suite runtime configurations from env vars.
+//
 // dnsManagedZoneName managed zone name expected to exist in each test namespace (i.e. dev-mz-aws).
 // dnsNamespaces test namespaces, comma seperated list (i.e. dns-operator-1,dns-operator-2)
 // deploymentCount number of test namespaces expected. Appends an index suffix to the dnsNamespaces, only used if dnsNamespaces is a single length array.
 //
 // Examples:
-// dnsNamespaces=dns-operator deploymentCount=<unset> = dnsNamespaces=dns-operator
-// dnsNamespaces=dns-operator-1,dns-operator-2 deploymentCount=<unset> = dnsNamespaces=dns-operator-1,dns-operator-2
-// dnsNamespaces=dns-operator deploymentCount=1 = dnsNamespaces=dns-operator-1
-// dnsNamespaces=dns-operator deploymentCount=2 = dnsNamespaces=dns-operator-1,dns-operator-2
-// dnsNamespaces=dns-operator-5,dns-operator-6 deploymentCount=1 = dnsNamespaces=dns-operator-5,dns-operator-6
+// inputs: TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=<unset> configResult: dnsNamespaces=dns-operator
+// inputs: TEST_DNS_NAMESPACES=dns-operator-1,dns-operator-2 DEPLOYMENT_COUNT=<unset> configResult: dnsNamespaces=dns-operator-1,dns-operator-2
+// inputs: TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=1 configResult: dnsNamespaces=dns-operator-1
+// inputs: TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2 configResult: dnsNamespaces=dns-operator-1,dns-operator-2
+// inputs: TEST_DNS_NAMESPACES=dns-operator-5,dns-operator-6 DEPLOYMENT_COUNT=1 configResult: dnsNamespaces=dns-operator-5,dns-operator-6
 //
 // dnsClusterContexts test cluster contexts, comma seperated list (i.e. kind-kuadrant-dns-local-1,kind-kuadrant-dns-local-2),
 // if unset the current context is used and a single cluster is assumed.
 // clusterCount number of test clusters expected. Appends an index suffix to the dnsClusterContexts, only used if dnsClusterContexts is a single length array.
 //
 // Examples:
-// dnsClusterContexts=kind-kuadrant-dns-local clusterCount=<unset> = dnsClusterContexts=kind-kuadrant-dns-local
-// dnsClusterContexts=kind-kuadrant-dns-local-1,kind-kuadrant-dns-local-2 clusterCount=<unset> = dnsClusterContexts=kind-kuadrant-dns-local-1,kind-kuadrant-dns-local-2
-// dnsClusterContexts=kind-kuadrant-dns-local clusterCount=1 = dnsClusterContexts=kind-kuadrant-dns-local-1
-// dnsClusterContexts=kind-kuadrant-dns-local clusterCount=2 = dnsClusterContexts=kind-kuadrant-dns-local-1,kind-kuadrant-dns-local-2
-// dnsClusterContexts=my-cluster-1,my-cluster-2 clusterCount=1 = dnsClusterContexts=my-cluster-1,my-cluster-2
+// inputs: TEST_DNS_CLUSTER_CONTEXTS=kind-kuadrant-dns-local CLUSTER_COUNT=<unset> configResult: dnsClusterContexts=kind-kuadrant-dns-local
+// inputs: TEST_DNS_CLUSTER_CONTEXTS=kind-kuadrant-dns-local-1,kind-kuadrant-dns-local-2 CLUSTER_COUNT=<unset> configResult: dnsClusterContexts=kind-kuadrant-dns-local-1,kind-kuadrant-dns-local-2
+// inputs: TEST_DNS_CLUSTER_CONTEXTS=kind-kuadrant-dns-local CLUSTER_COUNT=1 configResult: dnsClusterContexts=kind-kuadrant-dns-local-1
+// inputs: TEST_DNS_CLUSTER_CONTEXTS=kind-kuadrant-dns-local CLUSTER_COUNT=2 configResult: dnsClusterContexts=kind-kuadrant-dns-local-1,kind-kuadrant-dns-local-2
+// inputs: TEST_DNS_CLUSTER_CONTEXTS=my-cluster-1,my-cluster-2 CLUSTER_COUNT=1 configResult: dnsClusterContexts=my-cluster-1,my-cluster-2
 
 func setConfigFromEnvVars() error {
 	// Load test suite configuration from the environment
