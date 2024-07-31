@@ -1,0 +1,13 @@
+nameSuffix: -inmemory
+
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    app.kubernetes.io/part-of: dns-operator
+    app.kubernetes.io/managed-by: kustomize
+
+secretGenerator:
+  - name: dns-provider-credentials
+    type: "kuadrant.io/inmemory"
+    literals:
+      - INMEM_INIT_ZONES=kuadrant.local

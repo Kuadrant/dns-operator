@@ -100,13 +100,6 @@ var _ = BeforeSuite(func() {
 	providerFactory, err := provider.NewFactory(mgr.GetClient(), []string{"inmemory"})
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&ManagedZoneReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		ProviderFactory: providerFactory,
-	}).SetupWithManager(mgr)
-	Expect(err).ToNot(HaveOccurred())
-
 	err = (&DNSRecordReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),

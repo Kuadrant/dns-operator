@@ -99,6 +99,7 @@ func testInMemoryRecords(t *testing.T) {
 			c.zones = ti.init
 			im := NewInMemoryProvider(context.Background())
 			im.client = c
+			im.domain = endpoint.NewDomainFilter([]string{ti.zone})
 			f := filter{domain: ti.zone}
 			im.filter = &f
 			records, err := im.Records(context.Background())

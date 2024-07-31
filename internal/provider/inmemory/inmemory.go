@@ -18,6 +18,7 @@ package inmemory
 
 import (
 	"context"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -35,62 +36,65 @@ var client *inmemory.InMemoryClient
 
 var _ provider.Provider = &InMemoryDNSProvider{}
 
-func NewProviderFromSecret(ctx context.Context, _ *v1.Secret, c provider.Config) (provider.Provider, error) {
+func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	logger := log.FromContext(ctx).WithName("inmemory-dns")
 	ctx = log.IntoContext(ctx, logger)
+
+	initZones := []string{}
+	if z := string(s.Data[v1alpha1.InmemInitZonesKey]); z != "" {
+		initZones = strings.Split(z, ",")
+	}
 
 	inmemoryProvider := inmemory.NewInMemoryProvider(
 		ctx,
 		inmemory.InMemoryWithClient(client),
+		inmemory.InMemoryInitZones(initZones),
 		inmemory.InMemoryWithDomain(c.DomainFilter),
 		inmemory.InMemoryWithLogging())
 	p := &InMemoryDNSProvider{
 		InMemoryProvider: inmemoryProvider,
 	}
+
+	availableZones := []string{}
+	z, err := p.DNSZones(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, zone := range z {
+		availableZones = append(availableZones, zone.DNSName)
+	}
+	logger.V(1).Info("provider initialised", "availableZones", availableZones)
+
 	return p, nil
 }
 
-func (i InMemoryDNSProvider) EnsureManagedZone(_ context.Context, mz *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
-	var zoneID string
-	if mz.Spec.ID != "" {
-		zoneID = mz.Spec.ID
-	} else {
-		zoneID = mz.Status.ID
-	}
-
-	if zoneID != "" {
-		z, err := i.GetZone(zoneID)
-		if err != nil {
-			return provider.ManagedZoneOutput{}, err
+func (p *InMemoryDNSProvider) DNSZones(_ context.Context) ([]provider.DNSZone, error) {
+	var hzs []provider.DNSZone
+	zones := p.Zones()
+	for id, name := range zones {
+		hz := provider.DNSZone{
+			ID:      id,
+			DNSName: name,
 		}
-		return provider.ManagedZoneOutput{
-			ID:          zoneID,
-			DNSName:     zoneID,
-			NameServers: nil,
-			RecordCount: int64(len(z)),
-		}, nil
+		hzs = append(hzs, hz)
 	}
-	err := i.CreateZone(mz.Spec.DomainName)
+	return hzs, nil
+}
+
+func (p *InMemoryDNSProvider) DNSZoneForHost(ctx context.Context, host string) (*provider.DNSZone, error) {
+	zones, err := p.DNSZones(ctx)
 	if err != nil {
-		return provider.ManagedZoneOutput{}, err
+		return nil, err
 	}
-	return provider.ManagedZoneOutput{
-		ID:          mz.Spec.DomainName,
-		DNSName:     mz.Spec.DomainName,
-		NameServers: nil,
-		RecordCount: 0,
-	}, nil
+	return provider.FindDNSZoneForHost(ctx, host, zones)
 }
 
-func (i InMemoryDNSProvider) DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error {
-	return i.DeleteZone(managedZone.Spec.DomainName)
-}
-
-func (i InMemoryDNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
+func (i *InMemoryDNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
 	return &provider.FakeHealthCheckReconciler{}
 }
 
-func (i InMemoryDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
+func (i *InMemoryDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 	return provider.ProviderSpecificLabels{}
 }
 

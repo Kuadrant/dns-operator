@@ -19,26 +19,32 @@ Deploy the operator on a single kind cluster with two operator instances in two 
 make local-setup DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2
 ```
 
-The above will create two dns operator deployments on the kind cluster, each configured to watch its own namespace, with the development managedzones (Assuming you have configured them locally) created in each deployment namespace.
+The above will create two dns operator deployments on the kind cluster, each configured to watch its own namespace, with the development provider secrets (Assuming you have configured them locally) created in each deployment namespace.
 
 DNS Operator Deployments:
 ```shell
 kubectl get deployments -l app.kubernetes.io/part-of=dns-operator -A
 NAMESPACE        NAME                                READY   UP-TO-DATE   AVAILABLE   AGE
-dns-operator-1   dns-operator-controller-manager-1   1/1     1            1           96s
-dns-operator-2   dns-operator-controller-manager-2   1/1     1            1           96s
+dns-operator-1   dns-operator-controller-manager-1   1/1     1            1           21s
+dns-operator-2   dns-operator-controller-manager-2   1/1     1            1           21s
 ```
 
-ManagedZones:
+DNS Provider Secrets:
 ```shell
-kubectl get managedzones -A
-NAMESPACE        NAME         DOMAIN NAME             ...     READY
-dns-operator-1   dev-mz-aws   mn.hcpapps.net          ...     True
-dns-operator-1   dev-mz-gcp   mn.google.hcpapps.net   ...     True
-dns-operator-2   dev-mz-aws   mn.hcpapps.net          ...     True
-dns-operator-2   dev-mz-gcp   mn.google.hcpapps.net   ...     True
-dnstest          dev-mz-aws   mn.hcpapps.net                                                                                                                                                                                                     
-dnstest          dev-mz-gcp   mn.google.hcpapps.net
+kubectl get secrets -l app.kubernetes.io/part-of=dns-operator -A
+NAMESPACE        NAME                                TYPE                            DATA   AGE
+dns-operator-1   dns-provider-credentials-aws        kuadrant.io/aws                 5      21s
+dns-operator-1   dns-provider-credentials-azure      kuadrant.io/azure               3      21s
+dns-operator-1   dns-provider-credentials-gcp        kuadrant.io/gcp                 4      21s
+dns-operator-1   dns-provider-credentials-inmemory   kuadrant.io/inmemory            0      21s
+dns-operator-2   dns-provider-credentials-aws        kuadrant.io/aws                 5      21s
+dns-operator-2   dns-provider-credentials-azure      kuadrant.io/azure               3      21s
+dns-operator-2   dns-provider-credentials-gcp        kuadrant.io/gcp                 4      21s
+dns-operator-2   dns-provider-credentials-inmemory   kuadrant.io/inmemory            0      21s
+dnstest          dns-provider-credentials-aws        kuadrant.io/aws                 5      68s
+dnstest          dns-provider-credentials-azure      kuadrant.io/azure               3      68s
+dnstest          dns-provider-credentials-gcp        kuadrant.io/gcp                 4      68s
+dnstest          dns-provider-credentials-inmemory   kuadrant.io/inmemory            0      68s
 ```
 
 ### Cluster scoped on multiple clusters
@@ -59,22 +65,22 @@ make local-setup DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2 CLUST
 
 ### Cluster scoped on single cluster
 ```shell
-make test-e2e TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dnstest
+make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=mn.hcpapps.net TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-aws TEST_DNS_NAMESPACES=dnstest
 ```
 
 ### Namespace scoped on single cluster
 ```shell
-make test-e2e TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2
+make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=mn.hcpapps.net TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2
 ```
 
 ### Cluster scoped on multiple clusters
 ```shell
-make test-e2e TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dnstest TEST_DNS_CLUSTER_CONTEXTS=kind-kuadrant-dns-local CLUSTER_COUNT=2
+make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=mn.hcpapps.net TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-aws TEST_DNS_NAMESPACES=dnstest TEST_DNS_CLUSTER_CONTEXTS=kind-kuadrant-dns-local CLUSTER_COUNT=2
 ```
 
 ### Namespace scoped on multiple clusters
 ```shell
-make test-e2e TEST_DNS_MANAGED_ZONE_NAME=dev-mz-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2 TEST_DNS_CLUSTER_CONTEXTS=kind-kuadrant-dns-local CLUSTER_COUNT=2
+make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=mn.hcpapps.net TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-aws TEST_DNS_NAMESPACES=dns-operator DEPLOYMENT_COUNT=2 TEST_DNS_CLUSTER_CONTEXTS=kind-kuadrant-dns-local CLUSTER_COUNT=2
 ```
 
 ## Tailing operator pod logs

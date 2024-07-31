@@ -13,19 +13,19 @@
 
 ## DNSRecordSpec
 
-| **Field**        | **Type**                                                                                 | **Required** | **Description**                                                                                                        |
-|------------------|------------------------------------------------------------------------------------------|:------------:|------------------------------------------------------------------------------------------------------------------------|
-| `ownerID`        | String                                                                                   |      No      | Unique string used to identify the owner of this record. If unset an ownerID will be generated based on the record UID | 
-| `rootHost`       | String                                                                                   |     Yes      | Single root host of all endpoints in a DNSRecord                                                                       |
-| `managedZone`    | [ManagedZoneReference](#managedzonereference)                                            |     Yes      | Reference to a ManagedZone instance to which this record will publish its endpoints                                    |
-| `endpoints`      | [][ExternalDNS Endpoint](https://pkg.go.dev/sigs.k8s.io/external-dns/endpoint#Endpoint)  |      No      | Endpoints to manage in the dns provider                                                                                |
-| `healthCheck`    | [HealthCheckSpec](#healthcheckspec)                                                      |      No      | Health check configuration                                                                                             |
+| **Field**     | **Type**                                                                                | **Required** | **Description**                                                                                                        |
+|---------------|-----------------------------------------------------------------------------------------|:------------:|------------------------------------------------------------------------------------------------------------------------|
+| `ownerID`     | String                                                                                  |      No      | Unique string used to identify the owner of this record. If unset an ownerID will be generated based on the record UID | 
+| `rootHost`    | String                                                                                  |     Yes      | Single root host of all endpoints in a DNSRecord                                                                       |
+| `providerRef` | [ProviderRef](#providerRef)                                                             |     Yes      | Reference to a DNS Provider Secret                                                                                     |
+| `endpoints`   | [][ExternalDNS Endpoint](https://pkg.go.dev/sigs.k8s.io/external-dns/endpoint#Endpoint) |      No      | Endpoints to manage in the dns provider                                                                                |
+| `healthCheck` | [HealthCheckSpec](#healthcheckspec)                                                     |      No      | Health check configuration                                                                                             |
 
-## ManagedZoneReference
+## ProviderRef
 
-| **Field**    | **Type** | **Required** | **Description**         |
-|--------------|----------|:------------:|-------------------------|
-| `name`       | String   |     Yes      | Name of a managed zone  | 
+| **Field**    | **Type** | **Required** | **Description**               |
+|--------------|----------|:------------:|-------------------------------|
+| `name`       | String   |     Yes      | Name of a dns provider secret | 
 
 ## HealthCheckSpec
 

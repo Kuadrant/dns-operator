@@ -9,6 +9,6 @@ spec:
       recordType: A
       targets:
         - 172.32.200.17
-  managedZone:
-    name: dev-mz-azure
+  providerRef:
+    name: dns-provider-credentials-azure
   rootHost: ${KUADRANT_SUB_DOMAIN}

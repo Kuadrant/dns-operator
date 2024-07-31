@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"golang.org/x/exp/maps"
@@ -12,6 +13,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
+	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
@@ -74,6 +78,7 @@ func NewFactory(c client.Client, p []string) (Factory, error) {
 // ProviderFor will return a Provider interface for the given ProviderAccessor secret.
 // If the requested ProviderAccessor secret does not exist, an error will be returned.
 func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor, c Config) (Provider, error) {
+	logger := log.FromContext(ctx)
 	providerSecret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pa.GetProviderRef().Name,
@@ -89,12 +94,51 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 		return nil, err
 	}
 
+	pZoneIDFilter := externaldnsprovider.ZoneIDFilter{}
+	pZoneDomainFilter := externaldnsendpoint.DomainFilter{}
+
+	if zdf := string(providerSecret.Data[v1alpha1.ZoneDomainFilterKey]); zdf != "" {
+		pZoneDomainFilter.Filters = strings.Split(zdf, ",")
+	}
+	if zif := string(providerSecret.Data[v1alpha1.ZoneIDFilterKey]); zif != "" {
+		pZoneIDFilter.ZoneIDs = strings.Split(zif, ",")
+	}
+
+	// Validate config filter is compatible with provider filter
+	// All zone ids listed in the config zone id filter must exist in the provider zone id filter
+	if c.ZoneIDFilter.IsConfigured() {
+		if pZoneIDFilter.IsConfigured() {
+			for _, zid := range c.ZoneIDFilter.ZoneIDs {
+				if !pZoneIDFilter.Match(zid) {
+					return nil, fmt.Errorf("zone id '%s' is not listed in the providers zone id filter", zid)
+				}
+			}
+		}
+	} else {
+		c.ZoneIDFilter = pZoneIDFilter
+	}
+
+	// Validate config filter is compatible with provider filter
+	// All domains listed in the config domain filter must exist in the provider domain filter
+	if c.DomainFilter.IsConfigured() {
+		if pZoneDomainFilter.IsConfigured() {
+			for _, zd := range c.DomainFilter.Filters {
+				if !pZoneDomainFilter.Match(zd) {
+					return nil, fmt.Errorf("zone domain name '%s' is not listed in the providers domain filter", zd)
+				}
+			}
+		}
+	} else {
+		c.DomainFilter = pZoneDomainFilter
+	}
+
 	constructorsLock.RLock()
 	defer constructorsLock.RUnlock()
 	if constructor, ok := constructors[provider]; ok {
 		if !slices.Contains(f.providers, provider) {
 			return nil, fmt.Errorf("provider '%s' not enabled", provider)
 		}
+		logger.V(1).Info(fmt.Sprintf("initializing %s provider with config", provider), "config", c)
 		return constructor(ctx, providerSecret, c)
 	}
 
@@ -103,13 +147,13 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 
 func NameForProviderSecret(secret *v1.Secret) (string, error) {
 	switch secret.Type {
-	case "kuadrant.io/aws":
+	case v1alpha1.SecretTypeKuadrantAWS:
 		return "aws", nil
-	case "kuadrant.io/azure":
+	case v1alpha1.SecretTypeKuadrantAzure:
 		return "azure", nil
-	case "kuadrant.io/gcp":
+	case v1alpha1.SecretTypeKuadrantGCP:
 		return "google", nil
-	case "kuadrant.io/inmemory":
+	case v1alpha1.SecretTypeKuadrantInmemory:
 		return "inmemory", nil
 	}
 	return "", errUnsupportedProvider

@@ -72,17 +72,16 @@ func EndpointsForHost(ctx context.Context, provider provider.Provider, host stri
 	return filtered, nil
 }
 
-func ProviderForManagedZone(ctx context.Context, mz *v1alpha1.ManagedZone, c client.Client) (provider.Provider, error) {
-	//ToDo mnairn: We have a mismatch in naming GCP vs Google, we need to make this consistent one way or the other
+func ProviderForDNSRecord(ctx context.Context, record *v1alpha1.DNSRecord, c client.Client) (provider.Provider, error) {
 	providerFactory, err := provider.NewFactory(c, []string{"aws", "google", "azure"})
 	if err != nil {
 		return nil, err
 	}
 	providerConfig := provider.Config{
-		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{mz.Spec.DomainName}),
+		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{record.Status.ZoneDomainName}),
 		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),
-		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{mz.Status.ID}),
+		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{record.Status.ZoneID}),
 	}
 	//Disable provider logging in test output
-	return providerFactory.ProviderFor(logr.NewContext(ctx, logr.Discard()), mz, providerConfig)
+	return providerFactory.ProviderFor(logr.NewContext(ctx, logr.Discard()), record, providerConfig)
 }
