@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
@@ -31,7 +32,7 @@ var _ = Describe("Single Record Test", func() {
 	var testHostname string
 
 	var k8sClient client.Client
-	var testManagedZone *v1alpha1.ManagedZone
+	var testDNSProviderSecret *v1.Secret
 	var geoCode string
 
 	var dnsRecord *v1alpha1.DNSRecord
@@ -41,7 +42,7 @@ var _ = Describe("Single Record Test", func() {
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		k8sClient = testClusters[0].k8sClient
-		testManagedZone = testClusters[0].testManagedZones[0]
+		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
 		if testDNSProvider == "google" {
 			geoCode = "us-east1"
 		} else {
@@ -65,12 +66,12 @@ var _ = Describe("Single Record Test", func() {
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      testID,
-				Namespace: testManagedZone.Namespace,
+				Namespace: testDNSProviderSecret.Namespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: testWCHostname,
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: testManagedZone.Name,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: testProviderSecretName,
 				},
 				Endpoints: []*externaldnsendpoint.Endpoint{
 					{
@@ -116,7 +117,7 @@ var _ = Describe("Single Record Test", func() {
 		Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
 		By("ensuring zone records are created as expected")
-		testProvider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
+		testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
 		Expect(err).NotTo(HaveOccurred())
 		zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 		Expect(err).NotTo(HaveOccurred())
@@ -160,12 +161,12 @@ var _ = Describe("Single Record Test", func() {
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testID,
-					Namespace: testManagedZone.Namespace,
+					Namespace: testDNSProviderSecret.Namespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
 					RootHost: testHostname,
-					ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-						Name: testManagedZone.Name,
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: testProviderSecretName,
 					},
 					Endpoints: []*externaldnsendpoint.Endpoint{
 						{
@@ -203,7 +204,7 @@ var _ = Describe("Single Record Test", func() {
 			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
 			By("ensuring zone records are created as expected")
-			testProvider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
+			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
@@ -251,12 +252,12 @@ var _ = Describe("Single Record Test", func() {
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testID,
-					Namespace: testManagedZone.Namespace,
+					Namespace: testDNSProviderSecret.Namespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
 					RootHost: testHostname,
-					ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-						Name: testManagedZone.Name,
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: testProviderSecretName,
 					},
 					Endpoints: []*externaldnsendpoint.Endpoint{
 						{
@@ -347,7 +348,7 @@ var _ = Describe("Single Record Test", func() {
 			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
 			By("ensuring zone records are created as expected")
-			testProvider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
+			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())

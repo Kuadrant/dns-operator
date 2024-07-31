@@ -169,7 +169,7 @@ local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependenci
 	@$(MAKE) -s kind-create-cluster
 	@$(MAKE) -s install
 	@$(KUBECTL) create namespace ${TEST_NAMESPACE} --dry-run=client -o yaml | $(KUBECTL) apply -f -
-	@$(MAKE) -s local-setup-managedzones TARGET_NAMESPACE=${TEST_NAMESPACE}
+	@$(MAKE) -s local-setup-dns-providers TARGET_NAMESPACE=${TEST_NAMESPACE}
 	@if [ ${DEPLOY} = "true" ]; then\
 		if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
 			echo "local-setup: deploying operator (cluster scoped) to ${KIND_CLUSTER_NAME}" ;\
@@ -184,8 +184,8 @@ local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependenci
 
 	@echo "local-setup: Check dns operator deployments"
 	$(KUBECTL) get deployments -l app.kubernetes.io/part-of=dns-operator -A
-	@echo "local-setup: Check managedzones"
-	$(KUBECTL) get managedzones -A
+	@echo "local-setup: Check dns providers"
+	$(KUBECTL) get secrets -l app.kubernetes.io/part-of=dns-operator -A
 	@echo "local-setup: Complete!!"
 
 .PHONY: local-setup

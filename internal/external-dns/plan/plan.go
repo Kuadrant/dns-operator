@@ -76,8 +76,9 @@ type Plan struct {
 
 // NewPlan returns new Plan object
 func NewPlan(ctx context.Context, current []*endpoint.Endpoint, previous []*endpoint.Endpoint, desired []*endpoint.Endpoint, policies []Policy, domainFilter endpoint.MatchAllDomainFilters, managedRecords []string, excludeRecords []string, ownerID string, rootHost *string) *Plan {
-	logger := logr.FromContextOrDiscard(ctx)
-	logger.WithName("plan").V(1).Info("initializing plan", "ownerID", ownerID, "rooHost", rootHost, "policies", policies, "domainFilter", domainFilter)
+	logger := logr.FromContextOrDiscard(ctx).
+		WithName("plan")
+	logger.V(1).Info("initializing plan", "ownerID", ownerID, "rooHost", rootHost, "policies", policies, "domainFilter", domainFilter)
 
 	return &Plan{
 		Current:        current,

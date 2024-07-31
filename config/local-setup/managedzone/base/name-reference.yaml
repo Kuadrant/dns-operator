@@ -1,5 +1,0 @@
-nameReference:
-  - kind: Secret
-    fieldSpecs:
-      - kind: ManagedZone
-        path: spec/dnsProviderSecretRef/name

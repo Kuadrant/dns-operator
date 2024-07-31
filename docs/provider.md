@@ -56,16 +56,3 @@ kubectl create secret generic my-test-gcp-credentials \
 See: 
 
 [https://cloud.google.com/dns/docs/access-control#dns.admin](https://cloud.google.com/dns/docs/access-control#dns.admin)
-
-
-### Where to create the Secrets
-
-It is recommended that you create the secret in the same namespace as your `ManagedZones`. In the examples above, we've stored these in a namespace called `kuadrant-dns-system`.
-
-Now that we have the credential created we have a DNS provider ready to go and can start using it.
-
-## Using a Credential
-
-Once a `Secret` like the one shown above is created, in order for it to be used, it needs to be associated with a `ManagedZone`. 
-
-See [ManagedZone](managedzone.md)

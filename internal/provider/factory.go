@@ -12,6 +12,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
@@ -74,6 +75,7 @@ func NewFactory(c client.Client, p []string) (Factory, error) {
 // ProviderFor will return a Provider interface for the given ProviderAccessor secret.
 // If the requested ProviderAccessor secret does not exist, an error will be returned.
 func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor, c Config) (Provider, error) {
+	logger := log.FromContext(ctx)
 	providerSecret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pa.GetProviderRef().Name,
@@ -95,6 +97,7 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 		if !slices.Contains(f.providers, provider) {
 			return nil, fmt.Errorf("provider '%s' not enabled", provider)
 		}
+		logger.V(1).Info(fmt.Sprintf("initializing %s provider with config", provider), "config", c)
 		return constructor(ctx, providerSecret, c)
 	}
 
@@ -103,13 +106,13 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 
 func NameForProviderSecret(secret *v1.Secret) (string, error) {
 	switch secret.Type {
-	case "kuadrant.io/aws":
+	case v1alpha1.SecretTypeKuadrantAWS:
 		return "aws", nil
-	case "kuadrant.io/azure":
+	case v1alpha1.SecretTypeKuadrantAzure:
 		return "azure", nil
-	case "kuadrant.io/gcp":
+	case v1alpha1.SecretTypeKuadrantGCP:
 		return "google", nil
-	case "kuadrant.io/inmemory":
+	case v1alpha1.SecretTypeKuadrantInmemory:
 		return "inmemory", nil
 	}
 	return "", errUnsupportedProvider

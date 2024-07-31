@@ -40,26 +40,26 @@ generate-operator-deployment-overlay: ## Generate a DNS Operator deployment over
 	$(KUSTOMIZE) edit set namesuffix -- -$(DEPLOYMENT_NAME_SUFFIX)  && \
 	$(KUSTOMIZE) edit add patch --kind Deployment --patch '[{"op": "replace", "path": "/spec/template/spec/containers/0/env/0", "value": {"name": "WATCH_NAMESPACES", "value": "$(DEPLOYMENT_WATCH_NAMESPACES)"}}]'
 
-	# Generate managedzones overlay
-	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE)/managedzones
-	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE)/managedzones && \
-	touch kustomization.yaml
-
-	@if [[ -f "config/local-setup/managedzone/gcp/managed-zone-config.env" && -f "config/local-setup/managedzone/gcp/gcp-credentials.env" ]]; then\
-		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE)/managedzones && \
-		$(KUSTOMIZE) edit add resource "../../../../../config/local-setup/managedzone/gcp" ;\
-	fi
-	@if [[ -f "config/local-setup/managedzone/aws/managed-zone-config.env" && -f "config/local-setup/managedzone/aws/aws-credentials.env" ]]; then\
-		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE)/managedzones && \
-		$(KUSTOMIZE) edit add resource "../../../../../config/local-setup/managedzone/aws" ;\
-	fi
-
-	# Generate namespace overlay with dns-operator and managedzones resources
+	# Generate namespace overlay with dns-operator and dns provider resources
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE) && \
 	touch kustomization.yaml && \
 	$(KUSTOMIZE) edit set namespace $(DEPLOYMENT_NAMESPACE)  && \
 	$(KUSTOMIZE) edit add resource "./dns-operator" && \
-	$(KUSTOMIZE) edit add resource "./managedzones"
+	$(KUSTOMIZE) edit add resource "../../../../config/local-setup/dns-provider/inmemory"
+
+	# Add dns providers
+	@if [[ -f "config/local-setup/dns-provider/gcp/gcp-credentials.env" ]]; then\
+		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE) && \
+		$(KUSTOMIZE) edit add resource "../../../../config/local-setup/dns-provider/gcp" ;\
+	fi
+	@if [[ -f "config/local-setup/dns-provider/aws/aws-credentials.env" ]]; then\
+		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE) && \
+		$(KUSTOMIZE) edit add resource "../../../../config/local-setup/dns-provider/aws" ;\
+	fi
+	@if [[ -f "config/local-setup/dns-provider/azure/azure-credentials.env" ]]; then\
+		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE) && \
+		$(KUSTOMIZE) edit add resource "../../../../config/local-setup/dns-provider/azure" ;\
+    fi
 
 	# Generate cluster overlay with namespace resources
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME) && \
