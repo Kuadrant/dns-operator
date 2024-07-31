@@ -9,6 +9,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,15 +29,20 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 	// testHostname generated hostname for this test e.g. t-gw-mgc-12345.t-e2e-12345.e2e.hcpapps.net
 	var testHostname string
 
+	var k8sClient client.Client
+	var testManagedZone *v1alpha1.ManagedZone
+
 	var dnsRecord *v1alpha1.DNSRecord
 
 	BeforeEach(func() {
 		testID = "t-health-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
+		k8sClient = testClusters[0].k8sClient
+		testManagedZone = testClusters[0].testManagedZones[0]
 		SetTestEnv("testID", testID)
 		SetTestEnv("testHostname", testHostname)
-		SetTestEnv("testNamespace", testNamespace)
+		SetTestEnv("testNamespace", testManagedZone.Namespace)
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -61,13 +67,25 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 			provider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
 			Expect(err).To(BeNil())
 
-			By("creating a DNS Record")
 			dnsRecord = &v1alpha1.DNSRecord{}
 			err = ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", dnsRecord, GetTestEnv)
 			Expect(err).ToNot(HaveOccurred())
 
+			By("creating dnsrecord " + dnsRecord.Name)
 			err = k8sClient.Create(ctx, dnsRecord)
 			Expect(err).ToNot(HaveOccurred())
+
+			By("checking " + dnsRecord.Name + " becomes ready")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status": Equal(metav1.ConditionTrue),
+					})),
+				)
+			}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 			By("Confirming the DNS Record status")
 			Eventually(func(g Gomega) {
@@ -203,7 +221,7 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 
 				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(errors.IsNotFound(err)).Should(BeTrue())
-			}, TestTimeoutMedium, time.Second).Should(Succeed())
+			}, TestTimeoutLong, time.Second).Should(Succeed())
 
 			By("confirming the health checks were removed in the provider")
 			Eventually(func(g Gomega) {

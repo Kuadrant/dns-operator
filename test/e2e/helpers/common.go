@@ -22,10 +22,6 @@ import (
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
-var (
-	SupportedProviders = []string{"aws", "gcp", "azure"}
-)
-
 const (
 	TestTimeoutMedium = 10 * time.Second
 	TestTimeoutLong   = 60 * time.Second
