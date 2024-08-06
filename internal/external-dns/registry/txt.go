@@ -265,6 +265,7 @@ func (im *TXTRegistry) ApplyChanges(ctx context.Context, changes *plan.Changes) 
 		}
 		r.Labels[endpoint.OwnerLabelKey] = im.ownerID
 
+		im.logger.Info("creating TXT record", "TXT record", im.generateTXTRecord(r))
 		filteredChanges.Create = append(filteredChanges.Create, im.generateTXTRecord(r)...)
 
 		if im.cacheInterval > 0 {

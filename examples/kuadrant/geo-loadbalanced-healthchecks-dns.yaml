@@ -1,7 +1,7 @@
 apiVersion: kuadrant.io/v1alpha1
 kind: DNSRecord
 metadata:
-  name: loadbalanced-healthchecks-dns
+  name: geo-loadbalanced-healthchecks-dns
 spec:
   endpoints:
     - dnsName: 14byhk-2k52h1.klb.${KUADRANT_SUB_DOMAIN}
@@ -63,6 +63,6 @@ spec:
     failureThreshold: 3
     port: 80
     protocol: HTTPS
-  providerRef:
-    name: dns-provider-credentials-azure
+  managedZone:
+    name: dev-mz-azure
   rootHost: ${KUADRANT_SUB_DOMAIN}

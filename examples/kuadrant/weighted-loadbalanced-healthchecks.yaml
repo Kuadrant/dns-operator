@@ -1,7 +1,7 @@
 apiVersion: kuadrant.io/v1alpha1
 kind: DNSRecord
 metadata:
-  name: loadbalanced-healthchecks-dns
+  name: weighted-loadbalanced-healthchecks-dns
 spec:
   endpoints:
     - dnsName: 14byhk-2k52h1.klb.${KUADRANT_SUB_DOMAIN}
@@ -33,8 +33,8 @@ spec:
         - 24byhk-2k52h1.klb.${KUADRANT_SUB_DOMAIN}
     - dnsName: klb.${KUADRANT_SUB_DOMAIN}
       providerSpecific:
-        - name: geo-code
-          value: GEO-EU
+        - name: weight
+          value: "100"
       recordTTL: 300
       recordType: CNAME
       setIdentifier: EU
@@ -42,27 +42,18 @@ spec:
         - eu.klb.${KUADRANT_SUB_DOMAIN}
     - dnsName: klb.${KUADRANT_SUB_DOMAIN}
       providerSpecific:
-        - name: geo-code
-          value: GEO-NA
+        - name: weight
+          value: "100"
       recordTTL: 300
       recordType: CNAME
       setIdentifier: US
       targets:
         - us.klb.${KUADRANT_SUB_DOMAIN}
-    - dnsName: klb.${KUADRANT_SUB_DOMAIN}
-      providerSpecific:
-        - name: geo-code
-          value: '*'
-      recordTTL: 300
-      recordType: CNAME
-      setIdentifier: default
-      targets:
-        - eu.klb.${KUADRANT_SUB_DOMAIN}
   healthCheck:
     endpoint: /health
     failureThreshold: 3
     port: 80
     protocol: HTTPS
-  providerRef:
-    name: dns-provider-credentials-azure
+  managedZone:
+    name: dev-mz-azure
   rootHost: ${KUADRANT_SUB_DOMAIN}

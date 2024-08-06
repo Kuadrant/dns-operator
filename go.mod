@@ -8,6 +8,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.6.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns v1.1.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/privatedns/armprivatedns v1.1.0
+	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager v1.3.0
 	github.com/aws/aws-sdk-go v1.44.311
 	github.com/go-logr/logr v1.3.0
 	github.com/google/go-cmp v0.6.0
