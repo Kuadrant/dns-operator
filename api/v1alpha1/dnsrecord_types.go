@@ -180,7 +180,8 @@ const (
 	// NSRecordType is a name server record.
 	NSRecordType DNSRecordType = "NS"
 
-	DefaultGeo string = "default"
+	DefaultGeo  string = "default"
+	WildcardGeo string = "*"
 )
 
 const WildcardPrefix = "*."
