@@ -90,8 +90,8 @@ func InMemoryWithDomain(domainFilter endpoint.DomainFilter) InMemoryOption {
 func InMemoryInitZones(zones []string) InMemoryOption {
 	return func(p *InMemoryProvider) {
 		for _, z := range zones {
-			if err := p.CreateZone(z); err != nil {
-				p.logger.Info("Unable to initialize zones for inmemory provider")
+			if err := p.CreateZone(z); err != nil && !errors.Is(err, ErrZoneAlreadyExists) {
+				p.logger.Error(err, "Unable to initialize zone for inmemory provider", "zone", z)
 			}
 		}
 	}
@@ -140,7 +140,17 @@ func (im *InMemoryProvider) GetZone(zone string) (Zone, error) {
 
 // Zones returns filtered zones as specified by domain
 func (im *InMemoryProvider) Zones() map[string]string {
-	return im.filter.Zones(im.client.Zones())
+	zones := make(map[string]string)
+	for _, zone := range im.client.Zones() {
+		//ToDo Add id filtering here
+		if im.domain.Match(zone) {
+			zones[zone] = zone
+			im.logger.V(1).Info(fmt.Sprintf("Matched zone %s", zone))
+		} else {
+			im.logger.V(1).Info(fmt.Sprintf("Filtered zone %s", zone))
+		}
+	}
+	return zones
 }
 
 // Records returns the list of endpoints

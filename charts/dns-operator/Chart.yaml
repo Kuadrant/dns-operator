@@ -1,11 +1,10 @@
 apiVersion: v2
 name: dns-operator
-description: Kubernetes operator responsible for reconciling DNS Record and Managed Zone custom resources.
+description: Kubernetes operator responsible for reconciling DNS Record custom resources.
 home: https://kuadrant.io
 icon: https://raw.githubusercontent.com/Kuadrant/kuadrant.github.io/main/static/img/apple-touch-icon.png
 keywords:
   - dns
-  - managed zone
   - kubernetes
   - kuadrant
 sources:

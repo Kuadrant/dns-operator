@@ -33,50 +33,30 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
-	"github.com/kuadrant/dns-operator/internal/common"
+	"github.com/kuadrant/dns-operator/pkg/builder"
 )
 
 var _ = Describe("DNSRecordReconciler", func() {
 	var dnsRecord *v1alpha1.DNSRecord
 	var dnsRecord2 *v1alpha1.DNSRecord
 	var dnsProviderSecret *v1.Secret
-	var managedZone *v1alpha1.ManagedZone
-	var brokenZone *v1alpha1.ManagedZone
 	var testNamespace string
+	var testZoneDomainName string
+	var testZoneID string
 
 	BeforeEach(func() {
 		CreateNamespace(&testNamespace)
 
-		dnsProviderSecret = testBuildInMemoryCredentialsSecret("inmemory-credentials", testNamespace)
-		managedZone = testBuildManagedZone("mz-example-com", testNamespace, "example.com", dnsProviderSecret.Name)
-		brokenZone = testBuildManagedZone("mz-fix-com", testNamespace, "fix.com", "not-there")
+		testZoneDomainName = "example.com"
+		// In memory provider currently uses the same value for domain and id
+		// Issue here to change this https://github.com/Kuadrant/dns-operator/issues/208
+		testZoneID = testZoneDomainName
 
+		dnsProviderSecret = builder.NewProviderBuilder("inmemory-credentials", testNamespace).
+			For(v1alpha1.SecretTypeKuadrantInmemory).
+			WithZonesInitialisedFor(testZoneDomainName).
+			Build()
 		Expect(k8sClient.Create(ctx, dnsProviderSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, managedZone)).To(Succeed())
-		Expect(k8sClient.Create(ctx, brokenZone)).To(Succeed())
-		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(managedZone), managedZone)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(managedZone.Status.Conditions).To(
-				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status":             Equal(metav1.ConditionTrue),
-					"ObservedGeneration": Equal(managedZone.Generation),
-				})),
-			)
-		}, TestTimeoutMedium, time.Second).Should(Succeed())
-
-		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(brokenZone), brokenZone)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(brokenZone.Status.Conditions).To(
-				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status":             Equal(metav1.ConditionFalse),
-					"ObservedGeneration": Equal(brokenZone.Generation),
-				})),
-			)
-		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
@@ -85,8 +65,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: "foo.example.com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
 				},
 				Endpoints: getDefaultTestEndpoints(),
 			},
@@ -102,43 +82,80 @@ var _ = Describe("DNSRecordReconciler", func() {
 			err := k8sClient.Delete(ctx, dnsRecord2)
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 		}
-		if managedZone != nil {
-			err := k8sClient.Delete(ctx, managedZone, client.PropagationPolicy(metav1.DeletePropagationForeground))
-			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
-		}
-		if brokenZone != nil {
-			err := k8sClient.Delete(ctx, brokenZone, client.PropagationPolicy(metav1.DeletePropagationForeground))
+		if dnsProviderSecret != nil {
+			err := k8sClient.Delete(ctx, dnsProviderSecret)
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 		}
 	})
 
-	It("prevents creation of invalid records", func(ctx SpecContext) {
-		dnsRecord = &v1alpha1.DNSRecord{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "bar.example.com",
-				Namespace: testNamespace,
-			},
-			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: "bar.example .com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
+	// Test cases covering validation of the DNSRecord resource fields
+	Context("validation", func() {
+		It("should error with no providerRef", func(ctx SpecContext) {
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bar.example.com",
+					Namespace: testNamespace,
 				},
-				Endpoints: getTestEndpoints("bar.example.com", "127.0.0.1"),
-				HealthCheck: &v1alpha1.HealthCheckSpec{
-					Endpoint:         "health",
-					Port:             ptr.To(5),
-					Protocol:         ptr.To(v1alpha1.HealthProtocol("cat")),
-					FailureThreshold: ptr.To(-1),
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost:    "bar.example.com",
+					Endpoints:   getTestEndpoints("bar.example.com", "127.0.0.1"),
+					HealthCheck: nil,
 				},
-			},
-		}
-		err := k8sClient.Create(ctx, dnsRecord)
-		Expect(err).To(MatchError(ContainSubstring("spec.rootHost: Invalid value")))
-		Expect(err).To(MatchError(ContainSubstring("spec.healthCheck.endpoint: Invalid value")))
-		Expect(err).To(MatchError(ContainSubstring("Only ports 80, 443, 1024-49151 are allowed")))
-		Expect(err).To(MatchError(ContainSubstring("Only HTTP or HTTPS protocols are allowed")))
-		Expect(err).To(MatchError(ContainSubstring("Failure threshold must be greater than 0")))
+			}
+			err := k8sClient.Create(ctx, dnsRecord)
+			// It doesn't seem to be possible to have a field marked as required and include the omitempty json struct tag
+			// so even though we don't include the providerRef in the test an empty one is being added.
+			// The error in this case when created via the json openapi would actually be `spec.providerRef: Required value`
+			Expect(err).To(MatchError(ContainSubstring("spec.providerRef.name in body should be at least 1 chars long")))
+		})
 
+		It("should error with no rootHost", func(ctx SpecContext) {
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bar.example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: dnsProviderSecret.Name,
+					},
+					Endpoints:   getTestEndpoints("bar.example.com", "127.0.0.1"),
+					HealthCheck: nil,
+				},
+			}
+			err := k8sClient.Create(ctx, dnsRecord)
+			// as above
+			// The error in this case when created via the json openapi would actually be `spec.providerRef: Required value`
+			Expect(err).To(MatchError(ContainSubstring("spec.rootHost in body should be at least 1 chars long")))
+		})
+
+		It("prevents creation of invalid records", func(ctx SpecContext) {
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bar.example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "bar.example .com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: dnsProviderSecret.Name,
+					},
+					Endpoints: getTestEndpoints("bar.example.com", "127.0.0.1"),
+					HealthCheck: &v1alpha1.HealthCheckSpec{
+						Endpoint:         "health",
+						Port:             ptr.To(5),
+						Protocol:         ptr.To(v1alpha1.HealthProtocol("cat")),
+						FailureThreshold: ptr.To(-1),
+					},
+				},
+			}
+			err := k8sClient.Create(ctx, dnsRecord)
+			Expect(err).To(MatchError(ContainSubstring("spec.rootHost: Invalid value")))
+			Expect(err).To(MatchError(ContainSubstring("spec.healthCheck.endpoint: Invalid value")))
+			Expect(err).To(MatchError(ContainSubstring("Only ports 80, 443, 1024-49151 are allowed")))
+			Expect(err).To(MatchError(ContainSubstring("Only HTTP or HTTPS protocols are allowed")))
+			Expect(err).To(MatchError(ContainSubstring("Failure threshold must be greater than 0")))
+		})
 	})
 
 	It("handles records with similar root hosts", func(ctx SpecContext) {
@@ -149,8 +166,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: "bar.example.com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
 				},
 				Endpoints:   getTestEndpoints("bar.example.com", "127.0.0.1"),
 				HealthCheck: nil,
@@ -178,8 +195,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: "foo.bar.example.com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
 				},
 				Endpoints:   getTestEndpoints("foo.bar.example.com", "127.0.0.2"),
 				HealthCheck: nil,
@@ -211,57 +228,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
-	It("dns records are reconciled once zone is fixed", func(ctx SpecContext) {
-		dnsRecord = &v1alpha1.DNSRecord{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "foo.fix.com",
-				Namespace: testNamespace,
-			},
-			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: "foo.fix.com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: brokenZone.Name,
-				},
-				Endpoints:   getTestEndpoints("foo.fix.com", "127.0.0.1"),
-				HealthCheck: nil,
-			},
-		}
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
-		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.Conditions).To(
-				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status":             Equal(metav1.ConditionFalse),
-					"Reason":             Equal("ProviderError"),
-					"Message":            ContainSubstring("The DNS provider failed to ensure the record"),
-					"ObservedGeneration": Equal(dnsRecord.Generation),
-				})),
-			)
-		}, TestTimeoutMedium, time.Second).Should(Succeed())
-
-		fixedZone := brokenZone.DeepCopy()
-		fixedZone.Spec.SecretRef.Name = dnsProviderSecret.Name
-		Expect(k8sClient.Update(ctx, fixedZone)).NotTo(HaveOccurred())
-
-		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.Conditions).To(
-				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status":             Equal(metav1.ConditionTrue),
-					"Reason":             Equal("ProviderSuccess"),
-					"Message":            Equal("Provider ensured the dns record"),
-					"ObservedGeneration": Equal(dnsRecord.Generation),
-				})),
-			)
-			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
-		}, TestTimeoutMedium, time.Second).Should(Succeed())
-	})
-
-	It("can delete a record with an valid managed zone", func(ctx SpecContext) {
+	It("can delete a record with a valid dns provider secret", func(ctx SpecContext) {
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "foo.example.com",
@@ -269,8 +236,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: "foo.example.com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
 				},
 				Endpoints:   getDefaultTestEndpoints(),
 				HealthCheck: nil,
@@ -289,7 +256,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
-			g.Expect(common.Owns(managedZone, dnsRecord)).To(BeTrue())
+			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("example.com"))
+			g.Expect(dnsRecord.Status.ZoneID).To(Equal("example.com"))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		err := k8sClient.Delete(ctx, dnsRecord)
@@ -320,6 +288,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeZero())
+			g.Expect(dnsRecord.Status.RootHost).To(Equal(dnsRecord.Spec.RootHost))
+			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
+			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
@@ -341,6 +312,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeZero())
+			g.Expect(dnsRecord.Status.RootHost).To(Equal(dnsRecord.Spec.RootHost))
+			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
+			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		//Does not allow ownerID to change once set
@@ -369,8 +343,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 			Spec: v1alpha1.DNSRecordSpec{
 				OwnerID:  "owner1",
 				RootHost: "foo.example.com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
 				},
 				Endpoints: getDefaultTestEndpoints(),
 			},
@@ -391,6 +365,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+			g.Expect(dnsRecord.Status.RootHost).To(Equal(dnsRecord.Spec.RootHost))
+			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
+			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		//Does not allow ownerID to change once set
@@ -421,8 +398,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: "foo.example.com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
 				},
 				Endpoints: getDefaultTestEndpoints(),
 			},
@@ -434,8 +411,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: "foo.example.com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
 				},
 				Endpoints: getTestEndpoints("foo.example.com", "127.0.0.2"),
 			},
@@ -457,6 +434,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+			g.Expect(dnsRecord.Status.RootHost).To(Equal(dnsRecord.Spec.RootHost))
+			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
+			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		By("creating dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: `foo.example.com` and target: `127.0.0.2`")
@@ -540,6 +520,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+			g.Expect(dnsRecord.Status.RootHost).To(Equal(dnsRecord.Spec.RootHost))
+			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
+			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		dnsRecord2 = &v1alpha1.DNSRecord{
@@ -549,8 +532,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: "foo.example.com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
 				},
 				Endpoints: []*externaldnsendpoint.Endpoint{
 					{
@@ -600,6 +583,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+			g.Expect(dnsRecord.Status.RootHost).To(Equal(dnsRecord.Spec.RootHost))
+			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
+			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		dnsRecord2 = &v1alpha1.DNSRecord{
@@ -609,8 +595,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: "bar.example.com",
-				ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-					Name: managedZone.Name,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
 				},
 				Endpoints: []*externaldnsendpoint.Endpoint{
 					{
@@ -641,6 +627,439 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
+	})
+
+	// DNS Provider configuration specific test cases
+	Context("dns provider", func() {
+
+		var pBuilder *builder.ProviderBuilder
+		var pSecret *v1.Secret
+
+		BeforeEach(func() {
+			pBuilder = builder.NewProviderBuilder("inmemory-credentials-2", testNamespace).
+				For(v1alpha1.SecretTypeKuadrantInmemory)
+		})
+
+		AfterEach(func() {
+			if pSecret != nil {
+				err := k8sClient.Delete(ctx, pSecret)
+				Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+			}
+		})
+
+		It("should assign the most suitable zone for the provider", func(ctx SpecContext) {
+			pSecret = pBuilder.
+				WithZonesInitialisedFor("example.com", "foo.example.com", "bar.foo.example.com").
+				Build()
+			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bar.foo.example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "bar.foo.example.com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: pSecret.Name,
+					},
+					Endpoints: getTestEndpoints("bar.foo.example.com", "127.0.0.1"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal("foo.example.com"))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("foo.example.com"))
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
+		It("should assign the most suitable zone when domain filters are set on the provider", func(ctx SpecContext) {
+			pSecret = pBuilder.
+				WithZonesInitialisedFor("example.com", "foo.example.com", "bar.foo.example.com").
+				WithZoneDomainFilter("example.com").
+				Build()
+			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bar.foo.example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "bar.foo.example.com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: pSecret.Name,
+					},
+					Endpoints: getTestEndpoints("bar.foo.example.com", "127.0.0.1"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				// Note: filters match the suffix so filter "example.com" still matches "foo.example.com"
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal("foo.example.com"))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("foo.example.com"))
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
+		It("should assign the most suitable zone when id filters are set on the provider", func(ctx SpecContext) {
+			pSecret = pBuilder.
+				WithZonesInitialisedFor("example.com", "foo.example.com", "bar.foo.example.com", "foo.bar.example.com").
+				WithZoneIDFilter("example.com").
+				Build()
+			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bar.foo.example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "bar.foo.example.com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: pSecret.Name,
+					},
+					Endpoints: getTestEndpoints("bar.foo.example.com", "127.0.0.1"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				// Note: filters match the suffix so filter "example.com" still matches "foo.example.com"
+				// In a normal provider the id would not be equal to the domain and this should filter to a specific zone (example.com)
+				// This is a limitation of the in memory provider implementation, issue to address this is here https://github.com/Kuadrant/dns-operator/issues/208
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal("foo.example.com"))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("foo.example.com"))
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
+		It("should report an error when no suitable zone can be found for the provider", func(ctx SpecContext) {
+			pSecret = pBuilder.
+				WithZonesInitialisedFor("example.com").
+				Build()
+			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo.noexist.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "foo.noexist.com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: pSecret.Name,
+					},
+					Endpoints: getTestEndpoints("foo.noexist.com", "127.0.0.1"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.ZoneID).To(BeEmpty())
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(BeEmpty())
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionFalse),
+						"Reason":             Equal("DNSProviderError"),
+						"Message":            Equal("Unable to find suitable zone in provider: no valid zone found for host: foo.noexist.com"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
+		It("should update broken record when provider is updated", func(ctx SpecContext) {
+			pSecret = pBuilder.
+				WithZonesInitialisedFor("example.com", "otherdomain.com").
+				WithZoneDomainFilter("example.com").
+				Build()
+			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo.otherdomain.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "foo.otherdomain.com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: pSecret.Name,
+					},
+					Endpoints: getTestEndpoints("foo.otherdomain.com", "127.0.0.1"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.ZoneID).To(BeEmpty())
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(BeEmpty())
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionFalse),
+						"Reason":             Equal("DNSProviderError"),
+						"Message":            Equal("Unable to find suitable zone in provider: no valid zone found for host: foo.otherdomain.com"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			pSecretUpdate := builder.NewProviderBuilder("inmemory-credentials-2", testNamespace).
+				For(v1alpha1.SecretTypeKuadrantInmemory).
+				WithZonesInitialisedFor("example.com", "otherdomain.com").
+				WithZoneDomainFilter("otherdomain.com").
+				Build()
+
+			// Update the provider secrets domain filter to match the other domain, now matches for record with root host `foo.example.com`
+			pSecret.StringData = pSecretUpdate.StringData
+			Expect(k8sClient.Update(ctx, pSecret)).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal("otherdomain.com"))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("otherdomain.com"))
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"Message":            Equal("Provider ensured the dns record"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
+		It("should assign new zone correctly for the provider when the root host changes", func(ctx SpecContext) {
+			pSecret = pBuilder.
+				WithZonesInitialisedFor("example.com", "otherdomain.com").
+				Build()
+			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo.example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "foo.example.com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: pSecret.Name,
+					},
+					Endpoints: getTestEndpoints("foo.example.com", "127.0.0.1"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal("example.com"))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("example.com"))
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"Message":            Equal("Provider ensured the dns record"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			// Update the record root host
+			dnsRecord.Spec.RootHost = "foo.otherdomain.com"
+			dnsRecord.Spec.Endpoints = getTestEndpoints("foo.otherdomain.com", "127.0.0.1")
+			Expect(k8sClient.Update(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal("otherdomain.com"))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("otherdomain.com"))
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"Message":            Equal("Provider ensured the dns record"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
+		// Test the deletion behaviour when a record was successfully created but the provider becomes incompatible with
+		// the existing record. A provider could become incompatible for a number of reasons, invalidated credentials etc.
+		// but here we just manipulate the provider secrets domain filter to force it. In this scenario the record should
+		// not be removed by the dnsrecord controller until it becomes valid again in order to clean up the provider.
+		It("should not allow a record that has updated a provider zone to be deleted when the provider becomes invalid", func(ctx SpecContext) {
+			pSecret = pBuilder.
+				WithZonesInitialisedFor("example.com", "otherdomain.com").
+				WithZoneDomainFilter("example.com").
+				Build()
+			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo.example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "foo.example.com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: pSecret.Name,
+					},
+					Endpoints: getTestEndpoints("foo.example.com", "127.0.0.1"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal("example.com"))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("example.com"))
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"Message":            Equal("Provider ensured the dns record"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			pSecretUpdate := builder.NewProviderBuilder("inmemory-credentials-2", testNamespace).
+				For(v1alpha1.SecretTypeKuadrantInmemory).
+				WithZonesInitialisedFor("example.com", "otherdomain.com").
+				WithZoneDomainFilter("otherdomain.com").
+				Build()
+
+			// Update the provider secrets domain filter to match the other domain, no longer matches for record with root host `foo.example.com`
+			pSecret.StringData = pSecretUpdate.StringData
+			Expect(k8sClient.Update(ctx, pSecret)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal("example.com"))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("example.com"))
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionFalse),
+						"Reason":             Equal("DNSProviderError"),
+						"Message":            Equal("The dns provider could not be loaded: zone domain name 'example.com' is not listed in the providers domain filter"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			err := k8sClient.Delete(ctx, dnsRecord)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Should not remove the dns record while its provider is incompatible
+			Consistently(func(g Gomega, ctx context.Context) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(dnsRecord.DeletionTimestamp).ToNot(BeNil())
+			}, 10*time.Second, time.Second, ctx).Should(Succeed())
+
+			// Update the provider secrets domain filter to match for `foo.example.com`
+			pSecretUpdate = builder.NewProviderBuilder("inmemory-credentials-2", testNamespace).
+				For(v1alpha1.SecretTypeKuadrantInmemory).
+				WithZonesInitialisedFor("example.com", "otherdomain.com").
+				WithZoneDomainFilter("example.com").
+				Build()
+			pSecret.StringData = pSecretUpdate.StringData
+			Expect(k8sClient.Update(ctx, pSecret)).To(Succeed())
+
+			// Should remove the dns record now its provider is compatible again
+			Eventually(func(g Gomega, ctx context.Context) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err).To(MatchError(ContainSubstring("not found")))
+			}, 5*time.Second, time.Second, ctx).Should(Succeed())
+		})
+
+		// Test the deletion behaviour when a record was successfully created but the root host was changed to one that
+		// is incompatible with the records' provider.
+		// In this scenario the record should be removed by the dnsrecord controller and cleanup the zone for the previous
+		// root host.
+		It("should allow a record to be deleted when the root host changes but the provider is incompatible with the new root host", func(ctx SpecContext) {
+			pSecret = pBuilder.
+				WithZonesInitialisedFor("example.com", "otherdomain.com").
+				WithZoneDomainFilter("example.com").
+				Build()
+			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo.example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "foo.example.com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: pSecret.Name,
+					},
+					Endpoints: getTestEndpoints("foo.example.com", "127.0.0.1"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal("example.com"))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("example.com"))
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"Message":            Equal("Provider ensured the dns record"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			// Update the record root host to one no longer managed by the provider
+			dnsRecord.Spec.RootHost = "foo.otherdomain.com"
+			dnsRecord.Spec.Endpoints = getTestEndpoints("foo.otherdomain.com", "127.0.0.1")
+			Expect(k8sClient.Update(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				// Important that these zone values in the status are not updated
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal("example.com"))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("example.com"))
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionFalse),
+						"Reason":             Equal("DNSProviderError"),
+						"Message":            Equal("Unable to find suitable zone in provider: no valid zone found for host: foo.otherdomain.com"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			// Should remove the dns record since it can still cleanup the previous zone
+			err := k8sClient.Delete(ctx, dnsRecord)
+			Expect(err).ToNot(HaveOccurred())
+			Eventually(func(g Gomega, ctx context.Context) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err).To(MatchError(ContainSubstring("not found")))
+			}, 5*time.Second, time.Second, ctx).Should(Succeed())
+		})
+
 	})
 
 })

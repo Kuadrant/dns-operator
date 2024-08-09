@@ -12,7 +12,7 @@ DNS Operator follows a specific code layout to maintain consistency and readabil
 - `cmd/`: This is the main entry point of the application.
 - `internal/`: Houses the core functionality of DNS Operator, organized into subpackages. also contains all the unit tests and integration tests for each subpackage in the `*_test.go` files.
   - `common/`: A few functions generally useful in the rest of the codebase.
-  - `controller/`: The controllers for the DNS Record CR and the Managed Zone CR.
+  - `controller/`: The controllers for the DNS Record CR.
   - `external-dns/`: copied and changed slightly from external-dns, ultimately expected to send these changes back to external-dns and delete this directory, more info in the [pull request](https://github.com/Kuadrant/dns-operator/pull/67).
   - `provider/`: Interface to various DNS Providers (e.g. AWS Route53).
 - `test/`: Includes test files for e2e testing.

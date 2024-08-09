@@ -1771,7 +1771,27 @@ func (suite *PlanTestSuite) TestRootHost() {
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
 	assert.Empty(suite.T(), cp.Errors)
 
-	//With DomainFilter and RootHost set, dnsName must have example.com and foo.example.com suffix
+	//With DomainFilter and RootHost set, domain filter must explicitly set the filter as required
+	expectedChanges = &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{suite.barecCNAMEbodoOwner1.DeepCopy(), suite.ecCNAMEfooecOwner1.DeepCopy()},
+	}
+
+	p = &Plan{
+		RootHost:       ptr.To("bar.example.com"),
+		DomainFilter:   endpoint.MatchAllDomainFilters{ptr.To(endpoint.NewDomainFilter([]string{"example.com"}))},
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+	cp = p.Calculate()
+
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+
 	expectedChanges = &plan.Changes{
 		Create:    []*endpoint.Endpoint{},
 		UpdateOld: []*endpoint.Endpoint{},
@@ -1781,7 +1801,7 @@ func (suite *PlanTestSuite) TestRootHost() {
 
 	p = &Plan{
 		RootHost:       ptr.To("bar.example.com"),
-		DomainFilter:   endpoint.MatchAllDomainFilters{ptr.To(endpoint.NewDomainFilter([]string{"example.com"}))},
+		DomainFilter:   endpoint.MatchAllDomainFilters{ptr.To(endpoint.NewDomainFilter([]string{"bar.example.com"}))},
 		Policies:       []Policy{&SyncPolicy{}},
 		Current:        current,
 		Desired:        desired,

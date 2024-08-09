@@ -47,7 +47,7 @@ spec:
       setIdentifier: default
       targets:
         - eu.klb.${testHostname}
-  managedZone:
-    name: ${TEST_DNS_MANAGED_ZONE_NAME}
+  providerRef:
+    name: ${TEST_DNS_PROVIDER_SECRET_NAME}
   ownerID: 2bq03i
   rootHost: ${testHostname}

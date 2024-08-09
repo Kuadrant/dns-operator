@@ -20,11 +20,6 @@ spec:
       kind: DNSRecord
       name: dnsrecords.kuadrant.io
       version: v1alpha1
-    - description: ManagedZone is the Schema for the managedzones API
-      displayName: Managed Zone
-      kind: ManagedZone
-      name: managedzones.kuadrant.io
-      version: v1alpha1
   description: A Kubernetes Operator to manage the lifecycle of DNS resources
   displayName: DNS Operator
   icon:
