@@ -26,6 +26,10 @@ generate-cluster-overlay: remove-cluster-overlay ## Generate a cluster overlay w
 remove-cluster-overlay: ## Remove an existing cluster overlay for the current cluster (CLUSTER_NAME)
 	rm -rf $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)
 
+.PHONY: remove-all-cluster-overlays
+remove-all-cluster-overlays: ## Remove all existing cluster overlays (kuadrant-dns-local*)
+	rm -rf $(CLUSTER_OVERLAY_DIR)/kuadrant-dns-local*
+
 .PHONY: generate-operator-deployment-overlay
 generate-operator-deployment-overlay: ## Generate a DNS Operator deployment overlay for the current cluster (CLUSTER_NAME)
 	# Generate dns-operator deployment overlay
