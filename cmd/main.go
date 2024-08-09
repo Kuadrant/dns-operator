@@ -43,8 +43,8 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
+	"github.com/kuadrant/dns-operator/internal/version"
 	"github.com/kuadrant/dns-operator/pkg/log"
-	"github.com/kuadrant/dns-operator/version"
 	//+kubebuilder:scaffold:imports
 )
 
