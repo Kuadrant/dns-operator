@@ -22,7 +22,6 @@ RUN go mod download
 COPY cmd/main.go cmd/main.go
 COPY api/ api/
 COPY internal/ internal/
-COPY version/ version/
 COPY pkg/ pkg/
 
 # Build
