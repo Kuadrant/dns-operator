@@ -70,7 +70,6 @@ func printControllerMetaInfo() {
 }
 
 func main() {
-	printControllerMetaInfo()
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -99,6 +98,8 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	printControllerMetaInfo()
 
 	var watchNamespaces = "WATCH_NAMESPACES"
 	defaultOptions := ctrl.Options{
