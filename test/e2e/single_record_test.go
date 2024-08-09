@@ -108,8 +108,8 @@ var _ = Describe("Single Record Test", func() {
 					"Status": Equal(metav1.ConditionTrue),
 				})),
 			)
+			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
 		}, time.Minute, 10*time.Second, ctx).Should(Succeed())
-
 		By("checking " + dnsRecord.Name + " ownerID is set correctly")
 		Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
 		Expect(dnsRecord.Status.OwnerID).ToNot(BeEmpty())
@@ -194,6 +194,7 @@ var _ = Describe("Single Record Test", func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
+				g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
 			}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 			By("checking " + dnsRecord.Name + " ownerID is set correctly")
@@ -337,6 +338,7 @@ var _ = Describe("Single Record Test", func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
+				g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
 			}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 			By("checking " + dnsRecord.Name + " ownerID is set correctly")

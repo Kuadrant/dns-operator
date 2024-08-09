@@ -119,6 +119,8 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By(fmt.Sprintf("checking all dns records become ready within %s", recordsReadyMaxDuration))
+			var allOwners = []string{}
+			var allTargetIps = []string{}
 			Eventually(func(g Gomega, ctx context.Context) {
 				for _, tr := range testRecords {
 					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
@@ -129,7 +131,12 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
+					allOwners = append(allOwners, tr.record.Spec.OwnerID)
+					allTargetIps = append(allTargetIps, tr.config.testTargetIP)
+					g.Expect(tr.record.Status.DomainOwners).NotTo(BeEmpty())
+					g.Expect(tr.record.Status.DomainOwners).To(ContainElement(tr.record.GetUIDHash()))
 				}
+				g.Expect(len(allOwners)).To(Equal(len(testRecords)))
 			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
 
 			By("checking provider zone records are created as expected")
@@ -140,11 +147,9 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(zoneEndpoints).To(HaveLen(2))
 
-			var allOwners = []string{}
-			var allTargetIps = []string{}
-			for i := range testRecords {
-				allOwners = append(allOwners, testRecords[i].record.Status.OwnerID)
-				allTargetIps = append(allTargetIps, testRecords[i].config.testTargetIP)
+			By("checking each record has all owners present")
+			for _, tr := range testRecords {
+				Expect(tr.record.Status.DomainOwners).To(ContainElements(allOwners))
 			}
 
 			By("checking all target ips are present")
@@ -376,6 +381,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By(fmt.Sprintf("checking all dns records become ready within %s", recordsReadyMaxDuration))
+			var allOwners = []string{}
 			Eventually(func(g Gomega, ctx context.Context) {
 				for _, tr := range testRecords {
 					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
@@ -386,7 +392,10 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
+					allOwners = append(allOwners, tr.record.Spec.OwnerID)
+					g.Expect(tr.record.Status.DomainOwners).To(Not(BeEmpty()))
 				}
+				g.Expect(len(allOwners)).To(Equal(len(testRecords)))
 			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
 
 			By("checking provider zone records are created as expected")
@@ -405,7 +414,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			var totalEndpointsChecked = 0
-			var allOwners = []string{}
+
 			var allOwnerMatcher = []types.GomegaMatcher{
 				ContainSubstring("heritage=external-dns,external-dns/owner="),
 			}
@@ -413,10 +422,10 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			var geoKlbHostname = map[string]string{}
 			var geoOwnerMatcher = map[string][]types.GomegaMatcher{}
 			for i := range testRecords {
-				ownerID := testRecords[i].record.Status.OwnerID
-				allOwners = append(allOwners, ownerID)
+				underTest := testRecords[i]
+				ownerID := underTest.record.Status.OwnerID
 				allOwnerMatcher = append(allOwnerMatcher, ContainSubstring(ownerID))
-
+				Expect(underTest.record.Status.DomainOwners).To(ContainElements(allOwners))
 				geoCode := testRecords[i].config.testGeoCode
 				geoOwners[geoCode] = append(geoOwners[geoCode], ownerID)
 				geoKlbHostname[geoCode] = testRecords[i].config.hostnames.geoKlb

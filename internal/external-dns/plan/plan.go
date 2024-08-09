@@ -27,6 +27,8 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	externaldnsplan "sigs.k8s.io/external-dns/plan"
+
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
 var (
@@ -65,6 +67,9 @@ type Plan struct {
 	Errors []error
 	// RootHost the host dns name being managed by the set of records in the plan.
 	RootHost *string
+	// Owners list of owners ids contributing to this record set.
+	// Populated after calling Calculate()
+	Owners []string
 
 	logger logr.Logger
 }
@@ -208,7 +213,8 @@ func (p *Plan) Calculate() *Plan {
 	}
 
 	if p.RootHost != nil {
-		rootDomainFilter = endpoint.NewDomainFilter([]string{*p.RootHost})
+		rootDomainName, _ := strings.CutPrefix(*p.RootHost, v1alpha1.WildcardPrefix)
+		rootDomainFilter = endpoint.NewDomainFilter([]string{rootDomainName})
 		p.DomainFilter = append(p.DomainFilter, &rootDomainFilter)
 	}
 
@@ -365,6 +371,13 @@ func (p *Plan) Calculate() *Plan {
 		Changes:        changes,
 		Errors:         errs,
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	if p.RootHost != nil {
+		p.logger.Info("plane", "managedChanges", managedChanges.dnsNameOwners, "rootHost", *p.RootHost, "normalized", normalizeDNSName(*p.RootHost))
+
+		plan.Owners = managedChanges.dnsNameOwners[normalizeDNSName(*p.RootHost)]
+
 	}
 
 	return plan
