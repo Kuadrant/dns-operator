@@ -20,15 +20,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
-	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/utils/env"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -44,15 +42,12 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
 	"github.com/kuadrant/dns-operator/internal/version"
-	"github.com/kuadrant/dns-operator/pkg/log"
 	//+kubebuilder:scaffold:imports
 )
 
 var (
-	scheme   = k8sruntime.NewScheme()
+	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
-	logLevel = env.GetString("LOG_LEVEL", "info")
-	logMode  = env.GetString("LOG_MODE", "production")
 	gitSHA   string // pass ldflag here to display gitSHA hash
 	dirty    string // must be string as passed in by ldflag to determine display .
 )
@@ -68,19 +63,9 @@ func init() {
 
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
-
-	logger := log.NewLogger(
-		log.SetLevel(log.ToLevel(logLevel)),
-		log.SetMode(log.ToMode(logMode)),
-		log.WriteTo(os.Stdout),
-	)
-	log.SetLogger(logger)
 }
 
 func printControllerMetaInfo() {
-	setupLog.Info(fmt.Sprintf("go version: %s", runtime.Version()))
-	setupLog.Info(fmt.Sprintf("go os/arch: %s/%s", runtime.GOOS, runtime.GOARCH))
-	setupLog.Info("base logger", "log level", logLevel, "log mode", logMode)
 	setupLog.Info("", "version", version.Version, "commit", gitSHA, "dirty", dirty)
 }
 
