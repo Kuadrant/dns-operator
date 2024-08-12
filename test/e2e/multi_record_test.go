@@ -131,7 +131,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
-					allOwners = append(allOwners, tr.record.Spec.OwnerID)
+					allOwners = append(allOwners, tr.record.GetUIDHash())
 					allTargetIps = append(allTargetIps, tr.config.testTargetIP)
 					g.Expect(tr.record.Status.DomainOwners).NotTo(BeEmpty())
 					g.Expect(tr.record.Status.DomainOwners).To(ContainElement(tr.record.GetUIDHash()))
@@ -392,7 +392,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
-					allOwners = append(allOwners, tr.record.Spec.OwnerID)
+					allOwners = append(allOwners, tr.record.GetUIDHash())
 					g.Expect(tr.record.Status.DomainOwners).To(Not(BeEmpty()))
 				}
 				g.Expect(len(allOwners)).To(Equal(len(testRecords)))
