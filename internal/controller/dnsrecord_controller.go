@@ -410,7 +410,7 @@ func (r *DNSRecordReconciler) getDNSProvider(ctx context.Context, managedZone *v
 func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone, isDelete bool) (bool, error) {
 	logger := log.FromContext(ctx)
 	zoneDomainName, _ := strings.CutPrefix(managedZone.Spec.DomainName, v1alpha1.WildcardPrefix)
-	rootDomainName, _ := strings.CutPrefix(dnsRecord.Spec.RootHost, v1alpha1.WildcardPrefix)
+	rootDomainName := dnsRecord.Spec.RootHost
 	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{zoneDomainName})
 	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
 	var excludeDNSRecordTypes []string
@@ -465,10 +465,10 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	)
 
 	plan = plan.Calculate()
-
 	if err = plan.Error(); err != nil {
 		return false, err
 	}
+	dnsRecord.Status.DomainOwners = plan.Owners
 	if plan.Changes.HasChanges() {
 		logger.Info("Applying changes")
 		err = registry.ApplyChanges(ctx, plan.Changes)

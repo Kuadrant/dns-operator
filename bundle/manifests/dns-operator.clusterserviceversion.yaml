@@ -56,7 +56,7 @@ metadata:
     capabilities: Basic Install
     categories: Integration & Delivery
     containerImage: quay.io/kuadrant/dns-operator:latest
-    createdAt: "2024-06-28T14:24:36Z"
+    createdAt: "2024-08-12T10:16:02Z"
     description: A Kubernetes Operator to manage the lifecycle of DNS resources
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4

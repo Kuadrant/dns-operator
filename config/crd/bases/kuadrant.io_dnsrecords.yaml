@@ -244,6 +244,12 @@ spec:
                   - type
                   type: object
                 type: array
+              domainOwners:
+                description: DomainOwners is a list of all the owners working against
+                  the root domain of this record
+                items:
+                  type: string
+                type: array
               endpoints:
                 description: |-
                   endpoints are the last endpoints that were successfully published by the provider
