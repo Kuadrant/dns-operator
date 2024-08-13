@@ -171,7 +171,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
-			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		dnsRecord2 = &v1alpha1.DNSRecord{
@@ -261,7 +261,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
-			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
@@ -322,7 +322,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeZero())
-			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
@@ -344,7 +344,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeZero())
-			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		//Does not allow ownerID to change once set
@@ -360,7 +360,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
-			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
@@ -396,7 +396,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
-			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement("owner1"))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf("owner1"))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		//Does not allow ownerID to change once set
@@ -416,7 +416,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.OwnerID).To(Equal("owner1"))
-			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement("owner1"))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf("owner1"))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
@@ -464,7 +464,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
-			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		By("creating dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: `foo.example.com` and target: `127.0.0.2`")
@@ -484,7 +484,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(1)))
-			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElements(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
 
 			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -498,7 +498,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord2.Status.WriteCounter).To(BeNumerically(">", int64(1)))
-			g.Expect(dnsRecord2.Status.DomainOwners).To(ContainElements(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
+			g.Expect(dnsRecord2.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
 		}, TestTimeoutLong, time.Second).Should(Succeed())
 
 		By("fixing conflict with dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: `foo.example.com` and target: `127.0.0.1`")
@@ -521,7 +521,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"Message": Equal("Provider ensured the dns record"),
 				})),
 			)
-			g.Expect(dnsRecord.Status.DomainOwners).To(ContainElements(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
 
 			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -533,7 +533,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"Message": Equal("Provider ensured the dns record"),
 				})),
 			)
-			g.Expect(dnsRecord2.Status.DomainOwners).To(ContainElements(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
+			g.Expect(dnsRecord2.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
 		}, TestTimeoutLong, time.Second).Should(Succeed())
 	})
 

@@ -149,7 +149,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 			By("checking each record has all owners present")
 			for _, tr := range testRecords {
-				Expect(tr.record.Status.DomainOwners).To(ContainElements(allOwners))
+				Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
 			}
 
 			By("checking all target ips are present")
@@ -425,7 +425,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				underTest := testRecords[i]
 				ownerID := underTest.record.Status.OwnerID
 				allOwnerMatcher = append(allOwnerMatcher, ContainSubstring(ownerID))
-				Expect(underTest.record.Status.DomainOwners).To(ContainElements(allOwners))
+				Expect(underTest.record.Status.DomainOwners).To(ConsistOf(allOwners))
 				geoCode := testRecords[i].config.testGeoCode
 				geoOwners[geoCode] = append(geoOwners[geoCode], ownerID)
 				geoKlbHostname[geoCode] = testRecords[i].config.hostnames.geoKlb

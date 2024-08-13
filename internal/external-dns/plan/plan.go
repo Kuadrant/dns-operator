@@ -374,7 +374,7 @@ func (p *Plan) Calculate() *Plan {
 	}
 
 	if p.RootHost != nil {
-		p.logger.Info("plane", "managedChanges", managedChanges.dnsNameOwners, "rootHost", *p.RootHost, "normalized", normalizeDNSName(*p.RootHost))
+		p.logger.V(1).Info("plan", "record dnsOwners", managedChanges.dnsNameOwners, "record rootHost", *p.RootHost, "record normalized", normalizeDNSName(*p.RootHost))
 
 		plan.Owners = managedChanges.dnsNameOwners[normalizeDNSName(*p.RootHost)]
 
