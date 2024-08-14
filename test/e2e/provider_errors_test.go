@@ -30,12 +30,17 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 	// testHostname generated hostname for this test e.g. t-gw-mgc-12345.t-e2e-12345.e2e.hcpapps.net
 	var testHostname string
 
+	var k8sClient client.Client
+	var testManagedZone *v1alpha1.ManagedZone
+
 	var dnsRecord *v1alpha1.DNSRecord
 
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-errors-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
+		k8sClient = testClusters[0].k8sClient
+		testManagedZone = testClusters[0].testManagedZones[0]
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -49,8 +54,8 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 	It("correctly handles invalid geo", func(ctx SpecContext) {
 		var validGeoCode string
 		var expectedProviderErr string
-		if testDNSProvider == "gcp" {
-			//GCP
+		if testDNSProvider == "google" {
+			//Google
 			expectedProviderErr = "location': 'notageocode', invalid"
 			validGeoCode = "us-east1"
 		} else if testDNSProvider == "azure" {
@@ -80,7 +85,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			invalidEndpoint,
 		}
 
-		dnsRecord = testBuildDNSRecord(testID, testNamespace, testManagedZoneName, "test-owner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, testManagedZone.Namespace, testManagedZone.Name, "test-owner", testHostname)
 		dnsRecord.Spec.Endpoints = testEndpoints
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid geo endpoint")
@@ -141,8 +146,8 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 
 	It("correctly handles invalid weight", func(ctx SpecContext) {
 		var expectedProviderErr string
-		if testDNSProvider == "gcp" {
-			//GCP
+		if testDNSProvider == "google" {
+			//Google
 			expectedProviderErr = "weight': '-1.0' Reason: backendError, Message: Invalid Value"
 		} else if testDNSProvider == "azure" {
 			Skip("not yet supported for azure")
@@ -171,7 +176,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			invalidEndpoint,
 		}
 
-		dnsRecord = testBuildDNSRecord(testID, testNamespace, testManagedZoneName, "test-owner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, testManagedZone.Namespace, testManagedZone.Name, "test-owner", testHostname)
 		dnsRecord.Spec.Endpoints = testEndpoints
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid weight endpoint")

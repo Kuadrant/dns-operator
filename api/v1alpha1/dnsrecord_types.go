@@ -142,6 +142,9 @@ type DNSRecordStatus struct {
 
 	// ownerID is a unique string used to identify the owner of this record.
 	OwnerID string `json:"ownerID,omitempty"`
+
+	// DomainOwners is a list of all the owners working against the root domain of this record
+	DomainOwners []string `json:"domainOwners,omitempty"`
 }
 
 //+kubebuilder:object:root=true
