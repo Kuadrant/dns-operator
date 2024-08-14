@@ -13,7 +13,7 @@ sources:
 kubeVersion: ">=1.19.0-0"
 type: application
 # The version will be properly set when the chart is released matching the operator version
-version: "0.4.0-alpha1"
+version: "0.4.1"
 maintainers:
   - email: mnairn@redhat.com
     name: Michael Nairn
