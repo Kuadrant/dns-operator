@@ -1,6 +1,6 @@
 # DNS Operator
 
-The DNS Operator is a kubernetes based controller responsible for reconciling DNS Record and Managed Zone custom resources. It interfaces with cloud DNS providers such as AWS and Google to bring the DNS zone into the state declared in these CRDs.
+The DNS Operator is a kubernetes based controller responsible for reconciling DNS Record custom resources. It interfaces with cloud DNS providers such as AWS and Google to bring the DNS zone into the state declared in these CRDs.
 One of the key use cases the DNS operator solves, is allowing complex DNS routing strategies such as Geo and Weighted to be expressed allowing you to leverage DNS as the first layer of traffic management. In order to make these strategies valuable, it also works across multiple clusters allowing you to use a shared domain name balance traffic based on your requirements.
 
 ## Getting Started
@@ -9,25 +9,25 @@ One of the key use cases the DNS operator solves, is allowing complex DNS routin
 
 #### Add DNS provider configuration
 
-**NOTE:** You can optionally skip this step but at least one ManagedZone will need to be configured and have valid credentials linked to use the DNS Operator.
+**NOTE:** You can optionally skip this step but at least one DNS Provider Secret will need to be configured with valid credentials to use the DNS Operator.
 
 ##### AWS Provider (Route53)
 ```bash
-make local-setup-aws-mz-clean local-setup-aws-mz-generate AWS_ZONE_ROOT_DOMAIN=<MY AWS Zone Root Domain> AWS_DNS_PUBLIC_ZONE_ID=<My AWS DNS Public Zone ID> AWS_ACCESS_KEY_ID=<My AWS ACCESS KEY> AWS_SECRET_ACCESS_KEY=<My AWS Secret Access Key>
+make local-setup-aws-clean local-setup-aws-generate AWS_ACCESS_KEY_ID=<My AWS ACCESS KEY> AWS_SECRET_ACCESS_KEY=<My AWS Secret Access Key>
 ```
 More details about the AWS provider can be found [here](./docs/provider.md#aws-route-53-provider)
 
 ##### GCP Provider
 
 ```bash
-make local-setup-gcp-mz-clean local-setup-gcp-mz-generate GCP_ZONE_NAME=<My GCP ZONE Name> GCP_ZONE_DNS_NAME=<My Zone DNS Name> GCP_GOOGLE_CREDENTIALS='<My GCP Credentials.json>' GCP_PROJECT_ID=<My GCP PROJECT ID>
+make local-setup-gcp-clean local-setup-gcp-generate GCP_GOOGLE_CREDENTIALS='<My GCP Credentials.json>' GCP_PROJECT_ID=<My GCP PROJECT ID>
 ```
 More details about the GCP provider can be found [here](./docs/provider.md#google-cloud-dns-provider)
 
 ##### AZURE Provider
 
 ```bash
-make local-setup-azure-mz-clean local-setup-azure-mz-generate KUADRANT_AZURE_CREDENTIALS='<My Azure Credentials.json>' KUADRANT_AZURE_DNS_ZONE_ID=<My Azure Zone ID> KUADRANT_AZURE_ZONE_ROOT_DOMAIN='<My Azure Domain Name>'
+make local-setup-azure-clean local-setup-azure-generate KUADRANT_AZURE_CREDENTIALS='<My Azure Credentials.json>'
 ```
 
 Info on generating service principal credentials [here](https://github.com/kubernetes-sigs/external-dns/blob/master/docs/tutorials/azure.md)
@@ -84,13 +84,14 @@ kubectl logs -f deployments/dns-operator-controller-manager -n dns-operator-syst
 The e2e test suite can be executed against any cluster running the DNS Operator with configuration added for any supported provider.
 
 ```
-make test-e2e TEST_DNS_MANAGED_ZONE_NAME=<My managed zone name> TEST_DNS_NAMESPACES=<My test namespace(s)>
+make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=<My domain name> TEST_DNS_PROVIDER_SECRET_NAME=<My provider secret name> TEST_DNS_NAMESPACES=<My test namespace(s)>
 ```
 
-| Environment Variable       | Description                                                                                          |
-|----------------------------|------------------------------------------------------------------------------------------------------|
-| TEST_DNS_MANAGED_ZONE_NAME | Name of the managed zone to use. If using local-setup Managed zones, one of [dev-mz-aws; dev-mz-gcp] | 
-| TEST_DNS_NAMESPACES        | The namespace(s) where the managed zone with the name (TEST_DNS_MANAGED_ZONE_NAME) can be found      | 
+| Environment Variable       | Description                                                                                                                                                                        |
+|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| TEST_DNS_PROVIDER_SECRET_NAME | Name of the provider secret to use. If using local-setup provider secrets zones, one of [dns-provider-credentials-aws; dns-provider-credentials-gcp;dns-provider-credentials-azure] | 
+| TEST_DNS_ZONE_DOMAIN_NAME        | The Domain name to use in the test. Must be a zone accessible with the (TEST_DNS_PROVIDER_SECRET_NAME) credentials with the same domain name                                       | 
+| TEST_DNS_NAMESPACES        | The namespace(s) where the provider secret(s) can be found                                                                                                                         | 
 
 ### Modifying the API definitions
 If you are editing the API definitions, generate the manifests such as CRs or CRDs using:

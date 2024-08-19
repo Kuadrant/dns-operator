@@ -46,6 +46,6 @@ spec:
     failureThreshold: 3
     port: 80
     protocol: HTTPS
-  managedZone:
-    name: dev-mz-azure
+  providerRef:
+    name: dns-provider-credentials-azure
   rootHost: ${KUADRANT_SUB_DOMAIN}

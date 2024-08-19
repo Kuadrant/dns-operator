@@ -23,11 +23,11 @@ type healthChecksConfig struct {
 	Protocol         *provider.HealthCheckProtocol
 }
 
-func (r *DNSRecordReconciler) ReconcileHealthChecks(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, managedZone *v1alpha1.ManagedZone) error {
+func (r *DNSRecordReconciler) ReconcileHealthChecks(ctx context.Context, dnsRecord *v1alpha1.DNSRecord) error {
 	var results []provider.HealthCheckResult
 	var err error
 
-	dnsProvider, err := r.getDNSProvider(ctx, managedZone)
+	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
 	if err != nil {
 		return err
 	}
