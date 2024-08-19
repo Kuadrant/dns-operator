@@ -23,11 +23,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
-
 	azcoreruntime "github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	dns "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
 	"github.com/go-logr/logr"
 
 	"sigs.k8s.io/external-dns/endpoint"
@@ -109,7 +108,7 @@ func NewAzureProviderFromConfig(ctx context.Context, azureConfig Config) (*Azure
 // NewAzureProvider creates a new Azure provider.
 //
 // Returns the provider or an error if a provider could not be created.
-func NewAzureProvider(ctx context.Context, configFile string, domainFilter endpoint.DomainFilter, zoneNameFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, resourceGroup string, userAssignedIdentityClientID string, DryRun bool) (*AzureProvider, error) {
+func NewAzureProvider(ctx context.Context, configFile string, domainFilter endpoint.DomainFilter, zoneNameFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, resourceGroup string, userAssignedIdentityClientID string, dryRun bool) (*AzureProvider, error) {
 	cfg, err := getConfig(configFile, resourceGroup, userAssignedIdentityClientID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read Azure config file '%s': %v", configFile, err)
@@ -118,7 +117,7 @@ func NewAzureProvider(ctx context.Context, configFile string, domainFilter endpo
 	cfg.DomainFilter = domainFilter
 	cfg.ZoneNameFilter = zoneNameFilter
 	cfg.IDFilter = zoneIDFilter
-	cfg.DryRun = DryRun
+	cfg.DryRun = dryRun
 
 	return NewAzureProviderFromConfig(ctx, *cfg)
 }

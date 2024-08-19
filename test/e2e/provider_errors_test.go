@@ -122,7 +122,9 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			expectedProviderErr = "location': 'notageocode', invalid"
 			validGeoCode = "us-east1"
 		} else if testDNSProvider == "azure" {
-			Skip("not yet supported for azure")
+			//Azure
+			expectedProviderErr = "The following locations specified in the geoMapping property for endpoint ‘foo-example-com’ are not supported: NOTAGEOCODE."
+			validGeoCode = "GEO-NA"
 		} else {
 			//AWS
 			expectedProviderErr = "Value 'notageocode' with length = '11' is not facet-valid with respect to length '2' for type 'ContinentCode'"
@@ -166,7 +168,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 					"Message": And(ContainSubstring("The DNS provider failed to ensure the record"), ContainSubstring(expectedProviderErr)),
 				})),
 			)
-		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
+		}, TestTimeoutLong, time.Second, ctx).Should(Succeed())
 
 		By("checking dnsrecord " + dnsRecord.Name + " is not being updated repeatedly")
 		tmpRecord := &v1alpha1.DNSRecord{}
@@ -203,7 +205,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 					"Message": Or(Equal("Provider ensured the dns record"), Equal("Awaiting validation")),
 				})),
 			)
-		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
+		}, TestTimeoutLong, time.Second, ctx).Should(Succeed())
 
 	})
 
@@ -213,7 +215,8 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			//Google
 			expectedProviderErr = "weight': '-1.0' Reason: backendError, Message: Invalid Value"
 		} else if testDNSProvider == "azure" {
-			Skip("not yet supported for azure")
+			//Azure
+			expectedProviderErr = "Operation input is malformed. Please retry the request."
 		} else {
 			//AWS
 			expectedProviderErr = "weight' failed to satisfy constraint: Member must have value greater than or equal to 0"
@@ -257,7 +260,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 					"Message": And(ContainSubstring("The DNS provider failed to ensure the record"), ContainSubstring(expectedProviderErr)),
 				})),
 			)
-		}, 10*time.Second, time.Second, ctx).Should(Succeed())
+		}, TestTimeoutLong, time.Second, ctx).Should(Succeed())
 
 		By("checking dnsrecord " + dnsRecord.Name + " is not being updated repeatedly")
 		tmpRecord := &v1alpha1.DNSRecord{}
@@ -294,7 +297,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 					"Message": Or(Equal("Provider ensured the dns record"), Equal("Awaiting validation")),
 				})),
 			)
-		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
+		}, TestTimeoutLong, time.Second, ctx).Should(Succeed())
 
 	})
 

@@ -223,18 +223,18 @@ func createMockRecordSetMultiWithTTL(name, recordType string, ttl int64, values 
 }
 
 // newMockedAzureProvider creates an AzureProvider comprising the mocked clients for zones and recordsets
-func newMockedAzureProvider(domainFilter endpoint.DomainFilter, zoneNameFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, DryRun bool, resourceGroup string, userAssignedIdentityClientID string, zones []*dns.Zone, recordSets []*dns.RecordSet) (*AzureProvider, error) {
+func newMockedAzureProvider(domainFilter endpoint.DomainFilter, zoneNameFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, dryRun bool, resourceGroup string, userAssignedIdentityClientID string, zones []*dns.Zone, recordSets []*dns.RecordSet) (*AzureProvider, error) {
 	zonesClient := newMockZonesClient(zones)
 	recordSetsClient := newMockRecordSetsClient(recordSets)
-	return newAzureProvider(domainFilter, zoneNameFilter, zoneIDFilter, DryRun, resourceGroup, userAssignedIdentityClientID, &zonesClient, &recordSetsClient), nil
+	return newAzureProvider(domainFilter, zoneNameFilter, zoneIDFilter, dryRun, resourceGroup, userAssignedIdentityClientID, &zonesClient, &recordSetsClient), nil
 }
 
-func newAzureProvider(domainFilter endpoint.DomainFilter, zoneNameFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, DryRun bool, resourceGroup string, userAssignedIdentityClientID string, zonesClient ZonesClient, recordsClient RecordSetsClient) *AzureProvider {
+func newAzureProvider(domainFilter endpoint.DomainFilter, zoneNameFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, dryRun bool, resourceGroup string, userAssignedIdentityClientID string, zonesClient ZonesClient, recordsClient RecordSetsClient) *AzureProvider {
 	return &AzureProvider{
 		DomainFilter:                 domainFilter,
 		ZoneNameFilter:               zoneNameFilter,
 		zoneIDFilter:                 zoneIDFilter,
-		DryRun:                       DryRun,
+		DryRun:                       dryRun,
 		ResourceGroup:                resourceGroup,
 		userAssignedIdentityClientID: userAssignedIdentityClientID,
 		zonesClient:                  zonesClient,
@@ -368,7 +368,7 @@ func TestAzureApplyChangesDryRun(t *testing.T) {
 	validateAzureEndpoints(t, recordsClient.updatedEndpoints, []*endpoint.Endpoint{})
 }
 
-func testAzureApplyChangesInternal(t *testing.T, DryRun bool, client RecordSetsClient) {
+func testAzureApplyChangesInternal(t *testing.T, dryRun bool, client RecordSetsClient) {
 	zones := []*dns.Zone{
 		createMockZone("example.com", "/dnszones/example.com"),
 		createMockZone("other.com", "/dnszones/other.com"),
@@ -379,7 +379,7 @@ func testAzureApplyChangesInternal(t *testing.T, DryRun bool, client RecordSetsC
 		endpoint.NewDomainFilter([]string{""}),
 		endpoint.NewDomainFilter([]string{""}),
 		provider.NewZoneIDFilter([]string{""}),
-		DryRun,
+		dryRun,
 		"group",
 		"",
 		&zonesClient,
@@ -497,14 +497,14 @@ func TestAzureApplyChangesZoneName(t *testing.T) {
 	})
 }
 
-func testAzureApplyChangesInternalZoneName(t *testing.T, DryRun bool, client RecordSetsClient) {
+func testAzureApplyChangesInternalZoneName(t *testing.T, dryRun bool, client RecordSetsClient) {
 	zonesClient := newMockZonesClient([]*dns.Zone{createMockZone("example.com", "/dnszones/example.com")})
 
 	provider := newAzureProvider(
 		endpoint.NewDomainFilter([]string{"foo.example.com"}),
 		endpoint.NewDomainFilter([]string{"example.com"}),
 		provider.NewZoneIDFilter([]string{""}),
-		DryRun,
+		dryRun,
 		"group",
 		"",
 		&zonesClient,

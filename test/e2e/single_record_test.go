@@ -4,9 +4,11 @@ package e2e
 
 import (
 	"context"
+	"net"
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -45,6 +47,8 @@ var _ = Describe("Single Record Test", func() {
 		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
 		if testDNSProvider == "google" {
 			geoCode = "us-east1"
+		} else if testDNSProvider == "azure" {
+			geoCode = "GEO-NA"
 		} else {
 			geoCode = "US"
 		}
@@ -240,9 +244,6 @@ var _ = Describe("Single Record Test", func() {
 
 	Context("loadbalanced", func() {
 		It("makes available a hostname that can be resolved", func(ctx SpecContext) {
-			if testDNSProvider == "azure" {
-				Skip("not yet supported for azure")
-			}
 			testTargetIP := "127.0.0.1"
 
 			klbHostName := "klb." + testHostname
@@ -340,7 +341,7 @@ var _ = Describe("Single Record Test", func() {
 					})),
 				)
 				g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
-			}, time.Minute, 10*time.Second, ctx).Should(Succeed())
+			}, TestTimeoutLong, 10*time.Second, ctx).Should(Succeed())
 
 			By("checking " + dnsRecord.Name + " ownerID is set correctly")
 			Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
@@ -420,6 +421,81 @@ var _ = Describe("Single Record Test", func() {
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 				))
+			}
+			if testDNSProvider == "azure" {
+				Expect(zoneEndpoints).To(HaveLen(8))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(cluster1KlbHostName),
+						"Targets":       ConsistOf(testTargetIP),
+						"RecordType":    Equal("A"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(testHostname),
+						"Targets":       ConsistOf(klbHostName),
+						"RecordType":    Equal("CNAME"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(geo1KlbHostName),
+						"Targets":       ConsistOf(cluster1KlbHostName),
+						"RecordType":    Equal("CNAME"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "routingpolicy", Value: string(armtrafficmanager.TrafficRoutingMethodWeighted)},
+							{Name: cluster1KlbHostName, Value: "200"},
+						}),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(klbHostName),
+						"Targets":       ConsistOf(geo1KlbHostName),
+						"RecordType":    Equal("CNAME"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "routingpolicy", Value: string(armtrafficmanager.TrafficRoutingMethodGeographic)},
+							{Name: geo1KlbHostName, Value: "WORLD"},
+						}),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-a-" + cluster1KlbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-cname-" + testHostname),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-cname-" + geo1KlbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-cname-" + klbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					}))))
 			}
 			if testDNSProvider == "aws" {
 				Expect(zoneEndpoints).To(HaveLen(10))
@@ -519,12 +595,30 @@ var _ = Describe("Single Record Test", func() {
 			}
 
 			By("ensuring the authoritative nameserver resolves the hostname")
-			// speed up things by using the authoritative nameserver
-			authoritativeResolver := ResolverForDomainName(testZoneDomainName)
+			var resolver *net.Resolver
+			if testDNSProvider == "azure" {
+				// cannot use authoratitive nameserver in Azure due to how traffic managers use CNAMEs on trafficmanager.net
+				By("ensuring the hostname resolves")
+				//we need to wait a minute to allow the records to propagate
+				Consistently(func(g Gomega, ctx context.Context) {
+					g.Expect(true).To(BeTrue())
+				}, 1*time.Minute, 1*time.Minute, ctx).Should(Succeed())
+			} else {
+				By("ensuring the authoritative nameserver resolves the hostname")
+				// speed up things by using the authoritative nameserver
+				resolver = ResolverForDomainName(testZoneDomainName)
+			}
 			Eventually(func(g Gomega, ctx context.Context) {
-				ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
+				var err error
+				var ips []string
+				if resolver == nil {
+					ips, err = net.LookupHost(testHostname)
+				} else {
+					ips, err = resolver.LookupHost(ctx, testHostname)
+				}
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(ips).To(ContainElement(testTargetIP))
+				GinkgoWriter.Printf("[debug] ips: %v\n", ips)
+				g.Expect(ips).To(Or(ContainElements(testTargetIP)))
 			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 		})
 	})

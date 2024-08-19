@@ -5,6 +5,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
 	. "github.com/onsi/gomega"
+
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 )
 
@@ -154,19 +155,19 @@ func TestAzureProvider_AdjustEndpoints(t *testing.T) {
 						RecordTTL:  300,
 						RecordType: "CNAME",
 						Labels:     map[string]string{},
-						Targets:    []string{"us.klb.testdomain.com", "eu.klb.testdomain.com"},
+						Targets:    []string{"eu.klb.testdomain.com", "us.klb.testdomain.com"},
 						ProviderSpecific: []externaldnsendpoint.ProviderSpecificProperty{
 							{
 								Name:  "routingpolicy",
 								Value: string(armtrafficmanager.TrafficRoutingMethodGeographic),
 							},
 							{
-								Name:  "us.klb.testdomain.com",
-								Value: "GEO-NA",
+								Name:  "eu.klb.testdomain.com",
+								Value: "WORLD",
 							},
 							{
-								Name:  "eu.klb.testdomain.com",
-								Value: "GEO-EU",
+								Name:  "us.klb.testdomain.com",
+								Value: "GEO-NA",
 							},
 						},
 					},

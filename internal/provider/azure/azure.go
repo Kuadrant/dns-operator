@@ -11,15 +11,14 @@ import (
 
 	dns "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
-	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
-	"sigs.k8s.io/external-dns/plan"
-
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v2"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
+	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/plan"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	externaldnsproviderazure "github.com/kuadrant/dns-operator/internal/external-dns/provider/azure"
@@ -107,7 +106,7 @@ func (p *AzureProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider("azure", NewAzureProviderFromSecret, false)
+	provider.RegisterProvider("azure", NewAzureProviderFromSecret, true)
 }
 
 // Records gets the current records.
@@ -119,7 +118,6 @@ func (p *AzureProvider) Records(ctx context.Context) (endpoints []*externaldnsen
 		return nil, err
 	}
 
-	p.logger.Info("getting records from azure")
 	for _, zone := range zones {
 		testForTrafficManagerProfile := []dns.RecordSet{}
 		pager := p.RecordSetsClient.NewListAllByDNSZonePager(p.ResourceGroup, *zone.Name, &dns.RecordSetsClientListAllByDNSZoneOptions{Top: nil})
@@ -174,7 +172,6 @@ func (p *AzureProvider) Records(ctx context.Context) (endpoints []*externaldnsen
 }
 
 func (p *AzureProvider) endpointFromTrafficManager(ctx context.Context, recordSet *dns.RecordSet) (endpoint *externaldnsendpoint.Endpoint, err error) {
-	p.logger.Info("getting endpoints from record set", "record set", recordSet)
 	if recordSet.Properties.TargetResource == nil || recordSet.Properties.TargetResource.ID == nil {
 		return nil, nil
 	}
@@ -185,14 +182,11 @@ func (p *AzureProvider) endpointFromTrafficManager(ctx context.Context, recordSe
 		return nil, err
 	}
 
-	p.logger.Info("get profile for recordset", "record set", recordSet, "profile", profile)
-
 	recordType := strings.Split(*recordSet.Type, "/")
 
 	ep := externaldnsendpoint.NewEndpointWithTTL(*recordSet.Properties.Fqdn, recordType[len(recordType)-1], externaldnsendpoint.TTL(*recordSet.Properties.TTL), []string{}...)
 	ep.WithProviderSpecific("routingpolicy", string(ptr.Deref(profile.Properties.TrafficRoutingMethod, "")))
 	for _, e := range profile.Properties.Endpoints {
-		p.logger.Info("found target for profile", "endpoint", ep, "profile", profile, "target", e)
 		ep.Targets = append(ep.Targets, ptr.Deref(e.Properties.Target, ""))
 		if string(*profile.Properties.TrafficRoutingMethod) == string(armtrafficmanager.TrafficRoutingMethodGeographic) {
 			ep.WithProviderSpecific(*e.Properties.Target, *e.Properties.GeoMapping[0])
@@ -206,7 +200,6 @@ func (p *AzureProvider) endpointFromTrafficManager(ctx context.Context, recordSe
 
 // AdjustEndpoints takes source endpoints and translates them to an azure specific format
 func (p *AzureProvider) AdjustEndpoints(endpoints []*externaldnsendpoint.Endpoint) ([]*externaldnsendpoint.Endpoint, error) {
-	p.logger.Info("adjusting azure endpoints")
 	return endpointsToAzureFormat(endpoints), nil
 }
 
@@ -222,14 +215,18 @@ func (p *AzureProvider) ApplyChanges(ctx context.Context, changes *plan.Changes)
 	deleted, updated := p.MapChanges(zones, changes)
 
 	p.logger.Info("applying changes", "deleted", len(deleted), "updated", len(updated))
-	p.DeleteRecords(ctx, deleted)
-	p.UpdateRecords(ctx, updated)
+	err = p.DeleteRecords(ctx, deleted)
+	if err != nil {
+		return err
+	}
+	err = p.UpdateRecords(ctx, updated)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func (p *AzureProvider) DeleteRecords(ctx context.Context, deleted externaldnsproviderazure.AzureChangeMap) {
-	p.logger.Info("deleting records")
-	// Delete records first
+func (p *AzureProvider) DeleteRecords(ctx context.Context, deleted externaldnsproviderazure.AzureChangeMap) error {
 	for zone, endpoints := range deleted {
 		for _, ep := range endpoints {
 			if _, ok := ep.GetProviderSpecificProperty("routingpolicy"); ok && ep.RecordType != "TXT" {
@@ -243,6 +240,7 @@ func (p *AzureProvider) DeleteRecords(ctx context.Context, deleted externaldnspr
 				_, err := p.TrafficManagerProfilesClient.Delete(ctx, p.ResourceGroup, profileName, nil)
 				if err != nil {
 					p.logger.Error(err, "error deleting traffic manager", "name", profileName)
+					return err
 				}
 
 				name := p.RecordSetNameForZone(zone, ep)
@@ -250,6 +248,7 @@ func (p *AzureProvider) DeleteRecords(ctx context.Context, deleted externaldnspr
 				_, err = p.RecordSetsClient.Delete(ctx, p.ResourceGroup, zone, name, dns.RecordTypeCNAME, nil)
 				if err != nil {
 					p.logger.Error(err, "failed to delete record", "record type", ep.RecordType, "record name", name, "zone", zone, "profile", profileName)
+					return err
 				}
 			} else {
 				name := p.RecordSetNameForZone(zone, ep)
@@ -263,15 +262,16 @@ func (p *AzureProvider) DeleteRecords(ctx context.Context, deleted externaldnspr
 					p.logger.Info("deleting record", "record type", ep.RecordType, "record name", name, "zone", zone)
 					if _, err := p.RecordSetsClient.Delete(ctx, p.ResourceGroup, zone, name, dns.RecordType(ep.RecordType), nil); err != nil {
 						p.logger.Error(err, "failed to delete record", "record type", ep.RecordType, "record name", name, "zone", zone)
+						return err
 					}
 				}
 			}
 		}
 	}
+	return nil
 }
 
-func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnsproviderazure.AzureChangeMap) {
-	p.logger.Info("updating records")
+func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnsproviderazure.AzureChangeMap) error {
 	for zone, endpoints := range updated {
 		for _, ep := range endpoints {
 			if !p.DomainFilter.Match(ep.DNSName) {
@@ -289,7 +289,7 @@ func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnspr
 						geo, ok := ep.GetProviderSpecificProperty(target)
 						if !ok {
 							p.logger.Error(fmt.Errorf("could not find geo string for target: '%s'", target), "no geo property set", "endpoint", ep)
-							continue
+							return fmt.Errorf("could not find geo string for target: '%s'", target)
 						}
 						tmEndpoint := armtrafficmanager.Endpoint{
 							Type: ptr.To("Microsoft.Network/trafficManagerProfiles/externalEndpoints"),
@@ -305,13 +305,13 @@ func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnspr
 						strWeight, ok := ep.GetProviderSpecificProperty(target)
 						if !ok {
 							p.logger.Error(fmt.Errorf("could not find weight string for target: '%s'", target), "no weight property set", "endpoint", ep)
-							continue
+							return fmt.Errorf("could not find weight string for target: '%s'", target)
 						}
 
 						weight, err := strconv.Atoi(strWeight)
 						if err != nil {
 							p.logger.Error(err, "could not convert weight value to int", "weight value", strWeight)
-							continue
+							return err
 						}
 						tmEndpoint := armtrafficmanager.Endpoint{
 							Type: ptr.To("Microsoft.Network/trafficManagerProfiles/externalEndpoints"),
@@ -351,6 +351,7 @@ func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnspr
 				tmResp, err := p.TrafficManagerProfilesClient.CreateOrUpdate(ctx, p.ResourceGroup, profileName, profile, nil)
 				if err != nil {
 					p.logger.Error(err, "error updating traffic manager", "name", profileName, "profile", profile)
+					return err
 				}
 
 				name := p.RecordSetNameForZone(zone, ep)
@@ -375,6 +376,7 @@ func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnspr
 
 				if err != nil {
 					p.logger.Error(err, "failed to update record", "record type", ep.RecordType, "record name", name, "zone", zone, "target", tmResp.ID)
+					return err
 				}
 			} else {
 				name := p.RecordSetNameForZone(zone, ep)
@@ -398,10 +400,12 @@ func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnspr
 				}
 				if err != nil {
 					p.logger.Error(err, "failed to update record", "record type", ep.RecordType, "record name", name, "targets", ep.Targets, "zone", zone)
+					return err
 				}
 			}
 		}
 	}
+	return nil
 }
 
 // endpointsToProviderFormat converts a list of endpoints into an azure specific format.
@@ -435,13 +439,13 @@ func endpointsToAzureFormat(eps []*externaldnsendpoint.Endpoint) []*externaldnse
 			translatedEndpoint.WithProviderSpecific("routingpolicy", string(armtrafficmanager.TrafficRoutingMethodWeighted))
 		}
 
-		defaultTarget := findDefaultGeoTarget(endpoints)
+		defaultTarget := FindDefaultGeoTarget(endpoints)
 		//ToDo this has the potential to add duplicates
 		for _, ep := range endpoints {
 			for _, t := range ep.Targets {
 				if isGeo {
 					geo, _ := ep.GetProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode)
-					if geo == defaultTarget {
+					if t == defaultTarget && geo != "*" {
 						continue
 					}
 					if geo == "*" {
@@ -461,10 +465,10 @@ func endpointsToAzureFormat(eps []*externaldnsendpoint.Endpoint) []*externaldnse
 	return translatedEndpoints
 }
 
-func findDefaultGeoTarget(endpoints []*externaldnsendpoint.Endpoint) string {
+func FindDefaultGeoTarget(endpoints []*externaldnsendpoint.Endpoint) string {
 	for _, ep := range endpoints {
 		geo, _ := ep.GetProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode)
-		if geo == "*" {
+		if geo == "*" || geo == "WORLD" {
 			// todo: can there ever be more than one?
 			return ep.Targets[0]
 		}

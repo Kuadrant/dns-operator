@@ -56,10 +56,6 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 
 	Context("DNS Provider health checks", func() {
 		It("creates health checks for a health check spec", func(ctx SpecContext) {
-			// azure only handles simple DNS Records, and AWS health checks require CNAMEs
-			if testDNSProvider == "azure" {
-				Skip("not yet supported for azure")
-			}
 			healthChecksSupported := false
 			if slices.Contains(supportedHealthCheckProviders, strings.ToLower(testDNSProvider)) {
 				healthChecksSupported = true
@@ -83,7 +79,7 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
-			}, time.Minute, 10*time.Second, ctx).Should(Succeed())
+			}, 2*time.Minute, 10*time.Second, ctx).Should(Succeed())
 
 			By("Confirming the DNS Record status")
 			Eventually(func(g Gomega) {

@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -40,8 +41,8 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 	var testRecords []*testDNSRecord
 
-	recordsReadyMaxDuration := 3 * time.Minute
-	recordsRemovedMaxDuration := time.Minute
+	recordsReadyMaxDuration := time.Minute
+	recordsRemovedMaxDuration := 90 * time.Second
 
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-multi-" + GenerateName()
@@ -183,14 +184,30 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					})),
 				))
 			}
-
-			By("checking the authoritative nameserver resolves the hostname")
-			// speed up things by using the authoritative nameserver
-			authoritativeResolver := ResolverForDomainName(testZoneDomainName)
+			var resolver *net.Resolver
+			if testDNSProvider == "azure" {
+				// cannot use authoratitive nameserver in Azure due to how traffic managers use CNAMEs on trafficmanager.net
+				By("ensuring the hostname resolves")
+				//we need to wait a minute to allow the records to propagate
+				Consistently(func(g Gomega, ctx context.Context) {
+					g.Expect(true).To(BeTrue())
+				}, 1*time.Minute, 1*time.Minute, ctx).Should(Succeed())
+			} else {
+				By("ensuring the authoritative nameserver resolves the hostname")
+				// speed up things by using the authoritative nameserver
+				resolver = ResolverForDomainName(testZoneDomainName)
+			}
 			Eventually(func(g Gomega, ctx context.Context) {
-				ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
+				var err error
+				var ips []string
+				if resolver == nil {
+					ips, err = net.LookupHost(testHostname)
+				} else {
+					ips, err = resolver.LookupHost(ctx, testHostname)
+				}
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(ips).To(ContainElements(allTargetIps))
+				GinkgoWriter.Printf("[debug] ips: %v\n", ips)
+				g.Expect(ips).To(Or(ContainElements(allTargetIps)))
 			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 
 			//Test Deletion of one of the records
@@ -263,10 +280,8 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	})
 
 	Context("loadbalanced", func() {
-		FIt("makes available a hostname that can be resolved", func(ctx SpecContext) {
+		It("makes available a hostname that can be resolved", func(ctx SpecContext) {
 			By("creating two dns records")
-			klbHostName := "klb." + testHostname
-
 			testGeoRecords := map[string][]testDNSRecord{}
 
 			By(fmt.Sprintf("creating %d loadbalanced dnsrecords accross %d clusters", len(testNamespaces)*len(testClusters), len(testClusters)))
@@ -416,6 +431,9 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			if testDNSProvider == "google" {
 				expectedEndpointsLen = (2 + len(testGeoRecords) + len(testRecords)) * 2
 				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
+			} else if testDNSProvider == "azure" {
+				expectedEndpointsLen = (2 + len(testGeoRecords) + len(testRecords)) * 2
+				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
 			} else if testDNSProvider == "aws" {
 				expectedEndpointsLen = (2 + len(testGeoRecords) + (len(testRecords) * 2)) * 2
 				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
@@ -467,6 +485,45 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			totalEndpointsChecked++
 
 			By("[Geo] checking geo endpoints")
+
+			if testDNSProvider == "azure" {
+
+				defaultTarget := FindDefaultTarget(zoneEndpoints)
+				// A CNAME record for klbHostName should always exist, be owned by all endpoints and target all geo hostnames
+				klbHostName := testRecords[0].config.hostnames.klb
+
+				allKlbGeoHostnames := []string{}
+				gcpGeoProps := []externaldnsendpoint.ProviderSpecificProperty{
+					{Name: "routingpolicy", Value: string(armtrafficmanager.TrafficRoutingMethodGeographic)},
+				}
+				for g, h := range geoKlbHostname {
+					allKlbGeoHostnames = append(allKlbGeoHostnames, h)
+					if h == defaultTarget {
+						g = "WORLD"
+					}
+					gcpGeoProps = append(gcpGeoProps, externaldnsendpoint.ProviderSpecificProperty{Name: h, Value: g})
+				}
+
+				By("[Geo] checking " + klbHostName + " endpoint")
+				Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
+					"DNSName":          Equal(klbHostName),
+					"Targets":          ConsistOf(allKlbGeoHostnames),
+					"RecordType":       Equal("CNAME"),
+					"SetIdentifier":    Equal(""),
+					"RecordTTL":        Equal(externaldnsendpoint.TTL(300)),
+					"ProviderSpecific": ContainElements(gcpGeoProps),
+				}))))
+				totalEndpointsChecked++
+				By("[Geo] checking " + klbHostName + " TXT owner endpoint")
+				Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
+					"DNSName":       Equal("kuadrant-cname-" + klbHostName),
+					"Targets":       ContainElement(And(allOwnerMatcher...)),
+					"RecordType":    Equal("TXT"),
+					"SetIdentifier": Equal(""),
+					"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+				}))))
+				totalEndpointsChecked++
+			}
 			if testDNSProvider == "google" {
 				// A CNAME record for klbHostName should always exist, be owned by all endpoints and target all geo hostnames
 				klbHostName := testRecords[0].config.hostnames.klb
@@ -570,6 +627,42 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By("[Weight] checking weighted endpoints")
+			if testDNSProvider == "azure" {
+				// A weighted CNAME record should exist for each geo, be owned by all endpoints in that geo, and target the hostname of all clusters in that geo
+				for geoCode, geoRecords := range testGeoRecords {
+					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
+
+					allGeoClusterHostnames := []string{}
+					gcpWeightProps := []externaldnsendpoint.ProviderSpecificProperty{
+						{Name: "routingpolicy", Value: weighted},
+					}
+					for i := range geoRecords {
+						geoClusterHostname := geoRecords[i].config.hostnames.clusterKlb
+						allGeoClusterHostnames = append(allGeoClusterHostnames, geoClusterHostname)
+						gcpWeightProps = append(gcpWeightProps, externaldnsendpoint.ProviderSpecificProperty{Name: geoClusterHostname, Value: "200"})
+					}
+
+					By("[Weight] checking " + geoKlbHostName + " endpoint")
+					Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":          Equal(geoKlbHostName),
+						"Targets":          ConsistOf(allGeoClusterHostnames),
+						"RecordType":       Equal("CNAME"),
+						"SetIdentifier":    Equal(""),
+						"RecordTTL":        Equal(externaldnsendpoint.TTL(60)),
+						"ProviderSpecific": ContainElements(gcpWeightProps),
+					}))))
+					totalEndpointsChecked++
+					By("[Weight] checking " + geoKlbHostName + " TXT owner endpoint")
+					Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-cname-" + geoKlbHostName),
+						"Targets":       ContainElement(And(geoOwnerMatcher[geoCode]...)),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					}))))
+					totalEndpointsChecked++
+				}
+			}
 			if testDNSProvider == "google" {
 				// A weighted CNAME record should exist for each geo, be owned by all endpoints in that geo, and target the hostname of all clusters in that geo
 				for geoCode, geoRecords := range testGeoRecords {
@@ -577,7 +670,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 					allGeoClusterHostnames := []string{}
 					gcpWeightProps := []externaldnsendpoint.ProviderSpecificProperty{
-						{Name: "routingpolicy", Value: "weighted"},
+						{Name: "routingpolicy", Value: weighted},
 					}
 					for i := range geoRecords {
 						geoClusterHostname := geoRecords[i].config.hostnames.clusterKlb

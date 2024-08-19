@@ -33,6 +33,6 @@ spec:
     setIdentifier: GEO-EU
     targets:
     - geo-eu.klb.${KUADRANT_SUB_DOMAIN}
-  managedZone:
-    name: dev-mz-azure
+  providerRef:
+    name: dns-provider-credentials-azure
   rootHost: ${KUADRANT_SUB_DOMAIN}
