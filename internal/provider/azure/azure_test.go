@@ -1,9 +1,11 @@
 package azure
 
 import (
+	"testing"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
 	. "github.com/onsi/gomega"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
-	"testing"
 )
 
 func TestAzureProvider_AdjustEndpoints(t *testing.T) {
@@ -41,19 +43,17 @@ func TestAzureProvider_AdjustEndpoints(t *testing.T) {
 					},
 				},
 				{
-					DNSName:       "eu.klb.testdomain.com",
-					RecordTTL:     60,
-					RecordType:    "CNAME",
-					SetIdentifier: "eu.klb.testdomain.com",
+					DNSName:    "eu.klb.testdomain.com",
+					RecordTTL:  60,
+					RecordType: "CNAME",
 					Targets: []string{
 						"ip2.testdomain.com",
 					},
 				},
 				{
-					DNSName:       "us.klb.testdomain.com",
-					RecordTTL:     60,
-					RecordType:    "CNAME",
-					SetIdentifier: "us.klb.testdomain.com",
+					DNSName:    "us.klb.testdomain.com",
+					RecordTTL:  60,
+					RecordType: "CNAME",
 					Targets: []string{
 						"ip1.testdomain.com",
 					},
@@ -68,7 +68,7 @@ func TestAzureProvider_AdjustEndpoints(t *testing.T) {
 					},
 					RecordTTL:     300,
 					RecordType:    "CNAME",
-					SetIdentifier: "default",
+					SetIdentifier: "",
 					Targets: []string{
 						"eu.klb.testdomain.com",
 					},
@@ -78,12 +78,12 @@ func TestAzureProvider_AdjustEndpoints(t *testing.T) {
 					ProviderSpecific: []externaldnsendpoint.ProviderSpecificProperty{
 						{
 							Name:  "geo-code",
-							Value: "us",
+							Value: "GEO-NA",
 						},
 					},
 					RecordTTL:     300,
 					RecordType:    "CNAME",
-					SetIdentifier: "default",
+					SetIdentifier: "",
 					Targets: []string{
 						"us.klb.testdomain.com",
 					},
@@ -93,12 +93,12 @@ func TestAzureProvider_AdjustEndpoints(t *testing.T) {
 					ProviderSpecific: []externaldnsendpoint.ProviderSpecificProperty{
 						{
 							Name:  "geo-code",
-							Value: "eu",
+							Value: "GEO-EU",
 						},
 					},
 					RecordTTL:     300,
 					RecordType:    "CNAME",
-					SetIdentifier: "default",
+					SetIdentifier: "",
 					Targets: []string{
 						"eu.klb.testdomain.com",
 					},
@@ -134,20 +134,18 @@ func TestAzureProvider_AdjustEndpoints(t *testing.T) {
 				))
 				Expect(endpoints).To(ContainElement(
 					&externaldnsendpoint.Endpoint{
-						DNSName:       "eu.klb.testdomain.com",
-						RecordTTL:     60,
-						RecordType:    "CNAME",
-						Targets:       []string{"ip2.testdomain.com"},
-						SetIdentifier: "eu.klb.testdomain.com",
+						DNSName:    "eu.klb.testdomain.com",
+						RecordTTL:  60,
+						RecordType: "CNAME",
+						Targets:    []string{"ip2.testdomain.com"},
 					},
 				))
 				Expect(endpoints).To(ContainElement(
 					&externaldnsendpoint.Endpoint{
-						DNSName:       "us.klb.testdomain.com",
-						RecordTTL:     60,
-						RecordType:    "CNAME",
-						Targets:       []string{"ip1.testdomain.com"},
-						SetIdentifier: "us.klb.testdomain.com",
+						DNSName:    "us.klb.testdomain.com",
+						RecordTTL:  60,
+						RecordType: "CNAME",
+						Targets:    []string{"ip1.testdomain.com"},
 					},
 				))
 				Expect(endpoints).To(ContainElement(
@@ -160,15 +158,15 @@ func TestAzureProvider_AdjustEndpoints(t *testing.T) {
 						ProviderSpecific: []externaldnsendpoint.ProviderSpecificProperty{
 							{
 								Name:  "routingpolicy",
-								Value: "geo",
+								Value: string(armtrafficmanager.TrafficRoutingMethodGeographic),
 							},
 							{
 								Name:  "us.klb.testdomain.com",
-								Value: "us",
+								Value: "GEO-NA",
 							},
 							{
 								Name:  "eu.klb.testdomain.com",
-								Value: "eu",
+								Value: "GEO-EU",
 							},
 						},
 					},

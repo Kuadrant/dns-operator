@@ -58,7 +58,7 @@ var _ = Describe("Single Record Test", func() {
 		}
 	})
 
-	FIt("correctly handles wildcard rootHost values", func(ctx SpecContext) {
+	It("correctly handles wildcard rootHost values", func(ctx SpecContext) {
 		testTargetIP := "127.0.0.1"
 		testTargetIP2 := "127.0.0.2"
 		testWCHostname := "*." + testHostname

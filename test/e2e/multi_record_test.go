@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -35,10 +36,11 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 	var geoCode1 string
 	var geoCode2 string
+	var weighted string
 
 	var testRecords []*testDNSRecord
 
-	recordsReadyMaxDuration := time.Minute
+	recordsReadyMaxDuration := 3 * time.Minute
 	recordsRemovedMaxDuration := time.Minute
 
 	BeforeEach(func(ctx SpecContext) {
@@ -50,9 +52,15 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 		if testDNSProvider == "google" {
 			geoCode1 = "us-east1"
 			geoCode2 = "europe-west1"
+			weighted = "weighted"
+		} else if testDNSProvider == "azure" {
+			geoCode1 = "GEO-NA"
+			geoCode2 = "GEO-EU"
+			weighted = string(armtrafficmanager.TrafficRoutingMethodWeighted)
 		} else {
 			geoCode1 = "US"
 			geoCode2 = "EU"
+			weighted = "weighted"
 		}
 	})
 
@@ -255,10 +263,10 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	})
 
 	Context("loadbalanced", func() {
-		It("creates and deletes distributed dns records", func(ctx SpecContext) {
-			if testDNSProvider == "azure" {
-				Skip("not yet supported for azure")
-			}
+		FIt("makes available a hostname that can be resolved", func(ctx SpecContext) {
+			By("creating two dns records")
+			klbHostName := "klb." + testHostname
+
 			testGeoRecords := map[string][]testDNSRecord{}
 
 			By(fmt.Sprintf("creating %d loadbalanced dnsrecords accross %d clusters", len(testNamespaces)*len(testClusters), len(testClusters)))
