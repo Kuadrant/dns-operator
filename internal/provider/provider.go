@@ -79,6 +79,16 @@ func FindDNSZoneForHost(ctx context.Context, host string, zones []DNSZone) (*DNS
 	return z, err
 }
 
+func isApexDomain(host string, zones []DNSZone) (string, bool) {
+	for _, z := range zones {
+		if z.DNSName == host {
+			return z.ID, true
+		}
+	}
+	return "", false
+}
+
+// findDNSZoneForHost will take a host and look for a zone that patches the immediate parent of that host and will continue to step through parents until it either finds a zone  or fails. Example *.example.com will look for example.com and other.domain.example.com will step through each subdomain until it hits example.com.
 func findDNSZoneForHost(originalHost, host string, zones []DNSZone) (*DNSZone, string, error) {
 	if len(zones) == 0 {
 		return nil, "", fmt.Errorf("%w : %s", ErrNoZoneForHost, host)
@@ -92,12 +102,16 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone) (*DNSZone, s
 		return nil, "", fmt.Errorf("no valid zone found for host: %v", originalHost)
 	}
 
+	// We do not currently support creating records for Apex domains, and a DNSZone represents an Apex domain we cannot setup dns for the host
+	if id, is := isApexDomain(originalHost, zones); is {
+		return nil, "", fmt.Errorf("host %s is an apex domain with zone id %s. Cannot configure DNS for apex domain as apex domains only support A records", originalHost, id)
+	}
+
 	hostParts := strings.SplitN(host, ".", 2)
 	if len(hostParts) < 2 {
 		return nil, "", fmt.Errorf("no valid zone found for host: %s", originalHost)
 	}
 	parentDomain := hostParts[1]
-
 	// We do not currently support creating records for Apex domains, and a DNSZone represents an Apex domain, as such
 	// we should never be trying to find a zone that matches the `originalHost` exactly. Instead, we just continue
 	// on to the next possible valid host to try i.e. the parent domain.
@@ -108,7 +122,6 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone) (*DNSZone, s
 	matches := slices.DeleteFunc(slices.Clone(zones), func(zone DNSZone) bool {
 		return strings.ToLower(zone.DNSName) != host
 	})
-
 	if len(matches) > 0 {
 		if len(matches) > 1 {
 			return nil, "", fmt.Errorf("multiple zones found for host: %s", originalHost)

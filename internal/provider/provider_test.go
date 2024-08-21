@@ -186,6 +186,21 @@ func Test_findDNSZoneForHost(t *testing.T) {
 			want1:   "",
 			wantErr: true,
 		},
+		{
+			name: "apex domain",
+			host: "test.example.com",
+			zones: []DNSZone{
+				{
+					DNSName: "example.com",
+				},
+				{
+					DNSName: "test.example.com",
+				},
+			},
+			want:    "",
+			want1:   "",
+			wantErr: true,
+		},
 	}
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
