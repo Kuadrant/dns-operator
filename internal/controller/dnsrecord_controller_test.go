@@ -654,7 +654,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		It("should assign the most suitable zone for the provider", func(ctx SpecContext) {
 			pSecret = pBuilder.
-				WithZonesInitialisedFor("example.com", "foo.example.com", "bar.foo.example.com").
+				WithZonesInitialisedFor("example.com", "foo.example.com").
 				Build()
 			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
 
@@ -711,6 +711,43 @@ var _ = Describe("DNSRecordReconciler", func() {
 						"Status":             Equal(metav1.ConditionFalse),
 						"Reason":             Equal("DNSProviderError"),
 						"Message":            Equal("Unable to find suitable zone in provider: no valid zone found for host: foo.noexist.com"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
+		It("should report an error when an apex domain is used", func(ctx SpecContext) {
+			pSecret = pBuilder.
+				WithZonesInitialisedFor("example.com").
+				Build()
+			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "example.com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: pSecret.Name,
+					},
+					Endpoints: getTestEndpoints("example.com", "127.0.0.1"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.ZoneID).To(BeEmpty())
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(BeEmpty())
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionFalse),
+						"Reason":             Equal("DNSProviderError"),
+						"Message":            ContainSubstring("is an apex domain"),
 						"ObservedGeneration": Equal(dnsRecord.Generation),
 					})),
 				)
