@@ -1,0 +1,20 @@
+apiVersion: v1
+items:
+- apiVersion: kuadrant.io/v1alpha1
+  kind: DNSPolicy
+  metadata:
+    name: external-dnspolicy
+    namespace: demo
+  spec:
+    loadBalancing:
+      geo:
+        defaultGeo: US
+      weighted:
+        defaultWeight: 120
+    providerRefs:
+    - name: aws-credentials
+    routingStrategy: loadbalanced
+    targetRef:
+      group: gateway.networking.k8s.io
+      kind: Gateway
+      name: external
