@@ -66,7 +66,7 @@ func init() {
 }
 
 func printControllerMetaInfo() {
-	setupLog.Info("", "version", version.Version, "commit", gitSHA, "dirty", dirty)
+	setupLog.Info("build information", "version", version.Version, "commit", gitSHA, "dirty", dirty)
 }
 
 func main() {
