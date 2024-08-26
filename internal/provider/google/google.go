@@ -31,7 +31,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
-	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	externaldnsgoogle "github.com/kuadrant/dns-operator/internal/external-dns/provider/google"
@@ -117,17 +116,16 @@ type GoogleDNSProvider struct {
 var _ provider.Provider = &GoogleDNSProvider{}
 
 func NewProviderFromSecret(ctx context.Context, s *corev1.Secret, c provider.Config) (provider.Provider, error) {
-
-	if string(s.Data["GOOGLE"]) == "" || string(s.Data["PROJECT_ID"]) == "" {
+	if string(s.Data[v1alpha1.GoogleJsonKey]) == "" || string(s.Data[v1alpha1.GoogleProjectIDKey]) == "" {
 		return nil, fmt.Errorf("GCP Provider credentials is empty")
 	}
 
-	dnsClient, err := dnsv1.NewService(ctx, option.WithCredentialsJSON(s.Data["GOOGLE"]))
+	dnsClient, err := dnsv1.NewService(ctx, option.WithCredentialsJSON(s.Data[v1alpha1.GoogleJsonKey]))
 	if err != nil {
 		return nil, err
 	}
 
-	project := string(s.Data["PROJECT_ID"])
+	project := string(s.Data[v1alpha1.GoogleProjectIDKey])
 
 	googleConfig := externaldnsgoogle.GoogleConfig{
 		Project:             project,
@@ -289,26 +287,29 @@ func endpointsToGoogleFormat(eps []*externaldnsendpoint.Endpoint) []*externaldns
 
 // #### DNS Operator Provider ####
 
-func (p *GoogleDNSProvider) EnsureManagedZone(ctx context.Context, managedZone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
-	p.logger.V(1).Info("EnsureManagedZone")
-	var zoneID string
-
-	if managedZone.Spec.ID != "" {
-		zoneID = managedZone.Spec.ID
-	} else {
-		zoneID = managedZone.Status.ID
+func (p *GoogleDNSProvider) DNSZones(ctx context.Context) ([]provider.DNSZone, error) {
+	var hzs []provider.DNSZone
+	zones, err := p.Zones(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	if zoneID != "" {
-		//Get existing managed zone
-		return p.getManagedZone(ctx, zoneID)
+	for _, z := range zones {
+		hz := provider.DNSZone{
+			ID:      z.Name,
+			DNSName: strings.ToLower(strings.TrimSuffix(z.DnsName, ".")),
+		}
+		hzs = append(hzs, hz)
 	}
-	//Create new managed zone
-	return p.createManagedZone(ctx, managedZone)
+	return hzs, nil
 }
 
-func (p *GoogleDNSProvider) DeleteManagedZone(managedZone *v1alpha1.ManagedZone) error {
-	return p.managedZonesClient.Delete(p.googleConfig.Project, managedZone.Status.ID).Do()
+func (p *GoogleDNSProvider) DNSZoneForHost(ctx context.Context, host string) (*provider.DNSZone, error) {
+	zones, err := p.DNSZones(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return provider.FindDNSZoneForHost(ctx, host, zones)
 }
 
 func (p *GoogleDNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
@@ -317,66 +318,6 @@ func (p *GoogleDNSProvider) HealthCheckReconciler() provider.HealthCheckReconcil
 
 func (p *GoogleDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 	return provider.ProviderSpecificLabels{}
-}
-
-func (p *GoogleDNSProvider) createManagedZone(ctx context.Context, managedZone *v1alpha1.ManagedZone) (provider.ManagedZoneOutput, error) {
-	zoneID := strings.Replace(managedZone.Spec.DomainName, ".", "-", -1)
-	zone := dnsv1.ManagedZone{
-		Name:        zoneID,
-		DnsName:     externaldnsprovider.EnsureTrailingDot(managedZone.Spec.DomainName),
-		Description: managedZone.Spec.Description,
-	}
-	mz, err := p.managedZonesClient.Create(p.googleConfig.Project, &zone).Do()
-	if err != nil {
-		return provider.ManagedZoneOutput{}, err
-	}
-	return p.toManagedZoneOutput(ctx, mz)
-}
-
-func (p *GoogleDNSProvider) getManagedZone(ctx context.Context, zoneID string) (provider.ManagedZoneOutput, error) {
-	mz, err := p.managedZonesClient.Get(p.googleConfig.Project, zoneID).Do()
-	if err != nil {
-		return provider.ManagedZoneOutput{}, err
-	}
-	return p.toManagedZoneOutput(ctx, mz)
-}
-
-func (p *GoogleDNSProvider) toManagedZoneOutput(ctx context.Context, mz *dnsv1.ManagedZone) (provider.ManagedZoneOutput, error) {
-	var managedZoneOutput provider.ManagedZoneOutput
-
-	zoneID := mz.Name
-	var nameservers []*string
-	for i := range mz.NameServers {
-		nameservers = append(nameservers, &mz.NameServers[i])
-	}
-	managedZoneOutput.ID = zoneID
-	managedZoneOutput.DNSName = strings.ToLower(strings.TrimSuffix(mz.DnsName, "."))
-	managedZoneOutput.NameServers = nameservers
-
-	currentRecords, err := p.getResourceRecordSets(ctx, zoneID)
-	if err != nil {
-		return managedZoneOutput, err
-	}
-	managedZoneOutput.RecordCount = int64(len(currentRecords))
-
-	return managedZoneOutput, nil
-}
-
-// ToDo Can be replaced with a call to Records if/when we update that to optionally accept a zone id
-// getResourceRecordSets returns the records for a managed zone of the currently configured provider.
-func (p *GoogleDNSProvider) getResourceRecordSets(ctx context.Context, zoneID string) ([]*dnsv1.ResourceRecordSet, error) {
-	var records []*dnsv1.ResourceRecordSet
-
-	f := func(resp *dnsv1.ResourceRecordSetsListResponse) error {
-		records = append(records, resp.Rrsets...)
-		return nil
-	}
-
-	if err := p.resourceRecordSetsClient.List(p.googleConfig.Project, zoneID).Pages(ctx, f); err != nil {
-		return nil, err
-	}
-
-	return records, nil
 }
 
 // Register this Provider with the provider factory

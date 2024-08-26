@@ -29,34 +29,16 @@ metadata:
                 ]
               }
             ],
-            "managedZone": {
-              "name": "managedzone-sample"
+            "providerRef": {
+              "name": "dns-provider-creds"
             }
-          }
-        },
-        {
-          "apiVersion": "kuadrant.io/v1alpha1",
-          "kind": "ManagedZone",
-          "metadata": {
-            "labels": {
-              "app.kubernetes.io/created-by": "dns-operator",
-              "app.kubernetes.io/instance": "managedzone-sample",
-              "app.kubernetes.io/managed-by": "kustomize",
-              "app.kubernetes.io/name": "managedzone",
-              "app.kubernetes.io/part-of": "dns-operator"
-            },
-            "name": "managedzone-sample"
-          },
-          "spec": {
-            "description": "My managed domain",
-            "domainName": "example.com"
           }
         }
       ]
     capabilities: Basic Install
     categories: Integration & Delivery
     containerImage: quay.io/kuadrant/dns-operator:latest
-    createdAt: "2024-06-28T14:24:36Z"
+    createdAt: "2024-08-13T17:16:20Z"
     description: A Kubernetes Operator to manage the lifecycle of DNS resources
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
@@ -72,11 +54,6 @@ spec:
       displayName: DNSRecord
       kind: DNSRecord
       name: dnsrecords.kuadrant.io
-      version: v1alpha1
-    - description: ManagedZone is the Schema for the managedzones API
-      displayName: Managed Zone
-      kind: ManagedZone
-      name: managedzones.kuadrant.io
       version: v1alpha1
   description: A Kubernetes Operator to manage the lifecycle of DNS resources
   displayName: DNS Operator
@@ -117,32 +94,6 @@ spec:
           - kuadrant.io
           resources:
           - dnsrecords/status
-          verbs:
-          - get
-          - patch
-          - update
-        - apiGroups:
-          - kuadrant.io
-          resources:
-          - managedzones
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - kuadrant.io
-          resources:
-          - managedzones/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - kuadrant.io
-          resources:
-          - managedzones/status
           verbs:
           - get
           - patch

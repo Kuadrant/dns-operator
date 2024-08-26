@@ -86,8 +86,8 @@ type DNSRecordSpec struct {
 	// +kubebuilder:validation:Pattern=`^(?:[\w\-.~:\/?#[\]@!$&'()*+,;=]+)\.(?:[\w\-.~:\/?#[\]@!$&'()*+,;=]+)$`
 	RootHost string `json:"rootHost"`
 
-	// managedZone is a reference to a ManagedZone instance to which this record will publish its endpoints.
-	ManagedZoneRef *ManagedZoneReference `json:"managedZone"`
+	// providerRef is a reference to a provider secret.
+	ProviderRef ProviderRef `json:"providerRef"`
 
 	// endpoints is a list of endpoints that will be published into the dns provider.
 	// +kubebuilder:validation:MinItems=1
@@ -101,18 +101,13 @@ type DNSRecordSpec struct {
 // DNSRecordStatus defines the observed state of DNSRecord
 type DNSRecordStatus struct {
 
-	// conditions are any conditions associated with the record in the managed zone.
+	// conditions are any conditions associated with the record in the dns provider.
 	//
 	// If publishing the record fails, the "Failed" condition will be set with a
 	// reason and message describing the cause of the failure.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// observedGeneration is the most recently observed generation of the
-	// DNSRecord.  When the DNSRecord is updated, the controller updates the
-	// corresponding record in each managed zone.  If an update for a
-	// particular zone fails, that failure is recorded in the status
-	// condition for the zone so that the controller can determine that it
-	// needs to retry the update for that specific zone.
+	// observedGeneration is the most recently observed generation of the DNSRecord.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
@@ -129,19 +124,22 @@ type DNSRecordStatus struct {
 	// It is being reset to 0 when the generation changes or there are no changes to write.
 	WriteCounter int64 `json:"writeCounter,omitempty"`
 
-	// endpoints are the last endpoints that were successfully published by the provider
-	//
-	// Provides a simple mechanism to store the current provider records in order to
-	// delete any that are no longer present in DNSRecordSpec.Endpoints
-	//
-	// Note: This will not be required if/when we switch to using external-dns since when
-	// running with a "sync" policy it will clean up unused records automatically.
+	// endpoints are the last endpoints that were successfully published to the provider zone
 	Endpoints []*externaldns.Endpoint `json:"endpoints,omitempty"`
 
 	HealthCheck *HealthCheckStatus `json:"healthCheck,omitempty"`
 
 	// ownerID is a unique string used to identify the owner of this record.
 	OwnerID string `json:"ownerID,omitempty"`
+
+	// DomainOwners is a list of all the owners working against the root domain of this record
+	DomainOwners []string `json:"domainOwners,omitempty"`
+
+	// zoneID is the provider specific id to which this dns record is publishing endpoints
+	ZoneID string `json:"zoneID,omitempty"`
+
+	// zoneDomainName is the domain name of the zone that the dns record is publishing endpoints
+	ZoneDomainName string `json:"zoneDomainName,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -211,9 +209,23 @@ func (s *DNSRecord) Validate() error {
 	return nil
 }
 
+var _ ProviderAccessor = &DNSRecord{}
+
 // GetUIDHash returns a hash of the current records UID with a fixed length of 8.
 func (s *DNSRecord) GetUIDHash() string {
 	return hash.ToBase36HashLen(string(s.GetUID()), 8)
+}
+
+func (s *DNSRecord) GetProviderRef() ProviderRef {
+	return s.Spec.ProviderRef
+}
+
+func (s *DNSRecord) HasDNSZoneAssigned() bool {
+	return s.Status.ZoneID != "" && s.Status.ZoneDomainName != ""
+}
+
+func (s *DNSRecord) HasOwnerIDAssigned() bool {
+	return s.Status.OwnerID != ""
 }
 
 func init() {

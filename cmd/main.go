@@ -145,14 +145,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.ManagedZoneReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		ProviderFactory: providerFactory,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ManagedZone")
-		os.Exit(1)
-	}
 	if err = (&controller.DNSRecordReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),

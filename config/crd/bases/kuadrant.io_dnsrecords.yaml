@@ -126,18 +126,6 @@ spec:
                     - message: Only HTTP or HTTPS protocols are allowed
                       rule: self in ['HTTP','HTTPS']
                 type: object
-              managedZone:
-                description: managedZone is a reference to a ManagedZone instance
-                  to which this record will publish its endpoints.
-                properties:
-                  name:
-                    description: |-
-                      `name` is the name of the managed zone.
-                      Required
-                    type: string
-                required:
-                - name
-                type: object
               ownerID:
                 description: |-
                   ownerID is a unique string used to identify the owner of this record.
@@ -148,6 +136,15 @@ spec:
                 x-kubernetes-validations:
                 - message: OwnerID is immutable
                   rule: self == oldSelf
+              providerRef:
+                description: providerRef is a reference to a provider secret.
+                properties:
+                  name:
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
               rootHost:
                 description: |-
                   rootHost is the single root for all endpoints in a DNSRecord.
@@ -158,7 +155,7 @@ spec:
                 pattern: ^(?:[\w\-.~:\/?#[\]@!$&'()*+,;=]+)\.(?:[\w\-.~:\/?#[\]@!$&'()*+,;=]+)$
                 type: string
             required:
-            - managedZone
+            - providerRef
             - rootHost
             type: object
             x-kubernetes-validations:
@@ -171,7 +168,7 @@ spec:
             properties:
               conditions:
                 description: |-
-                  conditions are any conditions associated with the record in the managed zone.
+                  conditions are any conditions associated with the record in the dns provider.
 
 
                   If publishing the record fails, the "Failed" condition will be set with a
@@ -244,17 +241,15 @@ spec:
                   - type
                   type: object
                 type: array
+              domainOwners:
+                description: DomainOwners is a list of all the owners working against
+                  the root domain of this record
+                items:
+                  type: string
+                type: array
               endpoints:
-                description: |-
-                  endpoints are the last endpoints that were successfully published by the provider
-
-
-                  Provides a simple mechanism to store the current provider records in order to
-                  delete any that are no longer present in DNSRecordSpec.Endpoints
-
-
-                  Note: This will not be required if/when we switch to using external-dns since when
-                  running with a "sync" policy it will clean up unused records automatically.
+                description: endpoints are the last endpoints that were successfully
+                  published to the provider zone
                 items:
                   description: Endpoint is a high-level way of a connection between
                     a service and an IP
@@ -463,13 +458,8 @@ spec:
                     type: array
                 type: object
               observedGeneration:
-                description: |-
-                  observedGeneration is the most recently observed generation of the
-                  DNSRecord.  When the DNSRecord is updated, the controller updates the
-                  corresponding record in each managed zone.  If an update for a
-                  particular zone fails, that failure is recorded in the status
-                  condition for the zone so that the controller can determine that it
-                  needs to retry the update for that specific zone.
+                description: observedGeneration is the most recently observed generation
+                  of the DNSRecord.
                 format: int64
                 type: integer
               ownerID:
@@ -496,6 +486,14 @@ spec:
                   It is being reset to 0 when the generation changes or there are no changes to write.
                 format: int64
                 type: integer
+              zoneDomainName:
+                description: zoneDomainName is the domain name of the zone that the
+                  dns record is publishing endpoints
+                type: string
+              zoneID:
+                description: zoneID is the provider specific id to which this dns
+                  record is publishing endpoints
+                type: string
             type: object
         type: object
     served: true

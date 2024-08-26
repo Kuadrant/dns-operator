@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/strings/slices"
@@ -30,7 +31,7 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 	var testHostname string
 
 	var k8sClient client.Client
-	var testManagedZone *v1alpha1.ManagedZone
+	var testDNSProviderSecret *v1.Secret
 
 	var dnsRecord *v1alpha1.DNSRecord
 
@@ -39,10 +40,10 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		k8sClient = testClusters[0].k8sClient
-		testManagedZone = testClusters[0].testManagedZones[0]
+		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
 		SetTestEnv("testID", testID)
 		SetTestEnv("testHostname", testHostname)
-		SetTestEnv("testNamespace", testManagedZone.Namespace)
+		SetTestEnv("testNamespace", testDNSProviderSecret.Namespace)
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -64,11 +65,8 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 				healthChecksSupported = true
 			}
 
-			provider, err := ProviderForManagedZone(ctx, testManagedZone, k8sClient)
-			Expect(err).To(BeNil())
-
 			dnsRecord = &v1alpha1.DNSRecord{}
-			err = ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", dnsRecord, GetTestEnv)
+			err := ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", dnsRecord, GetTestEnv)
 			Expect(err).ToNot(HaveOccurred())
 
 			By("creating dnsrecord " + dnsRecord.Name)
@@ -119,6 +117,9 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 					}
 				}
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			provider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
+			Expect(err).To(BeNil())
 
 			By("confirming the health checks exist in the provider")
 			Eventually(func(g Gomega) {

@@ -4,133 +4,14 @@ package google
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/google/go-cmp/cmp"
 	dnsv1 "google.golang.org/api/dns/v1"
 
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
-
-	"github.com/kuadrant/dns-operator/internal/provider"
 )
-
-func TestGoogleDNSProvider_toManagedZoneOutput(t *testing.T) {
-	mockListCall := &MockResourceRecordSetsListCall{
-		PagesFunc: func(ctx context.Context, f func(*dnsv1.ResourceRecordSetsListResponse) error) error {
-			mockResponse := &dnsv1.ResourceRecordSetsListResponse{
-				Rrsets: []*dnsv1.ResourceRecordSet{
-					{
-						Name: "TestRecordSet1",
-					},
-					{
-						Name: "TestRecordSet2",
-					},
-				},
-			}
-			return f(mockResponse)
-		},
-	}
-	mockClient := &MockResourceRecordSetsClient{
-		ListFunc: func(project string, managedZone string) resourceRecordSetsListCallInterface {
-			return mockListCall
-		},
-	}
-
-	mockListCallErr := &MockResourceRecordSetsListCall{
-		PagesFunc: func(ctx context.Context, f func(*dnsv1.ResourceRecordSetsListResponse) error) error {
-
-			error := fmt.Errorf("status 400 ")
-			return error
-		},
-	}
-	mockClientErr := &MockResourceRecordSetsClient{
-		ListFunc: func(project string, managedZone string) resourceRecordSetsListCallInterface {
-			return mockListCallErr
-		},
-	}
-
-	type fields struct {
-		resourceRecordSetsClient resourceRecordSetsClientInterface
-	}
-	type args struct {
-		mz *dnsv1.ManagedZone
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    provider.ManagedZoneOutput
-		wantErr bool
-	}{
-
-		{
-			name: "Successful test",
-			fields: fields{
-				resourceRecordSetsClient: mockClient,
-			},
-			args: args{
-				&dnsv1.ManagedZone{
-					Name: "testname",
-					NameServers: []string{
-						"nameserver1",
-						"nameserver2",
-					},
-				},
-			},
-			want: provider.ManagedZoneOutput{
-				ID: "testname",
-				NameServers: []*string{
-					aws.String("nameserver1"),
-					aws.String("nameserver2"),
-				},
-				RecordCount: 2,
-			},
-			wantErr: false,
-		},
-		{
-			name: "UnSuccessful test",
-			fields: fields{
-				resourceRecordSetsClient: mockClientErr,
-			},
-			args: args{
-				&dnsv1.ManagedZone{
-					Name: "testname",
-					NameServers: []string{
-						"nameserver1",
-						"nameserver2",
-					},
-				},
-			},
-			want: provider.ManagedZoneOutput{
-				ID: "testname",
-				NameServers: []*string{
-					aws.String("nameserver1"),
-					aws.String("nameserver2"),
-				},
-				RecordCount: 0,
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			g := &GoogleDNSProvider{
-				resourceRecordSetsClient: tt.fields.resourceRecordSetsClient,
-			}
-			got, err := g.toManagedZoneOutput(context.Background(), tt.args.mz)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GoogleDNSProvider.toManagedZoneOutput() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("GoogleDNSProvider.toManagedZoneOutput() (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
 
 type MockResourceRecordSetsListCall struct {
 	PagesFunc func(ctx context.Context, f func(*dnsv1.ResourceRecordSetsListResponse) error) error

@@ -77,19 +77,19 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 		It("creates and deletes distributed dns records", func(ctx SpecContext) {
 			By(fmt.Sprintf("creating %d simple dnsrecords accross %d clusters", len(testNamespaces)*len(testClusters), len(testClusters)))
 			for ci, tc := range testClusters {
-				for mi, mz := range tc.testManagedZones {
+				for si, s := range tc.testDNSProviderSecrets {
 					config := testConfig{
-						testTargetIP: fmt.Sprintf("127.0.%d.%d", ci+1, mi+1),
+						testTargetIP: fmt.Sprintf("127.0.%d.%d", ci+1, si+1),
 					}
 					record := &v1alpha1.DNSRecord{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      testID,
-							Namespace: mz.Namespace,
+							Namespace: s.Namespace,
 						},
 						Spec: v1alpha1.DNSRecordSpec{
 							RootHost: testHostname,
-							ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-								Name: mz.Name,
+							ProviderRef: v1alpha1.ProviderRef{
+								Name: s.Name,
 							},
 							Endpoints: []*externaldnsendpoint.Endpoint{
 								{
@@ -105,20 +105,22 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						},
 					}
 
-					By(fmt.Sprintf("creating dns record [name: `%s`, namespace: `%s`, mz: `%s`, endpoint: [dnsname: `%s`, target: `%s`]] on cluster [name: `%s`]", record.Name, record.Namespace, mz.Name, testHostname, config.testTargetIP, tc.name))
+					By(fmt.Sprintf("creating dns record [name: `%s`, namespace: `%s`, secret: `%s`, endpoint: [dnsname: `%s`, target: `%s`]] on cluster [name: `%s`]", record.Name, record.Namespace, s.Name, testHostname, config.testTargetIP, tc.name))
 					err := tc.k8sClient.Create(ctx, record)
 					Expect(err).ToNot(HaveOccurred())
 
 					testRecords = append(testRecords, &testDNSRecord{
-						cluster:     &testClusters[ci],
-						managedZone: mz,
-						record:      record,
-						config:      config,
+						cluster:           &testClusters[ci],
+						dnsProviderSecret: s,
+						record:            record,
+						config:            config,
 					})
 				}
 			}
 
 			By(fmt.Sprintf("checking all dns records become ready within %s", recordsReadyMaxDuration))
+			var allOwners = []string{}
+			var allTargetIps = []string{}
 			Eventually(func(g Gomega, ctx context.Context) {
 				for _, tr := range testRecords {
 					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
@@ -129,22 +131,25 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
+					allOwners = append(allOwners, tr.record.GetUIDHash())
+					allTargetIps = append(allTargetIps, tr.config.testTargetIP)
+					g.Expect(tr.record.Status.DomainOwners).NotTo(BeEmpty())
+					g.Expect(tr.record.Status.DomainOwners).To(ContainElement(tr.record.GetUIDHash()))
 				}
+				g.Expect(len(allOwners)).To(Equal(len(testRecords)))
 			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
 
 			By("checking provider zone records are created as expected")
-			testProvider, err := ProviderForManagedZone(ctx, testClusters[0].testManagedZones[0], testClusters[0].k8sClient)
+			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(zoneEndpoints).To(HaveLen(2))
 
-			var allOwners = []string{}
-			var allTargetIps = []string{}
-			for i := range testRecords {
-				allOwners = append(allOwners, testRecords[i].record.Status.OwnerID)
-				allTargetIps = append(allTargetIps, testRecords[i].config.testTargetIP)
+			By("checking each record has all owners present")
+			for _, tr := range testRecords {
+				Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
 			}
 
 			By("checking all target ips are present")
@@ -258,7 +263,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 			By(fmt.Sprintf("creating %d loadbalanced dnsrecords accross %d clusters", len(testNamespaces)*len(testClusters), len(testClusters)))
 			for ci, tc := range testClusters {
-				for mi, mz := range tc.testManagedZones {
+				for mi, s := range tc.testDNSProviderSecrets {
 
 					var geoCode string
 					if (ci+mi)%2 == 0 {
@@ -287,12 +292,12 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					record := &v1alpha1.DNSRecord{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      testID,
-							Namespace: mz.Namespace,
+							Namespace: s.Namespace,
 						},
 						Spec: v1alpha1.DNSRecordSpec{
 							RootHost: testHostname,
-							ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-								Name: mz.Name,
+							ProviderRef: v1alpha1.ProviderRef{
+								Name: s.Name,
 							},
 							Endpoints: []*externaldnsendpoint.Endpoint{
 								{
@@ -361,14 +366,14 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						},
 					}
 
-					By(fmt.Sprintf("creating dns record [name: `%s`, namespace: `%s`, managedZone: `%s`, endpoint: [dnsname: `%s`, target: `%s`, geoCode: `%s`]] on cluster [name: `%s`]", record.Name, record.Namespace, mz.Name, testHostname, config.testTargetIP, config.testGeoCode, tc.name))
+					By(fmt.Sprintf("creating dns record [name: `%s`, namespace: `%s`, secret: `%s`, endpoint: [dnsname: `%s`, target: `%s`, geoCode: `%s`]] on cluster [name: `%s`]", record.Name, record.Namespace, s.Name, testHostname, config.testTargetIP, config.testGeoCode, tc.name))
 					err := tc.k8sClient.Create(ctx, record)
 					Expect(err).ToNot(HaveOccurred())
 					tr := &testDNSRecord{
-						cluster:     &testClusters[ci],
-						managedZone: mz,
-						record:      record,
-						config:      config,
+						cluster:           &testClusters[ci],
+						dnsProviderSecret: s,
+						record:            record,
+						config:            config,
 					}
 					testRecords = append(testRecords, tr)
 					testGeoRecords[config.testGeoCode] = append(testGeoRecords[config.testGeoCode], *tr)
@@ -376,6 +381,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By(fmt.Sprintf("checking all dns records become ready within %s", recordsReadyMaxDuration))
+			var allOwners = []string{}
 			Eventually(func(g Gomega, ctx context.Context) {
 				for _, tr := range testRecords {
 					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
@@ -386,11 +392,14 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
+					allOwners = append(allOwners, tr.record.GetUIDHash())
+					g.Expect(tr.record.Status.DomainOwners).To(Not(BeEmpty()))
 				}
+				g.Expect(len(allOwners)).To(Equal(len(testRecords)))
 			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
 
 			By("checking provider zone records are created as expected")
-			testProvider, err := ProviderForManagedZone(ctx, testClusters[0].testManagedZones[0], testClusters[0].k8sClient)
+			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
@@ -405,7 +414,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			var totalEndpointsChecked = 0
-			var allOwners = []string{}
+
 			var allOwnerMatcher = []types.GomegaMatcher{
 				ContainSubstring("heritage=external-dns,external-dns/owner="),
 			}
@@ -413,10 +422,10 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			var geoKlbHostname = map[string]string{}
 			var geoOwnerMatcher = map[string][]types.GomegaMatcher{}
 			for i := range testRecords {
-				ownerID := testRecords[i].record.Status.OwnerID
-				allOwners = append(allOwners, ownerID)
+				underTest := testRecords[i]
+				ownerID := underTest.record.Status.OwnerID
 				allOwnerMatcher = append(allOwnerMatcher, ContainSubstring(ownerID))
-
+				Expect(underTest.record.Status.DomainOwners).To(ConsistOf(allOwners))
 				geoCode := testRecords[i].config.testGeoCode
 				geoOwners[geoCode] = append(geoOwners[geoCode], ownerID)
 				geoKlbHostname[geoCode] = testRecords[i].config.hostnames.geoKlb

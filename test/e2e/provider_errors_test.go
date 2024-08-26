@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
@@ -31,7 +32,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 	var testHostname string
 
 	var k8sClient client.Client
-	var testManagedZone *v1alpha1.ManagedZone
+	var testDNSProviderSecret *v1.Secret
 
 	var dnsRecord *v1alpha1.DNSRecord
 
@@ -40,7 +41,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		k8sClient = testClusters[0].k8sClient
-		testManagedZone = testClusters[0].testManagedZones[0]
+		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -85,7 +86,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			invalidEndpoint,
 		}
 
-		dnsRecord = testBuildDNSRecord(testID, testManagedZone.Namespace, testManagedZone.Name, "test-owner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, testDNSProviderSecret.Namespace, testDNSProviderSecret.Name, "test-owner", testHostname)
 		dnsRecord.Spec.Endpoints = testEndpoints
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid geo endpoint")
@@ -176,7 +177,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			invalidEndpoint,
 		}
 
-		dnsRecord = testBuildDNSRecord(testID, testManagedZone.Namespace, testManagedZone.Name, "test-owner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, testDNSProviderSecret.Namespace, testDNSProviderSecret.Name, "test-owner", testHostname)
 		dnsRecord.Spec.Endpoints = testEndpoints
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid weight endpoint")
@@ -238,7 +239,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 })
 
 // testBuildDNSRecord creates a valid dnsrecord with a single valid endpoint
-func testBuildDNSRecord(name, ns, mzName, ownerID, rootHost string) *v1alpha1.DNSRecord {
+func testBuildDNSRecord(name, ns, dnsProviderSecretName, ownerID, rootHost string) *v1alpha1.DNSRecord {
 	return &v1alpha1.DNSRecord{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -247,8 +248,8 @@ func testBuildDNSRecord(name, ns, mzName, ownerID, rootHost string) *v1alpha1.DN
 		Spec: v1alpha1.DNSRecordSpec{
 			OwnerID:  ownerID,
 			RootHost: rootHost,
-			ManagedZoneRef: &v1alpha1.ManagedZoneReference{
-				Name: mzName,
+			ProviderRef: v1alpha1.ProviderRef{
+				Name: dnsProviderSecretName,
 			},
 			Endpoints: []*externaldnsendpoint.Endpoint{
 				{

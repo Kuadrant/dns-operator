@@ -27,6 +27,8 @@ import (
 
 	"sigs.k8s.io/external-dns/endpoint"
 	externaldnsplan "sigs.k8s.io/external-dns/plan"
+
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
 var (
@@ -65,14 +67,18 @@ type Plan struct {
 	Errors []error
 	// RootHost the host dns name being managed by the set of records in the plan.
 	RootHost *string
+	// Owners list of owners ids contributing to this record set.
+	// Populated after calling Calculate()
+	Owners []string
 
 	logger logr.Logger
 }
 
 // NewPlan returns new Plan object
 func NewPlan(ctx context.Context, current []*endpoint.Endpoint, previous []*endpoint.Endpoint, desired []*endpoint.Endpoint, policies []Policy, domainFilter endpoint.MatchAllDomainFilters, managedRecords []string, excludeRecords []string, ownerID string, rootHost *string) *Plan {
-	logger := logr.FromContextOrDiscard(ctx)
-	logger.WithName("plan").V(1).Info("initializing plan", "ownerID", ownerID, "rooHost", rootHost, "policies", policies, "domainFilter", domainFilter)
+	logger := logr.FromContextOrDiscard(ctx).
+		WithName("plan")
+	logger.V(1).Info("initializing plan", "ownerID", ownerID, "rooHost", rootHost, "policies", policies, "domainFilter", domainFilter)
 
 	return &Plan{
 		Current:        current,
@@ -208,7 +214,8 @@ func (p *Plan) Calculate() *Plan {
 	}
 
 	if p.RootHost != nil {
-		rootDomainFilter = endpoint.NewDomainFilter([]string{*p.RootHost})
+		rootDomainName, _ := strings.CutPrefix(*p.RootHost, v1alpha1.WildcardPrefix)
+		rootDomainFilter = endpoint.NewDomainFilter([]string{rootDomainName})
 		p.DomainFilter = append(p.DomainFilter, &rootDomainFilter)
 	}
 
@@ -365,6 +372,13 @@ func (p *Plan) Calculate() *Plan {
 		Changes:        changes,
 		Errors:         errs,
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	if p.RootHost != nil {
+		p.logger.V(1).Info("plan", "record dnsOwners", managedChanges.dnsNameOwners, "record rootHost", *p.RootHost, "record normalized", normalizeDNSName(*p.RootHost))
+
+		plan.Owners = managedChanges.dnsNameOwners[normalizeDNSName(*p.RootHost)]
+
 	}
 
 	return plan
