@@ -46,6 +46,10 @@ jobs:
           image: ${{ env.OPERATOR_NAME }}
           tags: ${{ env.IMG_TAGS }}
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            DIRTY=false
+
           dockerfiles: |
             ./Dockerfile
 
@@ -92,6 +96,9 @@ jobs:
           image: ${{ env.OPERATOR_NAME }}-bundle
           tags: ${{ needs.build.outputs.build-tags }}
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            DIRTY=false
           dockerfiles: |
             ./bundle.Dockerfile
 

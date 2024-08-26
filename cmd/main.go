@@ -41,12 +41,15 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
+	"github.com/kuadrant/dns-operator/internal/version"
 	//+kubebuilder:scaffold:imports
 )
 
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+	gitSHA   string // pass ldflag here to display gitSHA hash
+	dirty    string // must be string as passed in by ldflag to determine display .
 )
 
 const (
@@ -60,6 +63,10 @@ func init() {
 
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
+}
+
+func printControllerMetaInfo() {
+	setupLog.Info("build information", "version", version.Version, "commit", gitSHA, "dirty", dirty)
 }
 
 func main() {
@@ -91,6 +98,8 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	printControllerMetaInfo()
 
 	var watchNamespaces = "WATCH_NAMESPACES"
 	defaultOptions := ctrl.Options{
