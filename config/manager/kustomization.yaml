@@ -7,6 +7,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: quay.io/kuadrant/dns-operator
-  newTag: remove_managed_zone_api
-
-#ToDo mnairn: Revert tag before merge
+  newTag: latest
