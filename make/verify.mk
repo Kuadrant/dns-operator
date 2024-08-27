@@ -17,8 +17,13 @@ verify-manifests: manifests ## Verify manifests update.
 
 .PHONY: verify-bundle
 verify-bundle: bundle ## Verify bundle update.
-	git diff --exit-code ./bundle
-	[ -z "$$(git ls-files --other --exclude-standard --directory --no-empty-directory ./bundle)" ]
+	git diff --exit-code ./bundle ./config
+	[ -z "$$(git ls-files --other --exclude-standard --directory --no-empty-directory ./bundle ./config)" ]
+
+.PHONY: verify-helm-build
+verify-helm-build: helm-build ## Verify helm build update.
+	git diff --exit-code ./charts ./config
+	[ -z "$$(git ls-files --other --exclude-standard --directory --no-empty-directory ./charts ./config)" ]
 
 .PHONY: verify-imports
 verify-imports: ## Verify go imports are sorted and grouped correctly.
