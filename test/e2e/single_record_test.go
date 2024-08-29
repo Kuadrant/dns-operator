@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -448,7 +447,7 @@ var _ = Describe("Single Record Test", func() {
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
-							{Name: "routingpolicy", Value: string(armtrafficmanager.TrafficRoutingMethodWeighted)},
+							{Name: "routingpolicy", Value: "Weighted"},
 							{Name: cluster1KlbHostName, Value: "200"},
 						}),
 					}))))
@@ -460,7 +459,7 @@ var _ = Describe("Single Record Test", func() {
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
-							{Name: "routingpolicy", Value: string(armtrafficmanager.TrafficRoutingMethodGeographic)},
+							{Name: "routingpolicy", Value: "Geographic"},
 							{Name: geo1KlbHostName, Value: "WORLD"},
 						}),
 					}))))

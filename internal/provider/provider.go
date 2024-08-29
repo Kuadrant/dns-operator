@@ -69,6 +69,7 @@ func SanitizeError(err error) error {
 	sanitizedErr = requestIDRegexp.ReplaceAllString(sanitizedErr, "")
 	sanitizedErr = saxParseExceptionRegexp.ReplaceAllString(sanitizedErr, "")
 	sanitizedErr = strings.TrimSpace(sanitizedErr)
+
 	return errors.New(sanitizedErr)
 }
 

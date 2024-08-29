@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -57,7 +56,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 		} else if testDNSProvider == "azure" {
 			geoCode1 = "GEO-NA"
 			geoCode2 = "GEO-EU"
-			weighted = string(armtrafficmanager.TrafficRoutingMethodWeighted)
+			weighted = "Weighted"
 		} else {
 			geoCode1 = "US"
 			geoCode2 = "EU"
@@ -494,7 +493,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 				allKlbGeoHostnames := []string{}
 				gcpGeoProps := []externaldnsendpoint.ProviderSpecificProperty{
-					{Name: "routingpolicy", Value: string(armtrafficmanager.TrafficRoutingMethodGeographic)},
+					{Name: "routingpolicy", Value: "Geographic"},
 				}
 				for g, h := range geoKlbHostname {
 					allKlbGeoHostnames = append(allKlbGeoHostnames, h)
