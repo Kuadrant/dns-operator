@@ -131,6 +131,33 @@ var _ = Describe("DNSRecordReconciler", func() {
 			Expect(err).To(MatchError(ContainSubstring("spec.rootHost in body should be at least 1 chars long")))
 		})
 
+		It("prevents updating rootHost", func(ctx SpecContext) {
+			dnsRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo.example.com",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: "foo.example.com",
+					ProviderRef: v1alpha1.ProviderRef{
+						Name: dnsProviderSecret.Name,
+					},
+					Endpoints: getDefaultTestEndpoints(),
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+			//Does not allow rootHost to change once set
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				dnsRecord.Spec.RootHost = "bar.example.com"
+				err = k8sClient.Update(ctx, dnsRecord)
+				g.Expect(err).To(MatchError(ContainSubstring("RootHost is immutable")))
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
 		It("prevents creation of invalid records", func(ctx SpecContext) {
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{

@@ -81,6 +81,7 @@ type DNSRecordSpec struct {
 	// rootHost is the single root for all endpoints in a DNSRecord.
 	// it is expected all defined endpoints are children of or equal to this rootHost
 	// Must contain at least two groups of valid URL characters separated by a "."
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="RootHost is immutable"
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=255
 	// +kubebuilder:validation:Pattern=`^(?:[\w\-.~:\/?#[\]@!$&'()*+,;=]+)\.(?:[\w\-.~:\/?#[\]@!$&'()*+,;=]+)$`
