@@ -17,6 +17,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/pkg/builder"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
@@ -33,6 +34,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 
 	var k8sClient client.Client
 	var testDNSProviderSecret *v1.Secret
+	var invalidProviderSecret *v1.Secret
 
 	var dnsRecord *v1alpha1.DNSRecord
 
@@ -50,6 +52,66 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 				client.PropagationPolicy(metav1.DeletePropagationForeground))
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 		}
+		if invalidProviderSecret != nil {
+			err := k8sClient.Delete(ctx, invalidProviderSecret,
+				client.PropagationPolicy(metav1.DeletePropagationForeground))
+			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+		}
+	})
+
+	It("correctly handles invalid provider credentials", func(ctx SpecContext) {
+		var expectedProviderErr string
+		pBuilder := builder.NewProviderBuilder("invalid-credentials", testDNSProviderSecret.Namespace).
+			For(testDNSProviderSecret.Type)
+
+		if testDNSProvider == "google" {
+			//Google
+			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantGCP))
+			pBuilder.WithDataItem(v1alpha1.GoogleJsonKey, "{\"client_id\": \"foo.bar.com\",\"client_secret\": \"1234\",\"refresh_token\": \"1234\",\"type\": \"authorized_user\"}")
+			pBuilder.WithDataItem(v1alpha1.GoogleProjectIDKey, "foobar")
+			expectedProviderErr = "oauth2: \"invalid_client\" \"The OAuth client was not found.\""
+		} else if testDNSProvider == "azure" {
+			//Azure
+			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantAzure))
+			pBuilder.WithDataItem(v1alpha1.AzureJsonKey, "{}")
+			Skip("not yet supported for azure")
+		} else {
+			//AWS
+			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantAWS))
+			pBuilder.WithDataItem(v1alpha1.AWSAccessKeyIDKey, "1234")
+			pBuilder.WithDataItem(v1alpha1.AWSSecretAccessKeyKey, "1234")
+			expectedProviderErr = "failed to list hosted zones, InvalidClientTokenId: The security token included in the request is invalid."
+		}
+		invalidProviderSecret = pBuilder.Build()
+		Expect(k8sClient.Create(ctx, invalidProviderSecret)).To(Succeed())
+
+		dnsRecord = testBuildDNSRecord(testID, invalidProviderSecret.Namespace, invalidProviderSecret.Name, "test-owner", testHostname)
+
+		By("creating dnsrecord " + dnsRecord.Name + " with invalid provider credentials")
+		err := k8sClient.Create(ctx, dnsRecord)
+		Expect(err).ToNot(HaveOccurred())
+
+		By("checking " + dnsRecord.Name + " is not ready and has the expected provider error in the status")
+		Eventually(func(g Gomega, ctx context.Context) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":  Equal(metav1.ConditionFalse),
+					"Message": And(ContainSubstring("Unable to find suitable zone in provider"), ContainSubstring(expectedProviderErr)),
+				})),
+			)
+		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
+
+		By("checking dnsrecord " + dnsRecord.Name + " is not being updated repeatedly")
+		tmpRecord := &v1alpha1.DNSRecord{}
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), tmpRecord)).To(Succeed())
+		Consistently(func(g Gomega, ctx context.Context) {
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(dnsRecord.ResourceVersion).To(Equal(tmpRecord.ResourceVersion))
+		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
+
 	})
 
 	It("correctly handles invalid geo", func(ctx SpecContext) {
@@ -104,7 +166,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 					"Message": And(ContainSubstring("The DNS provider failed to ensure the record"), ContainSubstring(expectedProviderErr)),
 				})),
 			)
-		}, 10*time.Second, time.Second, ctx).Should(Succeed())
+		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
 
 		By("checking dnsrecord " + dnsRecord.Name + " is not being updated repeatedly")
 		tmpRecord := &v1alpha1.DNSRecord{}
@@ -112,7 +174,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		Consistently(func(g Gomega, ctx context.Context) {
 			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 			g.Expect(dnsRecord.ResourceVersion).To(Equal(tmpRecord.ResourceVersion))
-		}, 10*time.Second, time.Second, ctx).Should(Succeed())
+		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
 
 		By("updating dnsrecord " + dnsRecord.Name + " with valid geo endpoint")
 		Eventually(func(g Gomega) {
