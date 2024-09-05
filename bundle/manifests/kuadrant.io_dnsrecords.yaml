@@ -470,8 +470,10 @@ spec:
                   of this record.
                 type: string
               queuedAt:
-                description: QueuedAt is a time when DNS record was received for the
-                  reconciliation
+                description: |-
+                  QueuedAt is a time when DNS record was received for the reconciliation.
+                  During deletion QueuedAt is used to track the last time a change was detected when processing the delete request.
+                  Used for validation purposes to ensure the record is completely removed from the provider.
                 format: date-time
                 type: string
               queuedFor:

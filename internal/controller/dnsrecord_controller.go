@@ -51,6 +51,7 @@ import (
 const (
 	DNSRecordFinalizer        = "kuadrant.io/dns-record"
 	validationRequeueVariance = 0.5
+	deleteValidationDuration  = 15 * time.Second
 
 	txtRegistryPrefix              = "kuadrant-"
 	txtRegistrySuffix              = ""
@@ -133,12 +134,37 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				logger.Error(err, "Failed to delete DNSRecord")
 				return ctrl.Result{}, err
 			}
-			// if hadChanges - the deleteRecord has successfully applied changes
-			// in this case we need to queue for validation to ensure DNS Provider retained changes
-			// before removing finalizer and deleting the DNS Record CR
-			if hadChanges {
-				return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+			//Note: It's too risky relying on an equality check of the whole status as it can be too easily updated
+			// (reconcile of health checks for instance :-/) which will cause endless loops. Since we know the
+			// `Status.DomainOwners` is the thing we care about we can just check for changes to that explicitly.
+			hadStatusChanges := !equality.Semantic.DeepEqual(previous.Status.DomainOwners, dnsRecord.Status.DomainOwners)
+
+			// hadChanges - the deleteRecord has successfully applied changes to the provider
+			// hadStatusChanges - something in the status was updated during the deletion which suggests another record
+			// might also be updating the record set.
+			// If changes are detected, patch (avoid conflicts) the record with a timestamp detailing the last time changes
+			// were detected for the deletion of this record and return.
+			if hadChanges || hadStatusChanges {
+				dnsRecord.Status.QueuedAt = metav1.Now()
+				logger.V(1).Info(fmt.Sprintf("changes detected when deleting record(provider: %v, status: %v), updating deleted at time (QueuedAt) to %s and validating for %s",
+					hadChanges, hadStatusChanges, dnsRecord.Status.QueuedAt, deleteValidationDuration))
+				patchFrom := client.MergeFrom(previous)
+				if patchErr := r.Status().Patch(ctx, dnsRecord, patchFrom); patchErr != nil {
+					return ctrl.Result{}, patchErr
+				}
+				return ctrl.Result{}, nil
 			}
+
+			// If we have no detected changes, check the last time we did have changes and ensure we have validated for
+			// a set amount of time before removing the finalizer and allowing the deletion of the DNSRecord CR to continue.
+			sinceLastChange := time.Since(dnsRecord.Status.QueuedAt.Time)
+			if sinceLastChange < deleteValidationDuration {
+				requeueAfter := time.Until(dnsRecord.Status.QueuedAt.Add(deleteValidationDuration))
+				logger.V(1).Info(fmt.Sprintf("changes detected when deleting record %s ago, must have no changes for at least %s for deletion to continue, checking again in %s",
+					sinceLastChange.Round(time.Second), deleteValidationDuration, requeueAfter.Round(time.Second)))
+				return ctrl.Result{RequeueAfter: requeueAfter}, nil
+			}
+			logger.V(1).Info(fmt.Sprintf("no changes detected when deleting record since %v", dnsRecord.Status.QueuedAt))
 		} else {
 			logger.Info("dns zone was never assigned, skipping zone cleanup")
 		}

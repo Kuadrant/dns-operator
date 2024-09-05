@@ -112,7 +112,9 @@ type DNSRecordStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// QueuedAt is a time when DNS record was received for the reconciliation
+	// QueuedAt is a time when DNS record was received for the reconciliation.
+	// During deletion QueuedAt is used to track the last time a change was detected when processing the delete request.
+	// Used for validation purposes to ensure the record is completely removed from the provider.
 	QueuedAt metav1.Time `json:"queuedAt,omitempty"`
 
 	// QueuedFor is a time when we expect a DNS record to be reconciled again
