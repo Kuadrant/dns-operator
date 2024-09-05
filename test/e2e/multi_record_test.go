@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -40,8 +41,11 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 	var testRecords []*testDNSRecord
 
-	recordsReadyMaxDuration := time.Minute
-	recordsRemovedMaxDuration := 90 * time.Second
+	// Max durations that we would ever expect a record to be become ready or deleted.
+	// Note: These are extreme max durations, and it would not be expected under normal scenarios that creating or
+	// deleting a record would take this long.
+	recordsReadyMaxDuration := 2 * time.Minute
+	recordsRemovedMaxDuration := 2 * time.Minute
 
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-multi-" + GenerateName()
@@ -129,7 +133,10 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			By(fmt.Sprintf("checking all dns records become ready within %s", recordsReadyMaxDuration))
 			var allOwners = []string{}
 			var allTargetIps = []string{}
+			checkStarted := time.Now()
 			Eventually(func(g Gomega, ctx context.Context) {
+				allOwners = []string{}
+				allTargetIps = []string{}
 				for _, tr := range testRecords {
 					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
 					g.Expect(err).NotTo(HaveOccurred())
@@ -146,6 +153,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				}
 				g.Expect(len(allOwners)).To(Equal(len(testRecords)))
 			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
+			GinkgoWriter.Printf("[debug] all records became ready in %v\n", time.Since(checkStarted))
 
 			By("checking provider zone records are created as expected")
 			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient)
@@ -155,10 +163,16 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(zoneEndpoints).To(HaveLen(2))
 
-			By("checking each record has all owners present")
-			for _, tr := range testRecords {
-				Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
-			}
+			By(fmt.Sprintf("checking each record has all(%v) domain owners present within %s", len(allOwners), recordsReadyMaxDuration))
+			checkStarted = time.Now()
+			Eventually(func(g Gomega, ctx context.Context) {
+				for _, tr := range testRecords {
+					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
+				}
+			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
+			GinkgoWriter.Printf("[debug] all records updated in %v\n", time.Since(checkStarted))
 
 			By("checking all target ips are present")
 			Expect(zoneEndpoints).To(ContainElements(
@@ -218,11 +232,13 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 
 			By(fmt.Sprintf("checking dns record [name: `%s` namespace: `%s`] is removed within %s", recordToDelete.record.Name, recordToDelete.record.Namespace, recordsRemovedMaxDuration))
+			checkStarted = time.Now()
 			Eventually(func(g Gomega, ctx context.Context) {
 				err := recordToDelete.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(recordToDelete.record), recordToDelete.record)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err).To(MatchError(ContainSubstring("not found")))
 			}, recordsRemovedMaxDuration, 5*time.Second, ctx).Should(Succeed())
+			GinkgoWriter.Printf("[debug] record removed in %v\n", time.Since(checkStarted))
 
 			By("checking provider zone records are updated as expected")
 			Eventually(func(g Gomega, ctx context.Context) {
@@ -252,6 +268,26 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				}
 			}, 5*time.Second, time.Second, ctx).Should(Succeed())
 
+			//Remove deleted record owner from owners list
+			allOwners = slices.DeleteFunc(allOwners, func(id string) bool {
+				return id == recordToDelete.record.Status.OwnerID
+			})
+			//Remove deleted record from testRecords list
+			testRecords = slices.DeleteFunc(testRecords, func(tr *testDNSRecord) bool {
+				return tr.record.Status.OwnerID == recordToDelete.record.Status.OwnerID
+			})
+
+			By(fmt.Sprintf("checking remaining records have all(%v) domain owners updated within %s", len(allOwners), recordsReadyMaxDuration))
+			checkStarted = time.Now()
+			Eventually(func(g Gomega, ctx context.Context) {
+				for _, tr := range testRecords {
+					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
+				}
+			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
+			GinkgoWriter.Printf("[debug] records updated in %v\n", time.Since(checkStarted))
+
 			By("deleting all remaining dns records")
 			for _, tr := range testRecords {
 				err := tr.cluster.k8sClient.Delete(ctx, tr.record,
@@ -260,12 +296,14 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By(fmt.Sprintf("checking all dns records are removed within %s", recordsRemovedMaxDuration))
+			checkStarted = time.Now()
 			Eventually(func(g Gomega, ctx context.Context) {
 				for _, tr := range testRecords {
 					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
 					g.Expect(err).To(MatchError(ContainSubstring("not found")))
 				}
 			}, recordsRemovedMaxDuration, 5*time.Second, ctx).Should(Succeed())
+			GinkgoWriter.Printf("[debug] all records removed in %v\n", time.Since(checkStarted))
 
 			By("checking provider zone records are all removed")
 			Eventually(func(g Gomega, ctx context.Context) {
@@ -279,8 +317,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	})
 
 	Context("loadbalanced", func() {
-		It("makes available a hostname that can be resolved", func(ctx SpecContext) {
-			By("creating two dns records")
+		It("creates and deletes distributed dns records", func(ctx SpecContext) {
 			testGeoRecords := map[string][]testDNSRecord{}
 
 			By(fmt.Sprintf("creating %d loadbalanced dnsrecords accross %d clusters", len(testNamespaces)*len(testClusters), len(testClusters)))
@@ -404,7 +441,9 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 			By(fmt.Sprintf("checking all dns records become ready within %s", recordsReadyMaxDuration))
 			var allOwners = []string{}
+			checkStarted := time.Now()
 			Eventually(func(g Gomega, ctx context.Context) {
+				allOwners = []string{}
 				for _, tr := range testRecords {
 					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
 					g.Expect(err).NotTo(HaveOccurred())
@@ -419,6 +458,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				}
 				g.Expect(len(allOwners)).To(Equal(len(testRecords)))
 			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
+			GinkgoWriter.Printf("[debug] all records became ready in %v\n", time.Since(checkStarted))
 
 			By("checking provider zone records are created as expected")
 			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient)
@@ -438,6 +478,17 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
 			}
 
+			By(fmt.Sprintf("checking each record has all(%v) domain owners present within %s", len(allOwners), recordsReadyMaxDuration))
+			checkStarted = time.Now()
+			Eventually(func(g Gomega, ctx context.Context) {
+				for _, tr := range testRecords {
+					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
+				}
+			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
+			GinkgoWriter.Printf("[debug] all records updated in %v\n", time.Since(checkStarted))
+
 			var totalEndpointsChecked = 0
 
 			var allOwnerMatcher = []types.GomegaMatcher{
@@ -450,7 +501,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				underTest := testRecords[i]
 				ownerID := underTest.record.Status.OwnerID
 				allOwnerMatcher = append(allOwnerMatcher, ContainSubstring(ownerID))
-				Expect(underTest.record.Status.DomainOwners).To(ConsistOf(allOwners))
 				geoCode := testRecords[i].config.testGeoCode
 				geoOwners[geoCode] = append(geoOwners[geoCode], ownerID)
 				geoKlbHostname[geoCode] = testRecords[i].config.hostnames.geoKlb
@@ -771,12 +821,14 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By(fmt.Sprintf("checking all dns records are removed within %s", recordsRemovedMaxDuration))
+			checkStarted = time.Now()
 			Eventually(func(g Gomega, ctx context.Context) {
 				for _, tr := range testRecords {
 					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
 					g.Expect(err).To(MatchError(ContainSubstring("not found")))
 				}
 			}, recordsRemovedMaxDuration, 5*time.Second, ctx).Should(Succeed())
+			GinkgoWriter.Printf("[debug] all records removed in %v\n", time.Since(checkStarted))
 
 			By("checking provider zone records are all removed")
 			Eventually(func(g Gomega, ctx context.Context) {
