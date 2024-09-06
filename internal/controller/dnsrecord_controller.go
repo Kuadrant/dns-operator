@@ -199,7 +199,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		z, err := p.DNSZoneForHost(ctx, dnsRecord.Spec.RootHost)
 		if err != nil {
 			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-				"DNSProviderError", fmt.Sprintf("Unable to find suitable zone in provider: %v", err))
+				"DNSProviderError", fmt.Sprintf("Unable to find suitable zone in provider: %v", provider.SanitizeError(err)))
 			return r.updateStatus(ctx, previous, dnsRecord, false, err)
 		}
 
