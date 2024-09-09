@@ -85,3 +85,14 @@ func ProviderForDNSRecord(ctx context.Context, record *v1alpha1.DNSRecord, c cli
 	//Disable provider logging in test output
 	return providerFactory.ProviderFor(logr.NewContext(ctx, logr.Discard()), record, providerConfig)
 }
+
+func FindDefaultTarget(eps []*externaldnsendpoint.Endpoint) string {
+	for _, ep := range eps {
+		for _, ps := range ep.ProviderSpecific {
+			if ps.Value == "WORLD" {
+				return ps.Name
+			}
+		}
+	}
+	return ""
+}

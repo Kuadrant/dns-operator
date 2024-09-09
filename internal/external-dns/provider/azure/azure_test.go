@@ -94,7 +94,7 @@ func (client *mockRecordSetsClient) Delete(ctx context.Context, resourceGroupNam
 	client.deletedEndpoints = append(
 		client.deletedEndpoints,
 		endpoint.NewEndpoint(
-			formatAzureDNSName(relativeRecordSetName, zoneName),
+			FormatAzureDNSName(relativeRecordSetName, zoneName),
 			string(recordType),
 			"",
 		),
@@ -110,10 +110,10 @@ func (client *mockRecordSetsClient) CreateOrUpdate(ctx context.Context, resource
 	client.updatedEndpoints = append(
 		client.updatedEndpoints,
 		endpoint.NewEndpointWithTTL(
-			formatAzureDNSName(relativeRecordSetName, zoneName),
+			FormatAzureDNSName(relativeRecordSetName, zoneName),
 			string(recordType),
 			ttl,
-			extractAzureTargets(&parameters)...,
+			ExtractAzureTargets(&parameters)...,
 		),
 	)
 	return dns.RecordSetsClientCreateOrUpdateResponse{}, nil
@@ -231,14 +231,14 @@ func newMockedAzureProvider(domainFilter endpoint.DomainFilter, zoneNameFilter e
 
 func newAzureProvider(domainFilter endpoint.DomainFilter, zoneNameFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, dryRun bool, resourceGroup string, userAssignedIdentityClientID string, zonesClient ZonesClient, recordsClient RecordSetsClient) *AzureProvider {
 	return &AzureProvider{
-		domainFilter:                 domainFilter,
-		zoneNameFilter:               zoneNameFilter,
+		DomainFilter:                 domainFilter,
+		ZoneNameFilter:               zoneNameFilter,
 		zoneIDFilter:                 zoneIDFilter,
-		dryRun:                       dryRun,
-		resourceGroup:                resourceGroup,
+		DryRun:                       dryRun,
+		ResourceGroup:                resourceGroup,
 		userAssignedIdentityClientID: userAssignedIdentityClientID,
 		zonesClient:                  zonesClient,
-		recordSetsClient:             recordsClient,
+		RecordSetsClient:             recordsClient,
 	}
 }
 

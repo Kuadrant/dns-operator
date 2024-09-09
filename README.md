@@ -34,6 +34,16 @@ make local-setup-azure-clean local-setup-azure-generate KUADRANT_AZURE_CREDENTIA
 
 Info on generating service principal credentials [here](https://github.com/kubernetes-sigs/external-dns/blob/master/docs/tutorials/azure.md)
 
+Get your resource group ID like so:
+```
+az group show --resource-group <resource group name> | jq ".id" -r
+```
+
+Also give traffic manager contributor role:
+```
+az role assignment create --role "Traffic Manager Contributor" --assignee $EXTERNALDNS_SP_APP_ID --scope <RESOURCE_GROUP_ID>
+```
+
 Getting the zone ID can be achieved using the below command:
 ```bash
 az network dns zone show --name <my domain name> --resource-group <my resource group> --query "{id:id,domain:name}"
