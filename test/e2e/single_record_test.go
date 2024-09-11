@@ -55,9 +55,16 @@ var _ = Describe("Single Record Test", func() {
 
 	AfterEach(func(ctx SpecContext) {
 		if dnsRecord != nil {
+			By("ensuring dns record is deleted")
 			err := k8sClient.Delete(ctx, dnsRecord,
 				client.PropagationPolicy(metav1.DeletePropagationForeground))
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+
+			By("checking dns record is removed")
+			Eventually(func(g Gomega, ctx context.Context) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).To(MatchError(ContainSubstring("not found")))
+			}, TestTimeoutLong, time.Second, ctx).Should(Succeed())
 		}
 	})
 
