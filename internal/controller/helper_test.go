@@ -3,7 +3,11 @@
 package controller
 
 import (
+	"crypto/rand"
+	"math/big"
 	"time"
+
+	"github.com/goombaio/namegenerator"
 
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 )
@@ -18,8 +22,9 @@ const (
 	DefaultValidationDuration = time.Millisecond * 500
 )
 
-func getDefaultTestEndpoints() []*externaldnsendpoint.Endpoint {
-	return getTestEndpoints("foo.example.com", "127.0.0.1")
+func GenerateName() string {
+	nBig, _ := rand.Int(rand.Reader, big.NewInt(1000000))
+	return namegenerator.NewNameGenerator(nBig.Int64()).Generate()
 }
 
 func getTestEndpoints(dnsName, ip string) []*externaldnsendpoint.Endpoint {
