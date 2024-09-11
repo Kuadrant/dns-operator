@@ -5,11 +5,11 @@ metadata:
     alm-examples: '[]'
     capabilities: Basic Install
     categories: Integration & Delivery
-    containerImage: quay.io/kuadrant/dns-operator:v0.5.0-rc1
+    containerImage: quay.io/kuadrant/dns-operator:v0.5.0
     description: A Kubernetes Operator to manage the lifecycle of DNS resources
     repository: https://github.com/kuadrant/dns-operator
     support: kuadrant
-  name: dns-operator.v0.5.0-rc1
+  name: dns-operator.v0.5.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -56,4 +56,4 @@ spec:
   provider:
     name: Red Hat
   replaces: dns-operator.v0.4.1
-  version: 0.5.0-rc1
+  version: 0.5.0
