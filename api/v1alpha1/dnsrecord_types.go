@@ -115,9 +115,6 @@ type DNSRecordStatus struct {
 	// QueuedAt is a time when DNS record was received for the reconciliation
 	QueuedAt metav1.Time `json:"queuedAt,omitempty"`
 
-	// QueuedFor is a time when we expect a DNS record to be reconciled again
-	QueuedFor metav1.Time `json:"queuedFor,omitempty"`
-
 	// ValidFor indicates duration since the last reconciliation we consider data in the record to be valid
 	ValidFor string `json:"validFor,omitempty"`
 

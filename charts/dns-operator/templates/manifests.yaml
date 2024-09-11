@@ -486,11 +486,6 @@ spec:
                   reconciliation
                 format: date-time
                 type: string
-              queuedFor:
-                description: QueuedFor is a time when we expect a DNS record to be
-                  reconciled again
-                format: date-time
-                type: string
               validFor:
                 description: ValidFor indicates duration since the last reconciliation
                   we consider data in the record to be valid

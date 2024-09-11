@@ -155,7 +155,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
-		dnsRecord.Status.QueuedFor = metav1.NewTime(reconcileStart.Add(randomizedValidationRequeue))
 		logger.Info("Adding Finalizer", "finalizer_name", DNSRecordFinalizer)
 		controllerutil.AddFinalizer(dnsRecord, DNSRecordFinalizer)
 		err = r.Update(ctx, dnsRecord)

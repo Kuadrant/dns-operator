@@ -11,7 +11,6 @@ We now will constantly reconcile DNS records. The reasoning is that other contro
 # Details
 There are a few new fields on the DNS Record status:
 * QueuedAt is a time when the DNS record was received for the reconciliation
-* QueuedFor is a time when we expect a DNS record to be reconciled again
 * ValidFor indicates the duration since the last reconciliation we consider data in the record to be valid
 * WriteCounter represents a number of consecutive write attempts on the same generation of the record. It is being reset to 0 when the generation changes or there are no changes to write.
 
@@ -27,9 +26,6 @@ The `ValidFor` is used to determine if we should do a full reconciliation when w
 
 ## DNS Record normal lifecycle
 Once we enqueue the DNS record, controller will compile a list of changes to the DNS provider and will apply it. After this, the record is enqueued with the `validationRequeueTime` and the `Ready` condition will be marked as `false` with a message `Awaiting Validation`. When the record is received again and the controller ensures there are no changes needed (the ones applied are present in the DNS Provider) it sets the `Ready` condition to `true` and enqueues it with the `defaultRequeueTime`.
-
-
-At any time when the record is requeued we also set the `record.Status.QueuedFor` field with a timestamp for when we expect to receive the record again. And on every reconciliation we set the `record.Status.QueuedAt` to be the time of the reconciliation.
 
 
 Upon deletion, the process will be similar. The controller will determine the changes needed to the DNS provider and will apply them. The record will be requeued with the `validationRequeueTime`. Once we receive it back and ensure that there are no changes needed for the DNS provider we remove the finalizer from the record.
