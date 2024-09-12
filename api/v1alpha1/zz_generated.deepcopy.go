@@ -128,7 +128,6 @@ func (in *DNSRecordStatus) DeepCopyInto(out *DNSRecordStatus) {
 		}
 	}
 	in.QueuedAt.DeepCopyInto(&out.QueuedAt)
-	in.QueuedFor.DeepCopyInto(&out.QueuedFor)
 	if in.Endpoints != nil {
 		in, out := &in.Endpoints, &out.Endpoints
 		*out = make([]*endpoint.Endpoint, len(*in))
