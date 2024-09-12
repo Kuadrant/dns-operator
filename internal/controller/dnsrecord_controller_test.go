@@ -20,6 +20,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -38,18 +40,23 @@ import (
 
 var _ = Describe("DNSRecordReconciler", func() {
 	var (
-		dnsRecord          *v1alpha1.DNSRecord
-		dnsRecord2         *v1alpha1.DNSRecord
-		dnsProviderSecret  *v1.Secret
-		testNamespace      string
+		dnsRecord         *v1alpha1.DNSRecord
+		dnsRecord2        *v1alpha1.DNSRecord
+		dnsProviderSecret *v1.Secret
+		testNamespace     string
+		// testZoneDomainName generated domain for this test e.g. xyz.example.com
 		testZoneDomainName string
-		testZoneID         string
+		// testZoneID generated zoneID for this test. Currently, the same as testZoneDomainName for inmemory provider.
+		testZoneID string
+		// testHostname generated host for this test e.g. foo.xyz.example.com
+		testHostname string
 	)
 
 	BeforeEach(func() {
 		CreateNamespace(&testNamespace)
 
-		testZoneDomainName = "example.com"
+		testZoneDomainName = strings.Join([]string{GenerateName(), "example.com"}, ".")
+		testHostname = strings.Join([]string{"foo", testZoneDomainName}, ".")
 		// In memory provider currently uses the same value for domain and id
 		// Issue here to change this https://github.com/Kuadrant/dns-operator/issues/208
 		testZoneID = testZoneDomainName
@@ -62,45 +69,31 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "foo.example.com",
+				Name:      testHostname,
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: "foo.example.com",
+				RootHost: testHostname,
 				ProviderRef: v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints: getDefaultTestEndpoints(),
+				Endpoints: getTestEndpoints(testHostname, "127.0.0.1"),
 			},
-		}
-	})
-
-	AfterEach(func() {
-		if dnsRecord != nil {
-			err := k8sClient.Delete(ctx, dnsRecord)
-			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
-		}
-		if dnsRecord2 != nil {
-			err := k8sClient.Delete(ctx, dnsRecord2)
-			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
-		}
-		if dnsProviderSecret != nil {
-			err := k8sClient.Delete(ctx, dnsProviderSecret)
-			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 		}
 	})
 
 	// Test cases covering validation of the DNSRecord resource fields
 	Context("validation", func() {
 		It("should error with no providerRef", func(ctx SpecContext) {
+			testHostname = strings.Join([]string{"bar", testZoneDomainName}, ".")
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "bar.example.com",
+					Name:      testHostname,
 					Namespace: testNamespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
-					RootHost:    "bar.example.com",
-					Endpoints:   getTestEndpoints("bar.example.com", "127.0.0.1"),
+					RootHost:    testHostname,
+					Endpoints:   getTestEndpoints(testHostname, "127.0.0.1"),
 					HealthCheck: nil,
 				},
 			}
@@ -112,16 +105,17 @@ var _ = Describe("DNSRecordReconciler", func() {
 		})
 
 		It("should error with no rootHost", func(ctx SpecContext) {
+			testHostname = strings.Join([]string{"bar", testZoneDomainName}, ".")
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "bar.example.com",
+					Name:      testHostname,
 					Namespace: testNamespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
 					ProviderRef: v1alpha1.ProviderRef{
 						Name: dnsProviderSecret.Name,
 					},
-					Endpoints:   getTestEndpoints("bar.example.com", "127.0.0.1"),
+					Endpoints:   getTestEndpoints(testHostname, "127.0.0.1"),
 					HealthCheck: nil,
 				},
 			}
@@ -132,19 +126,6 @@ var _ = Describe("DNSRecordReconciler", func() {
 		})
 
 		It("prevents updating rootHost", func(ctx SpecContext) {
-			dnsRecord = &v1alpha1.DNSRecord{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "foo.example.com",
-					Namespace: testNamespace,
-				},
-				Spec: v1alpha1.DNSRecordSpec{
-					RootHost: "foo.example.com",
-					ProviderRef: v1alpha1.ProviderRef{
-						Name: dnsProviderSecret.Name,
-					},
-					Endpoints: getDefaultTestEndpoints(),
-				},
-			}
 			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 			//Does not allow rootHost to change once set
@@ -188,20 +169,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("handles records with similar root hosts", func(ctx SpecContext) {
-		dnsRecord = &v1alpha1.DNSRecord{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "bar.example.com",
-				Namespace: testNamespace,
-			},
-			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: "bar.example.com",
-				ProviderRef: v1alpha1.ProviderRef{
-					Name: dnsProviderSecret.Name,
-				},
-				Endpoints:   getTestEndpoints("bar.example.com", "127.0.0.1"),
-				HealthCheck: nil,
-			},
-		}
+		//Create default test dnsrecord with root host e.g. foo.xyz.example.com
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
@@ -218,17 +186,19 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
+		//Create another dnsrecord with a similar root host e.g. bar.foo.xyz.example.com
+		testHostname2 := strings.Join([]string{"bar", testHostname}, ".")
 		dnsRecord2 = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "foo.bar.example.com",
+				Name:      testHostname2,
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: "foo.bar.example.com",
+				RootHost: testHostname2,
 				ProviderRef: v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints:   getTestEndpoints("foo.bar.example.com", "127.0.0.2"),
+				Endpoints:   getTestEndpoints(testHostname2, "127.0.0.2"),
 				HealthCheck: nil,
 			},
 		}
@@ -259,22 +229,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("can delete a record with a valid dns provider secret", func(ctx SpecContext) {
-		dnsRecord = &v1alpha1.DNSRecord{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "foo.example.com",
-				Namespace: testNamespace,
-			},
-			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: "foo.example.com",
-				ProviderRef: v1alpha1.ProviderRef{
-					Name: dnsProviderSecret.Name,
-				},
-				Endpoints:   getDefaultTestEndpoints(),
-				HealthCheck: nil,
-			},
-		}
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
-
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -286,8 +241,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
-			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("example.com"))
-			g.Expect(dnsRecord.Status.ZoneID).To(Equal("example.com"))
+			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
+			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		err := k8sClient.Delete(ctx, dnsRecord)
@@ -297,7 +252,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).To(HaveOccurred())
 			g.Expect(err).To(MatchError(ContainSubstring("not found")))
-		}, 5*time.Second, time.Second, ctx).Should(Succeed())
+		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
 	})
 
 	It("should have ready condition with status true", func() {
@@ -323,6 +278,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("should use dnsrecord UID for ownerID if none set in spec and not allow it to be updated after", func() {
+		//Create default test dnsrecord (foo.xyz.example.com)
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
@@ -364,20 +320,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("should allow ownerID to be set explicitly and not allow it to be updated after", func() {
-		dnsRecord = &v1alpha1.DNSRecord{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "foo.example.com",
-				Namespace: testNamespace,
-			},
-			Spec: v1alpha1.DNSRecordSpec{
-				OwnerID:  "owner1",
-				RootHost: "foo.example.com",
-				ProviderRef: v1alpha1.ProviderRef{
-					Name: dnsProviderSecret.Name,
-				},
-				Endpoints: getDefaultTestEndpoints(),
-			},
-		}
+		dnsRecord.Spec.OwnerID = "owner1"
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
@@ -427,11 +370,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: "foo.example.com",
+				RootHost: testHostname,
 				ProviderRef: v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints: getDefaultTestEndpoints(),
+				Endpoints: getTestEndpoints(testHostname, "127.0.0.1"),
 			},
 		}
 		dnsRecord2 = &v1alpha1.DNSRecord{
@@ -440,15 +383,15 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: "foo.example.com",
+				RootHost: testHostname,
 				ProviderRef: v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints: getTestEndpoints("foo.example.com", "127.0.0.2"),
+				Endpoints: getTestEndpoints(testHostname, "127.0.0.2"),
 			},
 		}
 
-		By("creating dnsrecord " + dnsRecord.Name + " with endpoint dnsName: `foo.example.com` and target: `127.0.0.1`")
+		By("creating dnsrecord " + dnsRecord.Name + " with endpoint dnsName: " + testHostname + " and target: `127.0.0.1`")
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		By("checking dnsrecord " + dnsRecord.Name + " becomes ready")
 		Eventually(func(g Gomega) {
@@ -469,7 +412,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
-		By("creating dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: `foo.example.com` and target: `127.0.0.2`")
+		By("creating dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: " + testHostname + " and target: `127.0.0.2`")
 		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
 
 		By("checking dnsrecord " + dnsRecord.Name + " and " + dnsRecord2.Name + " conflict")
@@ -503,12 +446,12 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord2.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
 		}, TestTimeoutLong, time.Second).Should(Succeed())
 
-		By("fixing conflict with dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: `foo.example.com` and target: `127.0.0.1`")
+		By("fixing conflict with dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: " + testHostname + " and target: `127.0.0.1`")
 		Eventually(func(g Gomega) {
 			// refresh the second record CR
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
-			dnsRecord2.Spec.Endpoints = getDefaultTestEndpoints()
+			dnsRecord2.Spec.Endpoints = getTestEndpoints(testHostname, "127.0.0.1")
 			Expect(k8sClient.Update(ctx, dnsRecord2)).To(Succeed())
 		}, TestTimeoutShort, time.Second).Should(Succeed())
 
@@ -540,6 +483,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("should not allow second record to change the type", func() {
+		//Create default test dnsrecord (foo.xyz.example.com)
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
@@ -564,13 +508,13 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: "foo.example.com",
+				RootHost: testHostname,
 				ProviderRef: v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
 				Endpoints: []*externaldnsendpoint.Endpoint{
 					{
-						DNSName: "foo.example.com",
+						DNSName: testHostname,
 						Targets: []string{
 							"v1",
 						},
@@ -594,7 +538,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":             Equal(metav1.ConditionFalse),
 					"Reason":             Equal("ProviderError"),
-					"Message":            ContainSubstring("record type conflict, cannot update endpoint 'foo.example.com' with record type 'CNAME' when endpoint already exists with record type 'A'"),
+					"Message":            ContainSubstring(fmt.Sprintf("record type conflict, cannot update endpoint '%s' with record type 'CNAME' when endpoint already exists with record type 'A'", testHostname)),
 					"ObservedGeneration": Equal(dnsRecord2.Generation),
 				})),
 			)
@@ -602,6 +546,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("should not allow a record to have a target that matches the root host if an endpoint doesn't exist for the target dns name", func() {
+		//Create default test dnsrecord (foo.xyz.example.com)
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
@@ -620,21 +565,26 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
+		// e.g. bar.zyz.example.com
+		testHostname2 := strings.Join([]string{"bar", testZoneDomainName}, ".")
+		// e.g. foo.bar.zyz.example.com
+		testHostname3 := strings.Join([]string{"foo", testHostname2}, ".")
+
 		dnsRecord2 = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "bar.example.com",
+				Name:      testHostname2,
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: "bar.example.com",
+				RootHost: testHostname2,
 				ProviderRef: v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
 				Endpoints: []*externaldnsendpoint.Endpoint{
 					{
-						DNSName: "bar.example.com",
+						DNSName: testHostname2,
 						Targets: []string{
-							"foo.bar.example.com",
+							testHostname3,
 						},
 						RecordType:       "CNAME",
 						SetIdentifier:    "",
@@ -654,7 +604,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":             Equal(metav1.ConditionFalse),
 					"Reason":             Equal("ProviderError"),
-					"Message":            ContainSubstring("invalid target, endpoint 'bar.example.com' has target 'foo.bar.example.com' that matches the root host filters '[bar.example.com]' but does not exist in the list of local or remote endpoints"),
+					"Message":            ContainSubstring(fmt.Sprintf("invalid target, endpoint '%s' has target '%s' that matches the root host filters '[%s]' but does not exist in the list of local or remote endpoints", testHostname2, testHostname3, testHostname2)),
 					"ObservedGeneration": Equal(dnsRecord2.Generation),
 				})),
 			)
@@ -672,44 +622,41 @@ var _ = Describe("DNSRecordReconciler", func() {
 				For(v1alpha1.SecretTypeKuadrantInmemory)
 		})
 
-		AfterEach(func() {
-			if pSecret != nil {
-				err := k8sClient.Delete(ctx, pSecret)
-				Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
-			}
-		})
-
 		It("should assign the most suitable zone for the provider", func(ctx SpecContext) {
+			// initialize two zones e.g xyz.example.com and foo.xyz.example.com
+			testZoneDomainName2 := strings.Join([]string{"foo", testZoneDomainName}, ".")
+			// testHostname better matches the new zone (bar.foo.xyz.example.com)
+			testHostname2 := strings.Join([]string{"bar", testZoneDomainName2}, ".")
 			pSecret = pBuilder.
-				WithZonesInitialisedFor("example.com", "foo.example.com").
+				WithZonesInitialisedFor(testZoneDomainName, testZoneDomainName2).
 				Build()
 			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
 
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "bar.foo.example.com",
+					Name:      testHostname2,
 					Namespace: testNamespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
-					RootHost: "bar.foo.example.com",
+					RootHost: testHostname2,
 					ProviderRef: v1alpha1.ProviderRef{
 						Name: pSecret.Name,
 					},
-					Endpoints: getTestEndpoints("bar.foo.example.com", "127.0.0.1"),
+					Endpoints: getTestEndpoints(testHostname2, "127.0.0.1"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(dnsRecord.Status.ZoneID).To(Equal("foo.example.com"))
-				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("foo.example.com"))
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneDomainName2))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName2))
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
 
 		It("should report an error when no suitable zone can be found for the provider", func(ctx SpecContext) {
 			pSecret = pBuilder.
-				WithZonesInitialisedFor("example.com").
+				WithZonesInitialisedFor(testZoneDomainName).
 				Build()
 			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
 
@@ -746,21 +693,21 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		It("should report an error when an apex domain is used", func(ctx SpecContext) {
 			pSecret = pBuilder.
-				WithZonesInitialisedFor("example.com").
+				WithZonesInitialisedFor(testZoneDomainName).
 				Build()
 			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
 
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "example.com",
+					Name:      testZoneDomainName,
 					Namespace: testNamespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
-					RootHost: "example.com",
+					RootHost: testZoneDomainName,
 					ProviderRef: v1alpha1.ProviderRef{
 						Name: pSecret.Name,
 					},
-					Endpoints: getTestEndpoints("example.com", "127.0.0.1"),
+					Endpoints: getTestEndpoints(testZoneDomainName, "127.0.0.1"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
@@ -783,21 +730,25 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		It("should update broken record when provider is updated", func(ctx SpecContext) {
 			pSecret = pBuilder.
-				WithZonesInitialisedFor("example.com").
+				WithZonesInitialisedFor(testZoneDomainName).
 				Build()
 			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
 
+			testZoneDomainName2 := strings.Join([]string{GenerateName(), "otherdomain.com"}, ".")
+			testZoneID2 := testZoneDomainName2
+			testHostname2 := strings.Join([]string{"foo", testZoneDomainName2}, ".")
+
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "foo.otherdomain.com",
+					Name:      testHostname2,
 					Namespace: testNamespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
-					RootHost: "foo.otherdomain.com",
+					RootHost: testHostname2,
 					ProviderRef: v1alpha1.ProviderRef{
 						Name: pSecret.Name,
 					},
-					Endpoints: getTestEndpoints("foo.otherdomain.com", "127.0.0.1"),
+					Endpoints: getTestEndpoints(testHostname2, "127.0.0.1"),
 				},
 			}
 			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
@@ -811,7 +762,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 						"Status":             Equal(metav1.ConditionFalse),
 						"Reason":             Equal("DNSProviderError"),
-						"Message":            Equal("Unable to find suitable zone in provider: no valid zone found for host: foo.otherdomain.com"),
+						"Message":            Equal(fmt.Sprintf("Unable to find suitable zone in provider: no valid zone found for host: %s", testHostname2)),
 						"ObservedGeneration": Equal(dnsRecord.Generation),
 					})),
 				)
@@ -819,7 +770,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 			pSecretUpdate := builder.NewProviderBuilder("inmemory-credentials-2", testNamespace).
 				For(v1alpha1.SecretTypeKuadrantInmemory).
-				WithZonesInitialisedFor("example.com", "otherdomain.com").
+				WithZonesInitialisedFor(testZoneDomainName, testZoneDomainName2).
 				Build()
 
 			// Update the provider secrets init zones to include the other domain, now matches for record with root host `foo.example.com`
@@ -829,8 +780,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(dnsRecord.Status.ZoneID).To(Equal("otherdomain.com"))
-				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal("otherdomain.com"))
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID2))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName2))
 				g.Expect(dnsRecord.Status.Conditions).To(
 					ContainElement(MatchFields(IgnoreExtras, Fields{
 						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
