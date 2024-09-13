@@ -4,6 +4,6 @@ metadata:
   name: dns-operator-catalog
 spec:
   sourceType: grpc
-  image: quay.io/kuadrant/dns-operator-catalog:release-0.6
+  image: quay.io/kuadrant/dns-operator-catalog:v0.6.0
   displayName: DNS Operators
   publisher: grpc
