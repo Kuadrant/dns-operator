@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	azcoreruntime "github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -136,6 +137,7 @@ func (p *AzureProvider) Records(ctx context.Context) (endpoints []*endpoint.Endp
 		for pager.More() {
 			nextResult, err := pager.NextPage(ctx)
 			if err != nil {
+				err = CleanAzureError(err)
 				return nil, err
 			}
 			for _, recordSet := range nextResult.Value {
@@ -192,6 +194,7 @@ func (p *AzureProvider) Zones(ctx context.Context) ([]dns.Zone, error) {
 	for pager.More() {
 		nextResult, err := pager.NextPage(ctx)
 		if err != nil {
+			err = CleanAzureError(err)
 			return nil, err
 		}
 		for _, zone := range nextResult.Value {
@@ -269,6 +272,7 @@ func (p *AzureProvider) DeleteRecords(ctx context.Context, deleted AzureChangeMa
 			} else {
 				p.logger.Info("deleting record", "record type", ep.RecordType, "record name", name, "zone", zone)
 				if _, err := p.RecordSetsClient.Delete(ctx, p.ResourceGroup, zone, name, dns.RecordType(ep.RecordType), nil); err != nil {
+					err = CleanAzureError(err)
 					p.logger.Error(err, "failed to delete record", "record type", ep.RecordType, "record name", name, "zone", zone)
 				}
 			}
@@ -303,6 +307,7 @@ func (p *AzureProvider) UpdateRecords(ctx context.Context, updated AzureChangeMa
 				)
 			}
 			if err != nil {
+				err = CleanAzureError(err)
 				p.logger.Error(err, "failed to update record", "record type", ep.RecordType, "record name", name, "targets", ep.Targets, "zone", zone)
 			}
 		}
@@ -455,4 +460,14 @@ func ExtractAzureTargets(recordSet *dns.RecordSet) []string {
 		}
 	}
 	return []string{}
+}
+
+func CleanAzureError(err error) error {
+	reg := regexp.MustCompile(`\"message\": \".*\"`)
+	errMsg := err.Error()
+	msg := reg.FindString(errMsg)
+	msgBits := strings.SplitAfterN(msg, ":", 2)
+	msgBits = strings.Split(msgBits[1], `"`)
+	msg = msgBits[1]
+	return errors.New(msg)
 }
