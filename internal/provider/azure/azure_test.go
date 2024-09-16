@@ -8,6 +8,21 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 )
 
+func TestAzureProvider_GenerateProfileName(t *testing.T) {
+	RegisterTestingT(t)
+	ep := &externaldnsendpoint.Endpoint{
+		DNSName: "test-dns-name",
+	}
+	name := GenerateProfileName("testGroup", ep)
+	Expect(name).To(Equal("testGroup-c5605c8593532610"))
+	ep = &externaldnsendpoint.Endpoint{
+		DNSName: "test-dns-name-2",
+	}
+
+	Expect(name).ToNot(Equal(GenerateProfileName("testGroup", ep)))
+
+}
+
 func TestAzureProvider_AdjustEndpoints(t *testing.T) {
 	RegisterTestingT(t)
 	tests := []struct {
