@@ -41,9 +41,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 	var testRecords []*testDNSRecord
 
-	recordsReadyMaxDuration := time.Minute
-	recordsRemovedMaxDuration := 90 * time.Second
-
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-multi-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
