@@ -79,7 +79,7 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
-			}, 2*time.Minute, 10*time.Second, ctx).Should(Succeed())
+			}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
 
 			By("Confirming the DNS Record status")
 			Eventually(func(g Gomega) {
@@ -218,7 +218,7 @@ var _ = Describe("Health Check Test", Serial, Labels{"health_checks"}, func() {
 
 				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(errors.IsNotFound(err)).Should(BeTrue())
-			}, TestTimeoutLong, time.Second).Should(Succeed())
+			}, recordsRemovedMaxDuration, time.Second).Should(Succeed())
 
 			By("confirming the health checks were removed in the provider")
 			Eventually(func(g Gomega) {

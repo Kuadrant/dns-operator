@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -51,6 +52,18 @@ var (
 	testClusters           []testCluster
 
 	supportedHealthCheckProviders = []string{"aws"}
+
+	defaultRecordsReadyTimeout = time.Minute
+	customRecordsReadyTimeout  = map[string]time.Duration{
+		"azure": 5 * time.Minute,
+	}
+
+	defaultRecordsDeletedTimeout = time.Second * 90
+	customRecordsDeletedTimeout  = map[string]time.Duration{
+		"azure": 5 * time.Minute,
+	}
+	recordsReadyMaxDuration   time.Duration
+	recordsRemovedMaxDuration time.Duration
 )
 
 // testCluster represents a cluster under test and contains a reference to a configured k8client and all it's dns provider secrets.
@@ -104,6 +117,9 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	for i := range testClusters {
 		Expect(testClusters[i].testDNSProviderSecrets).NotTo(BeEmpty())
 	}
+
+	recordsReadyMaxDuration = GetRecordsReadyTimeout(testDNSProvider)
+	recordsRemovedMaxDuration = GetRecordsDeletedTimeout(testDNSProvider)
 
 	testSuiteID = "dns-op-e2e-" + GenerateName()
 
@@ -252,4 +268,18 @@ func loadProviderSecrets(ctx context.Context, tc *testCluster) {
 		//Append the provider secret to the list of test provider secrets
 		tc.testDNSProviderSecrets = append(tc.testDNSProviderSecrets, s)
 	}
+}
+
+func GetRecordsReadyTimeout(provider string) time.Duration {
+	if v, ok := customRecordsReadyTimeout[provider]; ok {
+		return v
+	}
+	return defaultRecordsReadyTimeout
+}
+
+func GetRecordsDeletedTimeout(provider string) time.Duration {
+	if v, ok := customRecordsDeletedTimeout[provider]; ok {
+		return v
+	}
+	return defaultRecordsDeletedTimeout
 }

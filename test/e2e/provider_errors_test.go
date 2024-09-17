@@ -102,7 +102,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 					"Message": And(ContainSubstring("Unable to find suitable zone in provider"), ContainSubstring(expectedProviderErr)),
 				})),
 			)
-		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
+		}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
 
 		By("checking dnsrecord " + dnsRecord.Name + " is not being updated repeatedly")
 		tmpRecord := &v1alpha1.DNSRecord{}
@@ -168,7 +168,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 					"Message": And(ContainSubstring("The DNS provider failed to ensure the record"), ContainSubstring(expectedProviderErr)),
 				})),
 			)
-		}, TestTimeoutLong, time.Second, ctx).Should(Succeed())
+		}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
 
 		By("checking dnsrecord " + dnsRecord.Name + " is not being updated repeatedly")
 		tmpRecord := &v1alpha1.DNSRecord{}
@@ -205,7 +205,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 					"Message": Or(Equal("Provider ensured the dns record"), Equal("Awaiting validation")),
 				})),
 			)
-		}, TestTimeoutLong, time.Second, ctx).Should(Succeed())
+		}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
 
 	})
 
@@ -260,7 +260,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 					"Message": And(ContainSubstring("The DNS provider failed to ensure the record"), ContainSubstring(expectedProviderErr)),
 				})),
 			)
-		}, TestTimeoutLong, time.Second, ctx).Should(Succeed())
+		}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
 
 		By("checking dnsrecord " + dnsRecord.Name + " is not being updated repeatedly")
 		tmpRecord := &v1alpha1.DNSRecord{}
@@ -297,7 +297,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 					"Message": Or(Equal("Provider ensured the dns record"), Equal("Awaiting validation")),
 				})),
 			)
-		}, TestTimeoutLong, time.Second, ctx).Should(Succeed())
+		}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
 
 	})
 

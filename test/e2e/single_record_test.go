@@ -64,7 +64,7 @@ var _ = Describe("Single Record Test", func() {
 			Eventually(func(g Gomega, ctx context.Context) {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).To(MatchError(ContainSubstring("not found")))
-			}, TestTimeoutLong, time.Second, ctx).Should(Succeed())
+			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
 		}
 	})
 
@@ -120,7 +120,7 @@ var _ = Describe("Single Record Test", func() {
 				})),
 			)
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
-		}, time.Minute, 10*time.Second, ctx).Should(Succeed())
+		}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
 		By("checking " + dnsRecord.Name + " ownerID is set correctly")
 		Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
 		Expect(dnsRecord.Status.OwnerID).ToNot(BeEmpty())
@@ -206,7 +206,7 @@ var _ = Describe("Single Record Test", func() {
 					})),
 				)
 				g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
-			}, time.Minute, 10*time.Second, ctx).Should(Succeed())
+			}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
 
 			By("checking " + dnsRecord.Name + " ownerID is set correctly")
 			Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
@@ -347,7 +347,7 @@ var _ = Describe("Single Record Test", func() {
 					})),
 				)
 				g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
-			}, TestTimeoutLong, 10*time.Second, ctx).Should(Succeed())
+			}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
 
 			By("checking " + dnsRecord.Name + " ownerID is set correctly")
 			Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
