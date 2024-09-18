@@ -3,7 +3,6 @@ package azure
 import (
 	"context"
 	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -234,7 +233,7 @@ func (p *AzureProvider) DeleteRecords(ctx context.Context, deleted externaldnspr
 		for _, ep := range endpoints {
 			if _, ok := ep.GetProviderSpecificProperty("routingpolicy"); ok && ep.RecordType != "TXT" {
 
-				profileName := p.ResourceGroup + "-" + hex.EncodeToString(md5.New().Sum([]byte(ep.DNSName)))[0:16]
+				profileName := GenerateProfileName(p.ResourceGroup, ep)
 				if p.DryRun {
 					p.logger.Info("would delete traffic manager profile", "name", profileName)
 					continue
@@ -294,7 +293,7 @@ func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnspr
 			}
 			if policy, ok := ep.GetProviderSpecificProperty("routingpolicy"); ok && ep.RecordType != "TXT" {
 				p.logger.Info("got endpoint with routing policy", "routing policy", policy)
-				profileName := p.ResourceGroup + "-" + hex.EncodeToString(md5.New().Sum([]byte(ep.DNSName)))[0:16]
+				profileName := GenerateProfileName(p.ResourceGroup, ep)
 
 				p.logger.Info("updating endpoint with routingpolicy", "endpoint", ep)
 				tmEndpoints := []*armtrafficmanager.Endpoint{}
@@ -497,4 +496,10 @@ func FindDefaultGeoTarget(endpoints []*externaldnsendpoint.Endpoint) string {
 		}
 	}
 	return ""
+}
+
+func GenerateProfileName(resourceGroup string, ep *externaldnsendpoint.Endpoint) string {
+	data := []byte(ep.DNSName)
+	hash := fmt.Sprintf("%x", md5.Sum(data))
+	return resourceGroup + "-" + hash[0:16]
 }
