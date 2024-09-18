@@ -4,7 +4,9 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,6 +39,7 @@ var _ = Describe("Single Record Test", func() {
 	var geoCode string
 
 	var dnsRecord *v1alpha1.DNSRecord
+	var dnsRecords []*v1alpha1.DNSRecord
 
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-single-" + GenerateName()
@@ -65,6 +68,12 @@ var _ = Describe("Single Record Test", func() {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).To(MatchError(ContainSubstring("not found")))
 			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
+		}
+		if len(dnsRecords) > 0 {
+			for _, record := range dnsRecords {
+				err := k8sClient.Delete(ctx, record, client.PropagationPolicy(metav1.DeletePropagationForeground))
+				Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+			}
 		}
 	})
 
@@ -626,6 +635,50 @@ var _ = Describe("Single Record Test", func() {
 				GinkgoWriter.Printf("[debug] ips: %v\n", ips)
 				g.Expect(ips).To(Or(ContainElements(testTargetIP)))
 			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+		})
+
+		It("handles multiple DNS Records for the same zone at the same time", func(ctx SpecContext) {
+			By("creating " + strconv.Itoa(testConcurrentRecords) + " DNS Records")
+			SetTestEnv("testNamespace", testDNSProviderSecret.Namespace)
+
+			if testDNSProvider == "google" {
+				SetTestEnv("testGeoCode", "europe-west1")
+			} else if testDNSProvider == "azure" {
+				SetTestEnv("testGeoCode", "GEO-EU")
+			} else {
+				SetTestEnv("testGeoCode", "EU")
+			}
+
+			SetTestEnv("TEST_DNS_PROVIDER_SECRET_NAME", testDNSProviderSecret.Name)
+			for i := 1; i <= testConcurrentRecords; i++ {
+				testRecord := &v1alpha1.DNSRecord{}
+				SetTestEnv("testHostname", strings.Join([]string{testID + "-" + strconv.Itoa(i), testDomainName}, "."))
+				SetTestEnv("testID", testID+"-"+strconv.Itoa(i))
+
+				err := ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", testRecord, GetTestEnv)
+				By("creating DNS Record for host " + GetTestEnv("testHostname"))
+				Expect(err).ToNot(HaveOccurred())
+				err = k8sClient.Create(ctx, testRecord)
+				Expect(err).ToNot(HaveOccurred())
+				dnsRecords = append(dnsRecords, testRecord)
+			}
+
+			startedTime := time.Now()
+			Eventually(func(g Gomega, ctx context.Context) {
+				for _, record := range dnsRecords {
+					testRecord := &v1alpha1.DNSRecord{}
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(record), testRecord)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(testRecord.Status.Conditions).To(
+						ContainElement(MatchFields(IgnoreExtras, Fields{
+							"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status": Equal(metav1.ConditionTrue),
+						})),
+					)
+				}
+			}, recordsReadyMaxDuration*time.Duration(testConcurrentRecords), 5*time.Second, ctx).Should(Succeed())
+			By(fmt.Sprintf("Total time for %d records to become ready: %s", testConcurrentRecords, time.Now().Sub(startedTime)))
+
 		})
 	})
 

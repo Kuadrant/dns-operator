@@ -35,6 +35,7 @@ const (
 	dnsZoneDomainNameEnvvar     = "TEST_DNS_ZONE_DOMAIN_NAME"
 	dnsProviderSecretNameEnvvar = "TEST_DNS_PROVIDER_SECRET_NAME"
 	dnsNamespacesEnvvar         = "TEST_DNS_NAMESPACES"
+	dnsConcurrentRecords        = "TEST_DNS_CONCURRENT_RECORDS"
 	dnsClusterContextsEnvvar    = "TEST_DNS_CLUSTER_CONTEXTS"
 	deploymentCountEnvvar       = "DEPLOYMENT_COUNT"
 	clusterCountEnvvar          = "CLUSTER_COUNT"
@@ -46,6 +47,7 @@ var (
 	// testZoneDomainName provided domain name for the testZoneID e.g. e2e.hcpapps.net
 	testZoneDomainName     string
 	testProviderSecretName string
+	testConcurrentRecords  int
 	testNamespaces         []string
 	testClusterContexts    []string
 	testDNSProvider        string
@@ -172,6 +174,19 @@ func setConfigFromEnvVars() error {
 			return fmt.Errorf("env variable '%s' must be set", dnsNamespacesEnvvar)
 		}
 	}
+
+	concurrentRecordsStr := os.Getenv(dnsConcurrentRecords)
+	if concurrentRecordsStr == "" {
+		//picking a default that won't have the PR e2e tests taking forever with Azure
+		concurrentRecordsStr = "1"
+	}
+
+	numConcurrentRecords, err := strconv.Atoi(concurrentRecordsStr)
+	if err != nil {
+		return fmt.Errorf("expected numerical value for env variable '%s', got: '%s'", dnsConcurrentRecords, concurrentRecordsStr)
+	}
+
+	testConcurrentRecords = numConcurrentRecords
 
 	namespaces := strings.Split(namespacesStr, ",")
 	if len(namespaces) == 1 {
