@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -247,7 +246,7 @@ func (p *AzureProvider) DeleteRecords(ctx context.Context, deleted externaldnspr
 					p.logger.Info("deleting endpoint with routingpolicy", "profile name", profileName)
 					_, err := p.TrafficManagerProfilesClient.Delete(ctx, p.ResourceGroup, profileName, nil)
 					if err != nil {
-						changeErrs = multierr.Append(changeErrs, cleanAzureError(err))
+						changeErrs = multierr.Append(changeErrs, externaldnsproviderazure.CleanAzureError(err))
 					}
 				}()
 
@@ -258,7 +257,7 @@ func (p *AzureProvider) DeleteRecords(ctx context.Context, deleted externaldnspr
 					p.logger.Info("deleting record that used traffic manager profile", "name", name, "profile name", profileName)
 					_, err := p.RecordSetsClient.Delete(ctx, p.ResourceGroup, z, name, dns.RecordTypeCNAME, nil)
 					if err != nil {
-						changeErrs = multierr.Append(changeErrs, cleanAzureError(err))
+						changeErrs = multierr.Append(changeErrs, externaldnsproviderazure.CleanAzureError(err))
 					}
 				}(zone)
 
@@ -277,7 +276,7 @@ func (p *AzureProvider) DeleteRecords(ctx context.Context, deleted externaldnspr
 						p.logger.Info("deleting record", "record type", e.RecordType, "record name", name, "zone", z)
 						_, err := p.RecordSetsClient.Delete(ctx, p.ResourceGroup, z, name, dns.RecordType(e.RecordType), nil)
 						if err != nil {
-							changeErrs = multierr.Append(changeErrs, cleanAzureError(err))
+							changeErrs = multierr.Append(changeErrs, externaldnsproviderazure.CleanAzureError(err))
 						}
 					}(zone, ep)
 				}
@@ -370,8 +369,8 @@ func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnspr
 					tmResp, err := p.TrafficManagerProfilesClient.CreateOrUpdate(ctx, p.ResourceGroup, profileName, profile, nil)
 
 					if err != nil {
-						p.logger.Error(cleanAzureError(err), "error updating traffic manager", "name", profileName, "profile", profile)
-						changeErrs = multierr.Append(changeErrs, cleanAzureError(err))
+						p.logger.Error(externaldnsproviderazure.CleanAzureError(err), "error updating traffic manager", "name", profileName, "profile", profile)
+						changeErrs = multierr.Append(changeErrs, externaldnsproviderazure.CleanAzureError(err))
 						return
 					}
 
@@ -395,7 +394,7 @@ func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnspr
 						nil,
 					)
 					if err != nil {
-						changeErrs = multierr.Append(changeErrs, cleanAzureError(err))
+						changeErrs = multierr.Append(changeErrs, externaldnsproviderazure.CleanAzureError(err))
 					}
 				}(zone, ep)
 			} else {
@@ -424,7 +423,7 @@ func (p *AzureProvider) UpdateRecords(ctx context.Context, updated externaldnspr
 						nil,
 					)
 					if err != nil {
-						changeErrs = multierr.Append(changeErrs, cleanAzureError(err))
+						changeErrs = multierr.Append(changeErrs, externaldnsproviderazure.CleanAzureError(err))
 					}
 				}(zone, ep)
 			}
@@ -498,14 +497,4 @@ func FindDefaultGeoTarget(endpoints []*externaldnsendpoint.Endpoint) string {
 		}
 	}
 	return ""
-}
-
-func cleanAzureError(err error) error {
-	reg := regexp.MustCompile(`\"message\": \".*\"`)
-	errMsg := err.Error()
-	msg := reg.FindString(errMsg)
-	msgBits := strings.SplitAfterN(msg, ":", 2)
-	msgBits = strings.Split(msgBits[1], `"`)
-	msg = msgBits[1]
-	return fmt.Errorf(msg)
 }

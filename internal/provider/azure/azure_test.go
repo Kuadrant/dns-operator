@@ -1,7 +1,6 @@
 package azure
 
 import (
-	"fmt"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -181,32 +180,6 @@ func TestAzureProvider_AdjustEndpoints(t *testing.T) {
 			p := &AzureProvider{}
 			endpoints, err := p.AdjustEndpoints(tt.endpoints)
 			tt.Verify(endpoints, err)
-
-		})
-	}
-}
-
-func TestCleanAzureError(t *testing.T) {
-	RegisterTestingT(t)
-	tests := []struct {
-		name   string
-		err    error
-		Verify func(err error)
-	}{
-		{
-			name: "cleans up bad GEO error",
-			err:  fmt.Errorf("\n\t* PUT https://management.azure.com/subscriptions/6a87facd-e4e1-4738-a497-fb325344c3d1/resourceGroups/pbKuadrant/providers/Microsoft.Network/trafficmanagerprofiles/pbKuadrant-742d6572726f7273\n--------------------------------------------------------------------------------\nRESPONSE 400: 400 Bad Request\nERROR CODE: BadRequest\n--------------------------------------------------------------------------------\n{\n  \"error\": {\n    \"code\": \"BadRequest\",\n    \"message\": \"The following locations specified in the geoMapping property for endpoint ‘foo-example-com’ are not supported: NOTAGEOCODE. For a list of supported locations, see the Traffic Manager documentation.\"\n  }\n}\n--------------------------------------------------------------------------------\n\n\n"),
-			Verify: func(err error) {
-				Expect(err).ToNot(BeNil())
-				Expect(err.Error()).To(Equal("The following locations specified in the geoMapping property for endpoint ‘foo-example-com’ are not supported: NOTAGEOCODE. For a list of supported locations, see the Traffic Manager documentation."))
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := cleanAzureError(tt.err)
-			tt.Verify(err)
 
 		})
 	}
