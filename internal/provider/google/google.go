@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	dnsv1 "google.golang.org/api/dns/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -34,6 +36,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	externaldnsgoogle "github.com/kuadrant/dns-operator/internal/external-dns/provider/google"
+	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
@@ -120,7 +123,14 @@ func NewProviderFromSecret(ctx context.Context, s *corev1.Secret, c provider.Con
 		return nil, fmt.Errorf("GCP Provider credentials is empty")
 	}
 
-	dnsClient, err := dnsv1.NewService(ctx, option.WithCredentialsJSON(s.Data[v1alpha1.GoogleJsonKey]))
+	creds, err := google.CredentialsFromJSON(ctx, s.Data[v1alpha1.GoogleJsonKey], dnsv1.NdevClouddnsReadwriteScope)
+	if err != nil {
+		return nil, err
+	}
+
+	httpClient := metrics.NewInstrumentedClient("google", oauth2.NewClient(ctx, creds.TokenSource))
+
+	dnsClient, err := dnsv1.NewService(ctx, option.WithHTTPClient(httpClient))
 	if err != nil {
 		return nil, err
 	}

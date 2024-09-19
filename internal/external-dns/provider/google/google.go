@@ -21,12 +21,10 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
 	"github.com/go-logr/logr"
-	"github.com/linki/instrumented_http"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/dns/v1"
 	"google.golang.org/api/googleapi"
@@ -144,13 +142,6 @@ func NewGoogleProvider(ctx context.Context, config GoogleConfig) (*GoogleProvide
 	if err != nil {
 		return nil, err
 	}
-
-	gcloud = instrumented_http.NewClient(gcloud, &instrumented_http.Callbacks{
-		PathProcessor: func(path string) string {
-			parts := strings.Split(path, "/")
-			return parts[len(parts)-1]
-		},
-	})
 
 	dnsClient, err := dns.NewService(ctx, option.WithHTTPClient(gcloud))
 	if err != nil {

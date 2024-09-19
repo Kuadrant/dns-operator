@@ -23,6 +23,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	externaldnsproviderazure "github.com/kuadrant/dns-operator/internal/external-dns/provider/azure"
+	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
@@ -55,6 +56,8 @@ func NewAzureProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Co
 	azureConfig.ZoneNameFilter = c.DomainFilter
 	azureConfig.IDFilter = c.ZoneIDFilter
 	azureConfig.DryRun = false
+
+	azureConfig.Transporter = metrics.NewInstrumentedClient("azure", nil)
 
 	azureProvider, err := externaldnsproviderazure.NewAzureProviderFromConfig(ctx, azureConfig)
 

@@ -25,6 +25,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v2"
@@ -49,6 +50,7 @@ type Config struct {
 	ZoneNameFilter               endpoint.DomainFilter
 	IDFilter                     provider.ZoneIDFilter
 	DryRun                       bool
+	Transporter                  policy.Transporter
 }
 
 func getConfig(configFile, resourceGroup, userAssignedIdentityClientID string) (*Config, error) {
@@ -83,6 +85,11 @@ func getCredentials(ctx context.Context, cfg Config) (azcore.TokenCredential, *a
 	clientOpts := azcore.ClientOptions{
 		Cloud: cloudCfg,
 	}
+
+	if cfg.Transporter != nil {
+		clientOpts.Transport = cfg.Transporter
+	}
+
 	armClientOpts := &arm.ClientOptions{
 		ClientOptions: clientOpts,
 	}

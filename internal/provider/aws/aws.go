@@ -35,6 +35,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	externaldnsprovideraws "github.com/kuadrant/dns-operator/internal/external-dns/provider/aws"
+	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
@@ -62,6 +63,9 @@ var _ provider.Provider = &Route53DNSProvider{}
 
 func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	config := aws.NewConfig()
+
+	config.WithHTTPClient(metrics.NewInstrumentedClient("aws", config.HTTPClient))
+
 	sessionOpts := session.Options{
 		Config: *config,
 	}
