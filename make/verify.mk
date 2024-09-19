@@ -4,7 +4,7 @@
 ## Targets to verify actions that generate/modify code have been executed and output committed
 
 .PHONY: verify-all
-verify-all: verify-code verify-bundle verify-imports verify-manifests verify-generate verify-go-mod
+verify-all: verify-code verify-bundle verify-helm-build verify-imports verify-manifests verify-generate verify-go-mod
 
 .PHONY: verify-code
 verify-code: vet ## Verify code formatting
