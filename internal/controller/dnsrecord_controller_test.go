@@ -363,6 +363,118 @@ var _ = Describe("DNSRecordReconciler", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
+	It("should report related endpoints correctly", func() {
+		// This will come in play only for the lb strategy
+		// in this test I simulate 3 possible scenarios using hand-made simple endpoints
+		// scenarios:
+		// 1. Record A in a subdomain of record B. Record B should have endpoints of record A and record B
+		// 2. Record A and record B share domain. Endpoints should be in Spec.ZoneEndpoints as they will be in the Spec.Endpoints
+		// 3. Record A and record B does not share domain in the zone. They should not have each other's endpoints
+
+		// record for testHostname
+		dnsRecord1 := &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo-record-1",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				RootHost: testHostname,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
+				},
+				Endpoints: getTestEndpoints(testHostname, "127.0.0.1"),
+			},
+		}
+
+		// record for sub.testHostname
+		dnsRecord2 := &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo-record-2",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				RootHost: "sub." + testHostname,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
+				},
+				Endpoints: getTestEndpoints("sub."+testHostname, "127.0.0.2"),
+			},
+		}
+
+		// record for testHostname
+		dnsRecord3 := &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo-record-3",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				RootHost: testHostname,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
+				},
+				Endpoints: getTestEndpoints(testHostname, "127.0.0.1"),
+			},
+		}
+
+		// record for testHostname2
+		testHostname2 := strings.Join([]string{"bar", testZoneDomainName}, ".")
+		dnsRecord4 := &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo-record-4",
+				Namespace: testNamespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				RootHost: testHostname2,
+				ProviderRef: v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
+				},
+				Endpoints: getTestEndpoints(testHostname2, "127.0.0.1"),
+			},
+		}
+
+		// create all records
+		Expect(k8sClient.Create(ctx, dnsRecord1)).To(Succeed())
+		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
+		Expect(k8sClient.Create(ctx, dnsRecord3)).To(Succeed())
+		Expect(k8sClient.Create(ctx, dnsRecord4)).To(Succeed())
+
+		// check first record to have EP from second record and not have EPs from third
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord1), dnsRecord1)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord3), dnsRecord3)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord4), dnsRecord4)).To(Succeed())
+
+			g.Expect(dnsRecord1.Status.ZoneEndpoints).ToNot(BeNil())
+
+			// Scenario 1
+			// endpoints from the record2 should be present in zone EPs as record2 in subdomain of record 1 rootDomain
+			// record must have it's own endpoints (that are identical to the record3 endpoints)
+			g.Expect(dnsRecord1.Status.ZoneEndpoints).To(And(
+				ContainElements(dnsRecord2.Status.Endpoints),
+				ContainElements(dnsRecord1.Status.Endpoints)))
+			// record1 and 3 share root domain - all of the above should also apply to this record
+			g.Expect(dnsRecord3.Status.ZoneEndpoints).To(And(
+				ContainElements(dnsRecord2.Status.Endpoints),
+				ContainElements(dnsRecord3.Status.Endpoints)))
+
+			// Scenario 2
+			// endpoints from the third record should be present in ZoneEndpoints as it is in the same rootDomain
+			g.Expect(dnsRecord1.Status.ZoneEndpoints).To(ContainElements(dnsRecord3.Status.Endpoints))
+			// the same true to record 3 as well
+			g.Expect(dnsRecord3.Status.ZoneEndpoints).To(ContainElements(dnsRecord1.Status.Endpoints))
+			// also check equality of status.Endpoints
+			g.Expect(dnsRecord1.Status.Endpoints).To(ConsistOf(dnsRecord3.Status.Endpoints))
+
+			// Scenario 3
+			// endpoints from the forth record should not be present as record 4 have unique rootHosts
+			g.Expect(dnsRecord1.Status.ZoneEndpoints).ToNot(ContainElements(dnsRecord4.Status.Endpoints))
+			g.Expect(dnsRecord2.Status.ZoneEndpoints).ToNot(ContainElements(dnsRecord4.Status.Endpoints))
+			g.Expect(dnsRecord3.Status.ZoneEndpoints).ToNot(ContainElements(dnsRecord4.Status.Endpoints))
+
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+	})
+
 	It("should detect a conflict and the resolution of a conflict", func() {
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
