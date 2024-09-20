@@ -34,6 +34,55 @@ We have tested using the available policy `AmazonRoute53FullAccess` however it s
 
 [https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/access-control-managing-permissions.html](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/access-control-managing-permissions.html)
 
+By default, Kuadrant will list the available zones and find the matching zone based on the listener host in the gateway listener. If it finds more than one matching zone for a given listener host, it will not update any of those zones. 
+When providing a credential you should limit that credential down to just have write access to the zones you want Kuadrant to manage. Below is an example of a an AWS policy for doing this type of thing:
+
+```
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "route53:ListTagsForResources",
+                "route53:GetHealthCheckLastFailureReason",
+                "route53:GetHealthCheckStatus",
+                "route53:GetChange",
+                "route53:GetHostedZone",
+                "route53:ChangeResourceRecordSets",
+                "route53:ListResourceRecordSets",
+                "route53:GetHealthCheck",
+                "route53:UpdateHostedZoneComment",
+                "route53:UpdateHealthCheck",
+                "route53:CreateHealthCheck",
+                "route53:DeleteHealthCheck",
+                "route53:ListTagsForResource",
+                "route53:ListHealthChecks",
+                "route53:GetGeoLocation",
+                "route53:ListGeoLocations",
+                "route53:ListHostedZonesByName",
+                "route53:GetHealthCheckCount"
+            ],
+            "Resource": [
+                "arn:aws:route53:::hostedzone/Z08187901Y93585DDGM6K",
+                "arn:aws:route53:::healthcheck/*",
+                "arn:aws:route53:::change/*"
+            ]
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+                "route53:ListHostedZones"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+
 ### Google Cloud DNS Provider
 
 Kuadant expects a secret with a credential. Below is an example for Google DNS. It is important to set the secret type to `gcp`:
@@ -53,6 +102,74 @@ kubectl create secret generic my-test-gcp-credentials \
 
 
 #### Google Cloud DNS Access permissions required
-See: 
+
+We have tested with the `dns.admin` role. See for more details:
 
 [https://cloud.google.com/dns/docs/access-control#dns.admin](https://cloud.google.com/dns/docs/access-control#dns.admin)
+
+
+#### Azure Cloud DNS Provider
+
+Kuadrant expects a `Secret` with a credential. Below is an example for Azure. It is important to set the secret type to `azure`:
+
+We recommend creating a new service principal for managing DNS. [Azure Service Principal Docs](https://learn.microsoft.com/en-us/entra/identity-platform/app-objects-and-service-principals?tabs=browser#service-principal-object)
+
+```
+# Create the service principal
+$ DNS_NEW_SP_NAME=kuadrantDnsPrincipal
+$ DNS_SP=$(az ad sp create-for-rbac --name $DNS_NEW_SP_NAME)
+$ DNS_SP_APP_ID=$(echo $DNS_SP | jq -r '.appId')
+$ DNS_SP_PASSWORD=$(echo $DNS_SP | jq -r '.password')
+
+```
+
+
+#### Azure Cloud DNS Access permissions required
+
+
+You will need to grant read and contributor access to the zone(s) you want managed for the service principal you are using.
+
+
+1)  fetch DNS id used to grant access to the service principal
+
+```
+DNS_ID=$(az network dns zone show --name example.com \
+ --resource-group ExampleDNSResourceGroup --query "id" --output tsv)
+
+# get yor resource group id
+
+RESOURCE_GROUP_ID=az group show --resource-group ExampleDNSResourceGroup | jq ".id" -r
+``` 
+
+# provide reader access to the resource group
+$ az role assignment create --role "Reader" --assignee $DNS_SP_APP_ID --scope $DNS_ID
+
+# provide contributor access to DNS Zone itself
+$ az role assignment create --role "Contributor" --assignee $DNS_SP_APP_ID --scope $DNS_ID
+
+As we are setting up advanced traffic rules for GEO and Weighted responses you will also need to grant traffic manager access:
+
+```
+az role assignment create --role "Traffic Manager Contributor" --assignee $DNS_SP_APP_ID --scope $RESOURCE_GROUP_ID
+```
+
+```
+cat <<-EOF > /local/path/to/azure.json
+{
+  "tenantId": "$(az account show --query tenantId -o tsv)",
+  "subscriptionId": "$(az account show --query id -o tsv)",
+  "resourceGroup": "ExampleDNSResourceGroup",
+  "aadClientId": "$DNS_SP_APP_ID",
+  "aadClientSecret": "$DNS_SP_PASSWORD"
+}
+EOF
+```
+
+Finally setup the secret with the credential azure.json file
+
+```bash
+kubectl create secret generic my-test-azure-credentials \
+  --namespace=kuadrant-dns-system \
+  --type=kuadrant.io/azure \
+  --from-file=azure.json=/local/path/to/azure.json
+```
