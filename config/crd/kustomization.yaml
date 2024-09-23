@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/kuadrant.io_dnsrecords.yaml
+- bases/kuadrant.io_dnshealthcheckprobes.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:
