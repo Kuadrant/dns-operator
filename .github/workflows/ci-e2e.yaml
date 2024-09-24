@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "release-*"
+      - "ci_*"
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
     paths-ignore:
@@ -26,6 +27,7 @@ on:
 
 env:
   TEST_NAMESPACE: e2e-test
+  GINKGO_PARALLEL: true
 
 jobs:
   e2e_test_suite:
@@ -66,11 +68,18 @@ jobs:
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.google.hcpapps.net
           export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
           make test-e2e
+      - if: github.event_name == 'pull_request_target'
+        run:
+          echo "AZURE_GINKGO_FLAGS='-v -p --label-filter="!provider_errors && !multi_record && !health_checks"'" >> $GITHUB_ENV
+      - if: github.event_name != 'pull_request_target'
+        run:
+          echo "AZURE_GINKGO_FLAGS='-v -p'" >> $GITHUB_ENV
       - name: Run suite Azure
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-azure
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.azure.hcpapps.net
           export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
+          export GINKGO_FLAGS=${{ env.AZURE_GINKGO_FLAGS }}
           make test-e2e
       - name: Dump Controller logs
         if: ${{ failure() }}
