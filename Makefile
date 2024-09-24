@@ -82,6 +82,16 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
+# Ginkgo options
+DEFAULT_GINKGO_FLAGS ?= -v
+GINKGO_FLAGS ?= $(DEFAULT_GINKGO_FLAGS)
+
+# To enable set flag to true
+GINKGO_PARALLEL ?= false
+ifeq ($(GINKGO_PARALLEL), true)
+	GINKGO_FLAGS += -p
+endif
+
 .PHONY: all
 all: build
 
@@ -153,11 +163,11 @@ test-integration: manifests generate fmt vet envtest ginkgo ## Run integration t
 
 .PHONY: test-e2e
 test-e2e: ginkgo
-	$(GINKGO) -tags=e2e -v ./test/e2e
+	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e ./test/e2e
 
 .PHONY: test-e2e-multi
 test-e2e-multi: ginkgo
-	$(GINKGO) -tags=e2e -v --label-filter=multi_record -v ./test/e2e
+	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=multi_record ./test/e2e
 
 .PHONY: local-setup-cluster
 local-setup-cluster: DEPLOY=false
