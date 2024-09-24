@@ -22,10 +22,26 @@ on:
       - 'samples/**'
       - 'LICENSE'
   workflow_dispatch:
+    inputs:
+      ginkgoParallel:
+        description: Run tests in parallel
+        default: false
+        type: boolean
+      ginkgoDryRun:
+        description: Run tests with dry run
+        default: false
+        type: boolean
+      ginkgoFlags:
+        description: Flags to pass directly to the ginkgo command
+        default: "-v"
+        type: string
   merge_group:
 
 env:
   TEST_NAMESPACE: e2e-test
+  GINKGO_PARALLEL: ${{ inputs.ginkgoParallel }}
+  GINKGO_DRYRUN: ${{ inputs.ginkgoDryRun }}
+  GINKGO_FLAGS:  ${{ inputs.ginkgoFlags }}
 
 jobs:
   e2e_test_suite:
@@ -49,6 +65,7 @@ jobs:
         run: |
           make local-setup-azure-clean local-setup-azure-generate KUADRANT_AZURE_CREDENTIALS='${{ secrets.E2E_AZURE_CREDENTIALS }}'
       - name: Setup environment
+        if: ${{ !inputs.ginkgoDryRun }}
         run: |
           make local-setup DEPLOY=true TEST_NAMESPACE=${{ env.TEST_NAMESPACE }}
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-aws
@@ -67,13 +84,19 @@ jobs:
           export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
           make test-e2e
       - name: Run suite Azure
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-azure
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.azure.hcpapps.net
           export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
           make test-e2e
       - name: Dump Controller logs
-        if: ${{ failure() }}
+        if: ${{ failure() && !inputs.ginkgoDryRun }}
         run: |
           kubectl get deployments -A
           kubectl logs --all-containers --ignore-errors deployments/dns-operator-controller-manager -n dns-operator-system
+      - name: Exit as failure if dry run
+        if: ${{ success() && inputs.ginkgoDryRun }}
+        run: |
+          echo "Executed using dry run, exiting as failure"
+          exit 1
