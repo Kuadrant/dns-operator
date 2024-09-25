@@ -26,10 +26,10 @@ import (
 	"github.com/kuadrant/dns-operator/internal/common/hash"
 )
 
-type HealthProtocol string
+type Protocol string
 
-const HttpProtocol HealthProtocol = "HTTP"
-const HttpsProtocol HealthProtocol = "HTTPS"
+const HttpProtocol Protocol = "HTTP"
+const HttpsProtocol Protocol = "HTTPS"
 
 // HealthCheckSpec configures health checks in the DNS provider.
 // By default this health check will be applied to each unique DNS A Record for
@@ -46,7 +46,7 @@ type HealthCheckSpec struct {
 
 	// Protocol to use when connecting to the host, valid values are "HTTP" or "HTTPS"
 	// +kubebuilder:validation:XValidation:rule="self in ['HTTP','HTTPS']",message="Only HTTP or HTTPS protocols are allowed"
-	Protocol *HealthProtocol `json:"protocol,omitempty"`
+	Protocol *Protocol `json:"protocol,omitempty"`
 
 	// FailureThreshold is a limit of consecutive failures that must occur for a host to be considered unhealthy
 	// +kubebuilder:validation:XValidation:rule="self > 0",message="Failure threshold must be greater than 0"

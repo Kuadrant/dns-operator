@@ -241,6 +241,12 @@ run: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
 
+.PHONY: run-with-probes
+run-with-probes: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown") 
+run-with-probes: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
+run-with-probes: manifests generate fmt vet ## Run a controller from your host.
+	go run -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure --enable-probes
+
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/

@@ -154,7 +154,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					HealthCheck: &v1alpha1.HealthCheckSpec{
 						Endpoint:         "health",
 						Port:             ptr.To(5),
-						Protocol:         ptr.To(v1alpha1.HealthProtocol("cat")),
+						Protocol:         ptr.To(v1alpha1.Protocol("cat")),
 						FailureThreshold: ptr.To(-1),
 					},
 				},
