@@ -92,6 +92,12 @@ ifeq ($(GINKGO_PARALLEL), true)
 	GINKGO_FLAGS += -p
 endif
 
+# To enable set flag to true
+GINKGO_DRYRUN ?= false
+ifeq ($(GINKGO_DRYRUN), true)
+	GINKGO_FLAGS += --dry-run
+endif
+
 .PHONY: all
 all: build
 

@@ -3,6 +3,20 @@
 The e2e test suite is used to test common scenarios in each supported dns provider. The suite contains tests for single instance tests (single_record) where only a single running controller are expected as well as multi instance tests (multi_record) that are intended to test scenarios where multiple instances of the dns operator are running, each reconciling DNSRecord resources contributing to the same shared dns zone. 
 The suite allows runtime configuration to alter the number of instances that are under test allowing stress testing scenarios to be executed using more extreme numbers of instances and records.
 
+## Test Labels
+
+Tests are organized with [labels](https://onsi.github.io/ginkgo/#spec-labels) allowing subsets of specs to be easily run using ginkgo command line [options](https://onsi.github.io/ginkgo/#combining-filters).
+
+| label           | description                                                                               |
+|-----------------|-------------------------------------------------------------------------------------------|
+| multi_record    | Test cases covering multiple DNSRecords updating a set of records in a zone (Distributed) |
+| single_record   | Test cases covering a single DNSRecord updating a set of records in a zone                | 
+| simple          | Test cases for DNSRecords using the simple endpoint structure                             | 
+| loadbalanced    | Test cases for DNSRecords using the loadbalanced endpoint structure                       | 
+| provider_errors | Tests cases that put DNSRecords into known error states                                   | 
+| health_checks   | Tests cases covering DNSRecords with health checks                                        | 
+| happy           | Happy path test cases, minimum set of tests that check basic functionality                | 
+
 ## Local Setup
 
 ### Cluster scoped on single cluster

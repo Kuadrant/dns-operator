@@ -79,7 +79,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 		}, time.Minute, 10*time.Second, ctx).Should(Succeed())
 	})
 
-	Context("simple", func() {
+	Context("simple", Labels{"simple"}, func() {
 		It("creates and deletes distributed dns records", func(ctx SpecContext) {
 			By(fmt.Sprintf("creating %d simple dnsrecords accross %d clusters", len(testNamespaces)*len(testClusters), len(testClusters)))
 			for ci, tc := range testClusters {
@@ -310,7 +310,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 	})
 
-	Context("loadbalanced", func() {
+	Context("loadbalanced", Labels{"loadbalanced"}, func() {
 		It("creates and deletes distributed dns records", func(ctx SpecContext) {
 			testGeoRecords := map[string][]testDNSRecord{}
 
