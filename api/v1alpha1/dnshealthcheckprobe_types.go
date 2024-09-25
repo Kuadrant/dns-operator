@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"net"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -94,6 +95,17 @@ type DNSHealthCheckProbeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []DNSHealthCheckProbe `json:"items"`
+}
+
+func (p *DNSHealthCheckProbe) GetIPAddresses() []string {
+	if net.ParseIP(p.Spec.Address) != nil {
+		return []string{
+			p.Spec.Address,
+		}
+	}
+	ips, _ := net.LookupHost(p.Spec.Address)
+	return ips
+
 }
 
 func (p *DNSHealthCheckProbe) Default() {
