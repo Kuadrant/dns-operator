@@ -12,12 +12,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/probes"
 )
 
 // DNSProbeReconciler reconciles a DNSRecord object
 type DNSProbeReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme        *runtime.Scheme
+	WorkerManager *probes.WorkerManager
 }
 
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnshealthcheckprobes,verbs=get;list;watch;create;update;patch;delete
@@ -29,7 +31,7 @@ func (r *DNSProbeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	ctx = log.IntoContext(ctx, baseLogger)
 	logger := baseLogger
 
-	logger.Info("TODO Reconciling DNSHealthCheckProbe")
+	logger.Info("Reconciling DNSHealthCheckProbe")
 
 	previous := &v1alpha1.DNSHealthCheckProbe{}
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, previous)
@@ -43,9 +45,8 @@ func (r *DNSProbeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	dnsProbe := previous.DeepCopy()
 	ctx, _ = r.setLoggerValues(ctx, baseLogger, dnsProbe)
 
-	log.FromContext(ctx).Info("TODO reconcile probe")
+	r.WorkerManager.EnsureProbeWorker(ctx, r.Client, dnsProbe)
 
-	//TODO reconcile probe
 	return ctrl.Result{}, nil
 }
 
