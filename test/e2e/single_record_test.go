@@ -24,7 +24,7 @@ import (
 )
 
 // Test Cases covering a single DNSRecord updating a set of records in a zone
-var _ = Describe("Single Record Test", func() {
+var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 	// testID is a randomly generated identifier for the test
 	// it is used to name resources and/or namespaces so different
 	// tests can be run in parallel in the same cluster
@@ -174,8 +174,8 @@ var _ = Describe("Single Record Test", func() {
 		))
 	})
 
-	Context("simple", func() {
-		It("makes available a hostname that can be resolved", func(ctx SpecContext) {
+	Context("simple", Labels{"simple"}, func() {
+		It("makes available a hostname that can be resolved", Labels{"happy"}, func(ctx SpecContext) {
 			testTargetIP := "127.0.0.1"
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
@@ -257,8 +257,8 @@ var _ = Describe("Single Record Test", func() {
 		})
 	})
 
-	Context("loadbalanced", func() {
-		It("makes available a hostname that can be resolved", func(ctx SpecContext) {
+	Context("loadbalanced", Labels{"loadbalanced"}, func() {
+		It("makes available a hostname that can be resolved", Labels{"happy"}, func(ctx SpecContext) {
 			testTargetIP := "127.0.0.1"
 
 			klbHostName := "klb." + testHostname
