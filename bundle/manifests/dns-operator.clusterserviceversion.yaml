@@ -6,6 +6,26 @@ metadata:
       [
         {
           "apiVersion": "kuadrant.io/v1alpha1",
+          "kind": "DNSHealthCheckProbe",
+          "metadata": {
+            "name": "$NAME"
+          },
+          "spec": {
+            "additionalHeadersRef": {
+              "name": "headers"
+            },
+            "address": "192.168.0.16",
+            "allowInsecureCertificate": true,
+            "failureThreshold": 5,
+            "hostname": "test.com",
+            "interval": "60s",
+            "path": "/healthz",
+            "port": 443,
+            "protocol": "HTTPS"
+          }
+        },
+        {
+          "apiVersion": "kuadrant.io/v1alpha1",
           "kind": "DNSRecord",
           "metadata": {
             "labels": {
@@ -38,7 +58,7 @@ metadata:
     capabilities: Basic Install
     categories: Integration & Delivery
     containerImage: quay.io/kuadrant/dns-operator:latest
-    createdAt: "2024-10-11T09:16:57Z"
+    createdAt: "2024-10-15T16:55:37Z"
     description: A Kubernetes Operator to manage the lifecycle of DNS resources
     operators.operatorframework.io/builder: operator-sdk-v1.33.0
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
@@ -50,7 +70,10 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
-    - kind: DNSHealthCheckProbe
+    - description: DNSHealthCheckProbe is the Schema for the dnshealthcheckprobes
+        API
+      displayName: DNSHealthCheckProbe
+      kind: DNSHealthCheckProbe
       name: dnshealthcheckprobes.kuadrant.io
       version: v1alpha1
     - description: DNSRecord is the Schema for the dnsrecords API

@@ -36,6 +36,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/controller"
+	"github.com/kuadrant/dns-operator/internal/probes"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
@@ -158,9 +159,11 @@ func main() {
 	}
 
 	if dnsProbesEnabled {
+		workerManager := probes.NewWorkerManager()
 		if err = (&controller.DNSProbeReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
+			Client:        mgr.GetClient(),
+			Scheme:        mgr.GetScheme(),
+			WorkerManager: workerManager,
 		}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "DNSProbe")
 			os.Exit(1)

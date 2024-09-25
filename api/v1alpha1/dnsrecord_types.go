@@ -53,9 +53,6 @@ type HealthCheckSpec struct {
 	// FailureThreshold is a limit of consecutive failures that must occur for a host to be considered unhealthy
 	// +kubebuilder:validation:XValidation:rule="self > 0",message="Failure threshold must be greater than 0"
 	FailureThreshold *int `json:"failureThreshold,omitempty"`
-	// AllowInsecureCertificate will instruct the health check probe to not fail on a self-signed or otherwise invalid SSL certificate
-	// this is primarily used in development or testing environments
-	AllowInsecureCertificate bool `json:"allowInsecureCertificate,omitempty"`
 }
 
 type HealthCheckStatus struct {
