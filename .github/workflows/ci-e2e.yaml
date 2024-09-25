@@ -95,6 +95,16 @@ jobs:
         run: |
           kubectl get deployments -A
           kubectl logs --all-containers --ignore-errors deployments/dns-operator-controller-manager -n dns-operator-system
+      - name: Dump Controller metrics
+        if: ${{ success() && !inputs.ginkgoDryRun }}
+        run: |
+          kubectl run -q curl --image=curlimages/curl --rm -it --restart=Never --namespace dns-operator-system -- curl -XGET http://dns-operator-controller-manager-metrics-service:8080/metrics > metrics.txt
+          cat metrics.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metrics
+          path: metrics.txt
+          if-no-files-found: warn
       - name: Exit as failure if dry run
         if: ${{ success() && inputs.ginkgoDryRun }}
         run: |
