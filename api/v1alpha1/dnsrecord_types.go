@@ -58,17 +58,6 @@ type HealthCheckSpec struct {
 	AllowInsecureCertificate bool `json:"allowInsecureCertificate,omitempty"`
 }
 
-type AdditionalHeadersRef struct {
-	Name string `json:"name"`
-}
-
-type AdditionalHeaders []AdditionalHeader
-
-type AdditionalHeader struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
 type HealthCheckStatus struct {
 	Conditions []metav1.Condition       `json:"conditions,omitempty"`
 	Probes     []HealthCheckStatusProbe `json:"probes,omitempty"`
