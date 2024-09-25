@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "release-*"
+      - "ci_*"
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
     paths-ignore:
@@ -39,9 +40,9 @@ on:
 
 env:
   TEST_NAMESPACE: e2e-test
-  GINKGO_PARALLEL: ${{ inputs.ginkgoParallel }}
-  GINKGO_DRYRUN: ${{ inputs.ginkgoDryRun }}
-  GINKGO_FLAGS:  ${{ inputs.ginkgoFlags }}
+  GINKGO_PARALLEL: ${{ inputs.ginkgoParallel || 'false' }}
+  GINKGO_DRYRUN: ${{ inputs.ginkgoDryRun || 'false' }}
+  GINKGO_FLAGS:  ${{ inputs.ginkgoFlags || '-v' }}
 
 jobs:
   e2e_test_suite:
@@ -84,7 +85,7 @@ jobs:
           export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
           make test-e2e
       - name: Run suite Azure
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: (github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'release-')) || github.event_name == 'workflow_dispatch')
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-azure
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.azure.hcpapps.net
