@@ -152,16 +152,16 @@ var _ = Describe("DNSRecordReconciler", func() {
 					},
 					Endpoints: getTestEndpoints("bar.example.com", "127.0.0.1"),
 					HealthCheck: &v1alpha1.HealthCheckSpec{
-						Endpoint:         "health",
+						Path:             "health",
 						Port:             ptr.To(5),
-						Protocol:         ptr.To(v1alpha1.HealthProtocol("cat")),
+						Protocol:         v1alpha1.Protocol("cat"),
 						FailureThreshold: ptr.To(-1),
 					},
 				},
 			}
 			err := k8sClient.Create(ctx, dnsRecord)
 			Expect(err).To(MatchError(ContainSubstring("spec.rootHost: Invalid value")))
-			Expect(err).To(MatchError(ContainSubstring("spec.healthCheck.endpoint: Invalid value")))
+			Expect(err).To(MatchError(ContainSubstring("spec.healthCheck.path: Invalid value")))
 			Expect(err).To(MatchError(ContainSubstring("Only ports 80, 443, 1024-49151 are allowed")))
 			Expect(err).To(MatchError(ContainSubstring("Only HTTP or HTTPS protocols are allowed")))
 			Expect(err).To(MatchError(ContainSubstring("Failure threshold must be greater than 0")))

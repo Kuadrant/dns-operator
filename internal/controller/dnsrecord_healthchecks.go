@@ -164,10 +164,10 @@ func getHealthChecksConfig(dnsRecord *v1alpha1.DNSRecord) *healthChecksConfig {
 	failureThreshold := int64(*dnsRecord.Spec.HealthCheck.FailureThreshold)
 
 	return &healthChecksConfig{
-		Endpoint:         dnsRecord.Spec.HealthCheck.Endpoint,
+		Endpoint:         dnsRecord.Spec.HealthCheck.Path,
 		Port:             &port,
 		FailureThreshold: &failureThreshold,
-		Protocol:         (*provider.HealthCheckProtocol)(dnsRecord.Spec.HealthCheck.Protocol),
+		Protocol:         (*provider.HealthCheckProtocol)(&dnsRecord.Spec.HealthCheck.Protocol),
 	}
 }
 
