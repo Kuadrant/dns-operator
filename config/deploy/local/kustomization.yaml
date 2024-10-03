@@ -3,7 +3,11 @@
 # Set the deployment imagePullPolicy to IfNotPresent. This is required if you are using a local image loaded into kind i.e. make kind-load-image
 #
 
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 resources:
+  - namespace.yaml
   - ../../default
 
 patches:
