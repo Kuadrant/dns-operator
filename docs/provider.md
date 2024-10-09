@@ -6,8 +6,9 @@ In order to be able to interact with supported DNS providers, Kuadrant needs a c
 
 Kuadrant Supports the following DNS providers currently
 
-- AWS Route 53 (AWS)
-- Google Cloud DNS (GCP)
+- AWS Route 53 (aws)
+- Google Cloud DNS (gcp)
+- Azure (azure)
 
 ### AWS Route 53 Provider
 
