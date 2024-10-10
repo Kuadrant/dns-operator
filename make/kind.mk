@@ -16,7 +16,7 @@ kind-delete-cluster: kind ## Delete the "kuadrant-dns-local" kind cluster.
 
 .PHONY: kind-delete-all-clusters
 kind-delete-all-clusters: kind ## Delete the all "kuadrant-dns-local*" kind clusters.
-	- $(KIND) get clusters | grep $(KIND_CLUSTER_NAME_PREFIX) | xargs -I % sh -c "kind delete cluster --name %"
+	- $(KIND) get clusters | grep $(KIND_CLUSTER_NAME_PREFIX) | xargs -I % sh -c "$(KIND) delete cluster --name %"
 
 .PHONY: kind-load-image
 kind-load-image: kind ## Load image to "kuadrant-dns-local" kind cluster.
