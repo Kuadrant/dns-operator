@@ -109,7 +109,7 @@ We have tested with the `dns.admin` role. See for more details:
 [https://cloud.google.com/dns/docs/access-control#dns.admin](https://cloud.google.com/dns/docs/access-control#dns.admin)
 
 
-#### Azure Cloud DNS Provider
+### Azure Cloud DNS Provider
 
 Kuadrant expects a `Secret` with a credential. Below is an example for Azure. It is important to set the secret type to `azure`:
 
