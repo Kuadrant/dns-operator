@@ -14,6 +14,9 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/args/-
         value: --zap-log-level=debug
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --enable-probes
     target:
       kind: Deployment
   - path: manager_config_patch.yaml

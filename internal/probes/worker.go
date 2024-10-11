@@ -55,6 +55,12 @@ func (m *WorkerManager) EnsureProbeWorker(ctx context.Context, k8sClient client.
 	m.workers[keyForProbe(probeCR)] = worker
 }
 
+// RemoveProbeWorker only removes worker from the WorkerManager.
+// It does not stop the workers - they will die on CR deletion
+func (m *WorkerManager) RemoveProbeWorker(probeCR *v1alpha1.DNSHealthCheckProbe) {
+	delete(m.workers, keyForProbe(probeCR))
+}
+
 func keyForProbe(probe *v1alpha1.DNSHealthCheckProbe) string {
 	return fmt.Sprintf("%s/%s", probe.Name, probe.Namespace)
 }

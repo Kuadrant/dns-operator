@@ -15,6 +15,10 @@ import (
 	"github.com/kuadrant/dns-operator/internal/probes"
 )
 
+const (
+	ProbeOwnerLabel = "dns.kuadrant.io/probes-owner"
+)
+
 // DNSProbeReconciler reconciles a DNSRecord object
 type DNSProbeReconciler struct {
 	client.Client
@@ -44,6 +48,10 @@ func (r *DNSProbeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	dnsProbe := previous.DeepCopy()
 	ctx, _ = r.setLoggerValues(ctx, baseLogger, dnsProbe)
+
+	if dnsProbe.DeletionTimestamp != nil && !dnsProbe.DeletionTimestamp.IsZero() {
+		r.WorkerManager.RemoveProbeWorker(dnsProbe)
+	}
 
 	r.WorkerManager.EnsureProbeWorker(ctx, r.Client, dnsProbe)
 
