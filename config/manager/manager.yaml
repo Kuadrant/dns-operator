@@ -43,6 +43,7 @@ spec:
         - /manager
         args:
         - --leader-elect
+        - --enable-probes
         env:
         - name: WATCH_NAMESPACES
           value: ""

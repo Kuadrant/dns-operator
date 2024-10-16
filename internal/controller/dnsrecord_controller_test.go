@@ -30,7 +30,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
@@ -153,9 +152,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 					Endpoints: getTestEndpoints("bar.example.com", "127.0.0.1"),
 					HealthCheck: &v1alpha1.HealthCheckSpec{
 						Path:             "health",
-						Port:             ptr.To(5),
+						Port:             5,
 						Protocol:         v1alpha1.Protocol("cat"),
-						FailureThreshold: ptr.To(-1),
+						FailureThreshold: -1,
 					},
 				},
 			}
