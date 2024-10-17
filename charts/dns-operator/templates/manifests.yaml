@@ -60,6 +60,11 @@ spec:
                 required:
                 - name
                 type: object
+              address:
+                description: Address to connect to the host on (IP Address (A Record)
+                  or hostname (CNAME)).
+                pattern: ^([1-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]|[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+)?$
+                type: string
               allowInsecureCertificate:
                 description: |-
                   AllowInsecureCertificate will instruct the health check probe to not fail on a self-signed or otherwise invalid SSL certificate
@@ -79,11 +84,6 @@ spec:
                 type: string
               interval:
                 description: Interval defines how frequently this probe should execute
-                format: int64
-                type: integer
-              ipAddress:
-                description: IP Address to connect to the host on.
-                pattern: ^[1-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?$
                 type: string
               path:
                 description: |-
@@ -241,11 +241,6 @@ spec:
                     required:
                     - name
                     type: object
-                  allowInsecureCertificate:
-                    description: |-
-                      AllowInsecureCertificate will instruct the health check probe to not fail on a self-signed or otherwise invalid SSL certificate
-                      this is primarily used in development or testing environments
-                    type: boolean
                   failureThreshold:
                     description: FailureThreshold is a limit of consecutive failures
                       that must occur for a host to be considered unhealthy
