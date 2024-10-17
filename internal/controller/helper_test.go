@@ -30,13 +30,11 @@ func GenerateName() string {
 	return namegenerator.NewNameGenerator(nBig.Int64()).Generate()
 }
 
-func getTestEndpoints(dnsName, ip string) []*externaldnsendpoint.Endpoint {
+func getTestEndpoints(dnsName string, ip []string) []*externaldnsendpoint.Endpoint {
 	return []*externaldnsendpoint.Endpoint{
 		{
-			DNSName: dnsName,
-			Targets: []string{
-				ip,
-			},
+			DNSName:          dnsName,
+			Targets:          ip,
 			RecordType:       "A",
 			SetIdentifier:    "foo",
 			RecordTTL:        60,
@@ -55,95 +53,6 @@ func getTestHealthCheckSpec() *v1alpha1.HealthCheckSpec {
 		Interval:         metav1.Duration{Duration: time.Minute},
 		AdditionalHeadersRef: &v1alpha1.AdditionalHeadersRef{
 			Name: "headers",
-		},
-	}
-}
-func getTestLBEndpoints(testDomain string) []*externaldnsendpoint.Endpoint {
-	return []*externaldnsendpoint.Endpoint{
-		{
-			DNSName:    testDomain,
-			RecordTTL:  300,
-			RecordType: "CNAME",
-			Targets: []string{
-				"klb." + testDomain,
-			},
-		},
-		{
-			DNSName:    "ip1." + testDomain,
-			RecordTTL:  60,
-			RecordType: "A",
-			Targets: []string{
-				"172.32.200.1",
-			},
-		},
-		{
-			DNSName:    "ip2." + testDomain,
-			RecordTTL:  60,
-			RecordType: "A",
-			Targets: []string{
-				"172.32.200.2",
-			},
-		},
-		{
-			DNSName:    "eu.klb." + testDomain,
-			RecordTTL:  60,
-			RecordType: "CNAME",
-			Targets: []string{
-				"ip2." + testDomain,
-			},
-		},
-		{
-			DNSName:    "us.klb." + testDomain,
-			RecordTTL:  60,
-			RecordType: "CNAME",
-			Targets: []string{
-				"ip1." + testDomain,
-			},
-		},
-		{
-			DNSName: "klb." + testDomain,
-			ProviderSpecific: []externaldnsendpoint.ProviderSpecificProperty{
-				{
-					Name:  "geo-code",
-					Value: "*",
-				},
-			},
-			RecordTTL:     300,
-			RecordType:    "CNAME",
-			SetIdentifier: "",
-			Targets: []string{
-				"eu.klb." + testDomain,
-			},
-		},
-		{
-			DNSName: "klb." + testDomain,
-			ProviderSpecific: []externaldnsendpoint.ProviderSpecificProperty{
-				{
-					Name:  "geo-code",
-					Value: "GEO-NA",
-				},
-			},
-			RecordTTL:     300,
-			RecordType:    "CNAME",
-			SetIdentifier: "",
-			Targets: []string{
-				"us.klb." + testDomain,
-			},
-		},
-		{
-			DNSName: "klb." + testDomain,
-			ProviderSpecific: []externaldnsendpoint.ProviderSpecificProperty{
-				{
-					Name:  "geo-code",
-					Value: "GEO-EU",
-				},
-			},
-			RecordTTL:     300,
-			RecordType:    "CNAME",
-			SetIdentifier: "",
-			Targets: []string{
-				"eu.klb." + testDomain,
-			},
 		},
 	}
 }
