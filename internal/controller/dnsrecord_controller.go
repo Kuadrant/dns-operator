@@ -307,7 +307,6 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 	}
 
 	current.Status.ObservedGeneration = current.Generation
-	current.Status.Endpoints = current.Spec.Endpoints
 	current.Status.QueuedAt = reconcileStart
 
 	// update the record after setting the status
@@ -507,6 +506,12 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return false, fmt.Errorf("adjusting specEndpoints: %w", err)
 	}
 
+	//healthySpecEndpoints = Records that this DNSRecord expects to exist, that do not have matching unhealthy probes
+	healthySpecEndpoints, _, err := r.removeUnhealthyEndpoints(ctx, specEndpoints, dnsRecord)
+	if err != nil {
+		return false, fmt.Errorf("removing unhealthy specEndpoints: %w", err)
+	}
+
 	//statusEndpoints = Records that were created/updated by this DNSRecord last
 	statusEndpoints, err := registry.AdjustEndpoints(dnsRecord.Status.Endpoints)
 	if err != nil {
@@ -520,9 +525,9 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 
 	//Note: All endpoint lists should be in the same provider specific format at this point
 	logger.V(1).Info("applyChanges", "zoneEndpoints", zoneEndpoints,
-		"specEndpoints", specEndpoints, "statusEndpoints", statusEndpoints)
+		"specEndpoints", healthySpecEndpoints, "statusEndpoints", statusEndpoints)
 
-	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, specEndpoints, []externaldnsplan.Policy{policy},
+	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, healthySpecEndpoints, []externaldnsplan.Policy{policy},
 		externaldnsendpoint.MatchAllDomainFilters{&zoneDomainFilter}, managedDNSRecordTypes, excludeDNSRecordTypes,
 		registry.OwnerID(), &rootDomainName,
 	)
@@ -532,6 +537,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return false, err
 	}
 	dnsRecord.Status.DomainOwners = plan.Owners
+	dnsRecord.Status.Endpoints = healthySpecEndpoints
 	if plan.Changes.HasChanges() {
 		logger.Info("Applying changes")
 		err = registry.ApplyChanges(ctx, plan.Changes)
