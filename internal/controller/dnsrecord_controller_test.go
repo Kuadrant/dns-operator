@@ -1,4 +1,4 @@
-//go:build integration2
+//go:build integration
 
 /*
 Copyright 2024.

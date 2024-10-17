@@ -103,7 +103,7 @@ func (r *DNSRecordReconciler) ensureProbe(ctx context.Context, generated *v1alph
 //
 // If this leads to an empty array of endpoints it:
 //   - Does nothing (prevents NXDomain response) if we already published
-//   - Returns empty array of nothing is published (prevent from publishing unhealthy EPs)
+//   - Returns empty array if nothing is published (prevent from publishing unhealthy EPs)
 //
 // it returns the list of healthy endpoints, an array of unhealthy addresses and an error
 func (r *DNSRecordReconciler) removeUnhealthyEndpoints(ctx context.Context, specEndpoints []*endpoint.Endpoint, dnsRecord *v1alpha1.DNSRecord) ([]*endpoint.Endpoint, []string, error) {
