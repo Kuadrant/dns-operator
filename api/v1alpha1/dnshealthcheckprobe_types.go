@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -71,6 +72,7 @@ type DNSHealthCheckProbeStatus struct {
 	Reason              string      `json:"reason,omitempty"`
 	Status              int         `json:"status,omitempty"`
 	Healthy             *bool       `json:"healthy"`
+	ObservedGeneration  int64       `json:"observedGeneration,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -103,7 +105,10 @@ func (p *DNSHealthCheckProbe) Default() {
 }
 
 func (p *DNSHealthCheckProbe) ToString() string {
-	return fmt.Sprintf("%v://%v:%v%v", p.Spec.Protocol, p.Spec.Hostname, p.Spec.Port, p.Spec.Path)
+	if p.Spec.Port == 0 {
+		return strings.ToLower(fmt.Sprintf("%v://%v%v", p.Spec.Protocol, p.Spec.Hostname, p.Spec.Path))
+	}
+	return strings.ToLower(fmt.Sprintf("%v://%v:%v%v", p.Spec.Protocol, p.Spec.Hostname, p.Spec.Port, p.Spec.Path))
 }
 
 func init() {

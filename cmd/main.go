@@ -80,7 +80,7 @@ func main() {
 	var providers stringSliceFlags
 	var dnsProbesEnabled bool
 
-	flag.BoolVar(&dnsProbesEnabled, "enable-probes", false, "Enable DNSHealthProbes controller.")
+	flag.BoolVar(&dnsProbesEnabled, "enable-probes", true, "Enable DNSHealthProbes controller.")
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -159,11 +159,11 @@ func main() {
 	}
 
 	if dnsProbesEnabled {
-		workerManager := probes.NewWorkerManager()
+		probeManager := probes.NewProbeManager()
 		if err = (&controller.DNSProbeReconciler{
-			Client:        mgr.GetClient(),
-			Scheme:        mgr.GetScheme(),
-			WorkerManager: workerManager,
+			Client:       mgr.GetClient(),
+			Scheme:       mgr.GetScheme(),
+			ProbeManager: probeManager,
 		}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "DNSProbe")
 			os.Exit(1)
