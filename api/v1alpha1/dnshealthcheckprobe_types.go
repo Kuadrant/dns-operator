@@ -71,6 +71,7 @@ type DNSHealthCheckProbeStatus struct {
 	Reason              string      `json:"reason,omitempty"`
 	Status              int         `json:"status,omitempty"`
 	Healthy             *bool       `json:"healthy"`
+	ObservedGeneration  int64       `json:"observedGeneration,omitempty"`
 }
 
 //+kubebuilder:object:root=true

@@ -6,13 +6,19 @@ import (
 
 	"github.com/go-logr/logr"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/probes"
+)
+
+const (
+	DNSHealthCheckFinalizer = "kuadrant.io/dns-health-check-probe"
 )
 
 // DNSProbeReconciler reconciles a DNSRecord object
@@ -39,11 +45,37 @@ func (r *DNSProbeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err = client.IgnoreNotFound(err); err == nil {
 			return ctrl.Result{}, nil
 		} else {
+			// not found error stop worker will create a new one if a new probe is created
+			previous.Name = req.Name
+			previous.Namespace = req.Namespace
+			r.WorkerManager.StopProbeWorker(ctx, previous)
 			return ctrl.Result{}, err
 		}
 	}
+
 	dnsProbe := previous.DeepCopy()
 	ctx, _ = r.setLoggerValues(ctx, baseLogger, dnsProbe)
+
+	if dnsProbe.DeletionTimestamp != nil && !dnsProbe.DeletionTimestamp.IsZero() {
+		logger.Info("healthcheckprobe deleted cleaning up workers")
+		r.WorkerManager.StopProbeWorker(ctx, dnsProbe)
+		controllerutil.RemoveFinalizer(dnsProbe, DNSHealthCheckFinalizer)
+		if err = r.Update(ctx, dnsProbe); client.IgnoreNotFound(err) != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if !controllerutil.ContainsFinalizer(dnsProbe, DNSHealthCheckFinalizer) {
+		controllerutil.AddFinalizer(dnsProbe, DNSHealthCheckFinalizer)
+		if err := r.Client.Update(ctx, dnsProbe); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
 
 	r.WorkerManager.EnsureProbeWorker(ctx, r.Client, dnsProbe)
 

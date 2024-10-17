@@ -80,7 +80,7 @@ func main() {
 	var providers stringSliceFlags
 	var dnsProbesEnabled bool
 
-	flag.BoolVar(&dnsProbesEnabled, "enable-probes", false, "Enable DNSHealthProbes controller.")
+	flag.BoolVar(&dnsProbesEnabled, "enable-probes", true, "Enable DNSHealthProbes controller.")
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
