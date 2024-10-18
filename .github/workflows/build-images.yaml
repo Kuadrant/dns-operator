@@ -87,9 +87,6 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Run make bundle
-        run: make bundle IMG=${{ needs.build.outputs.build-image }}
-
       - name: Install qemu dependency
         run: |
           sudo apt-get update
