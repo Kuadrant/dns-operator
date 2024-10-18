@@ -246,7 +246,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 run-with-probes: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 run-with-probes: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run-with-probes: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure --enable-probes
+	go run -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
 
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
