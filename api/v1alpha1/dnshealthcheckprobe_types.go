@@ -32,7 +32,7 @@ type DNSHealthCheckProbeSpec struct {
 	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+$`
 	Hostname string `json:"hostname,omitempty"`
 	// Address to connect to the host on (IP Address (A Record) or hostname (CNAME)).
-	// +kubebuilder:validation:Pattern=`^([1-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]|[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+)?$`
+	// +kubebuilder:validation:Pattern=`^([1-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?|[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+)?$`
 	Address string `json:"address,omitempty"`
 	// Path is the path to append to the host to reach the expected health check.
 	// Must start with "?" or "/", contain only valid URL characters and end with alphanumeric char or "/". For example "/" or "/healthz" are common
