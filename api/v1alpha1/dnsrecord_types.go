@@ -37,7 +37,7 @@ const HttpsProtocol Protocol = "HTTPS"
 type HealthCheckSpec struct {
 	// Port to connect to the host on. Must be either 80, 443 or 1024-49151
 	// +kubebuilder:validation:XValidation:rule="self in [80, 443] || (self >= 1024 && self <= 49151)",message="Only ports 80, 443, 1024-49151 are allowed"
-	Port *int `json:"port,omitempty"`
+	Port int `json:"port,omitempty"`
 	// Path is the path to append to the host to reach the expected health check.
 	// Must start with "?" or "/", contain only valid URL characters and end with alphanumeric char or "/". For example "/" or "/healthz" are common
 	// +kubebuilder:validation:Pattern=`^(?:\?|\/)[\w\-.~:\/?#\[\]@!$&'()*+,;=]+(?:[a-zA-Z0-9]|\/){1}$`
@@ -52,7 +52,7 @@ type HealthCheckSpec struct {
 	AdditionalHeadersRef *AdditionalHeadersRef `json:"additionalHeadersRef,omitempty"`
 	// FailureThreshold is a limit of consecutive failures that must occur for a host to be considered unhealthy
 	// +kubebuilder:validation:XValidation:rule="self > 0",message="Failure threshold must be greater than 0"
-	FailureThreshold *int `json:"failureThreshold,omitempty"`
+	FailureThreshold int `json:"failureThreshold,omitempty"`
 }
 
 type HealthCheckStatus struct {
