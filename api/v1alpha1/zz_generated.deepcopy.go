@@ -289,6 +289,17 @@ func (in *DNSRecordStatus) DeepCopyInto(out *DNSRecordStatus) {
 			}
 		}
 	}
+	if in.ZoneEndpoints != nil {
+		in, out := &in.ZoneEndpoints, &out.ZoneEndpoints
+		*out = make([]*endpoint.Endpoint, len(*in))
+		for i := range *in {
+			if (*in)[i] != nil {
+				in, out := &(*in)[i], &(*out)[i]
+				*out = new(endpoint.Endpoint)
+				(*in).DeepCopyInto(*out)
+			}
+		}
+	}
 	if in.HealthCheck != nil {
 		in, out := &in.HealthCheck, &out.HealthCheck
 		*out = new(HealthCheckStatus)
