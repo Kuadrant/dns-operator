@@ -92,12 +92,11 @@ jobs:
         run: |
           tag=`make bundle-operator-image-tag`
           echo tag=$tag >> $GITHUB_OUTPUT
-      - name: Verify referenced opeator image has previously been built
-        uses: nick-fields/assert-action@v2
-        with:
-          expected: ${{ steps.operator-image-tag.outputs.tag }}
-          actual: ${{ needs.build.outputs.build-tags }}
-          comparison: contains
+      - name: Verify referenced operator image has previously been built
+        # Only check on tags. On (release) branches, the branch name may not match referenced tag in CSV.
+        # For (release) branches, the workflow builds operator image tags with sha and branch name.
+        if: ${{ startsWith(github.ref, 'refs/tags/') && ! contains(needs.build.outputs.build-tags, steps.operator-image-tag.outputs.tag) }}
+        run: exit 1
 
       - name: Install qemu dependency
         run: |
@@ -147,24 +146,16 @@ jobs:
         run: |
           # following sub-shells running make target should have yq already installed
           make yq
-      - name: Read operator image reference URL from the manifest bundle
-        id: operator-image-url
-        run: |
-          url=`make bundle-operator-image-url`
-          echo url=$url >> $GITHUB_OUTPUT
       - name: Read operator bundle image reference
         id: operator-bundle
         run: |
           image=`make print-bundle-image`
           echo image=$image >> $GITHUB_OUTPUT
+      - name: Verify referenced bundle has previously been built
+        if: ${{ ! contains(needs.build-bundle.outputs.build-tags, steps.operator-bundle.outputs.image) }}
+        run: exit 1
       - name: Run make catalog-build
         run: make catalog-build
-      - name: Verify referenced bundle has previously been built
-        uses: nick-fields/assert-action@v2
-        with:
-          expected: ${{ steps.operator-bundle.outputs.image }}
-          actual: ${{ needs.build-bundle.outputs.build-tags }}
-          comparison: contains
       - name: Install qemu dependency
         run: |
           sudo apt-get update
@@ -202,13 +193,9 @@ jobs:
     needs: [build, build-bundle, build-catalog]
     runs-on: ubuntu-latest
     steps:
-      - name: Verify bundle and image tags match
-        uses: nick-fields/assert-action@v2
-        with:
-          expected: ${{ needs.build.outputs.build-tags }}
-          actual: ${{ needs.build-bundle.outputs.build-tags }}
+      - name: Verify bundle and operator image tags match
+        if: ${{ needs.build.outputs.build-tags != needs.build-bundle.outputs.build-tags }}
+        run: exit 1
       - name: Verify catalog and bundle tags match
-        uses: nick-fields/assert-action@v2
-        with:
-          expected: ${{ needs.build-bundle.outputs.build-tags }}
-          actual: ${{ needs.build-catalog.outputs.build-tags }}
+        if: ${{ needs.build-bundle.outputs.build-tags != needs.build-catalog.outputs.build-tags }}
+        run: exit 1
