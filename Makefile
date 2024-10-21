@@ -513,8 +513,8 @@ catalog-build: opm ## Build a catalog image.
 	cd tmp/catalog && $(OPM) index add --container-tool docker --mode semver --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT) --generate
 	cd tmp/catalog && docker build -t $(CATALOG_IMG) -f index.Dockerfile .
 
-print-bundle-images: ## Pring bundle images.
-	@echo $(BUNDLE_IMGS)
+print-bundle-image: ## Pring bundle images.
+	@echo $(BUNDLE_IMG)
 
 # Push the catalog image.
 .PHONY: catalog-push

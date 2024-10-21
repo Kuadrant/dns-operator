@@ -22,7 +22,7 @@ jobs:
     name: Build and Push image
     runs-on: ubuntu-20.04
     outputs:
-      build-tags: ${{ steps.build-image.outputs.tags  }}
+      build-tags: ${{ steps.build-image.outputs.tags }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -73,6 +73,8 @@ jobs:
     name: Build and Push bundle image
     needs: [build]
     runs-on: ubuntu-20.04
+    outputs:
+      build-tags: ${{ steps.build-image.outputs.tags }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -81,6 +83,12 @@ jobs:
         run: |
           echo "url=$(make bundle-operator-image-url)" >> $GITHUB_OUTPUT
           echo "tag=$(make bundle-operator-image-tag)" >> $GITHUB_OUTPUT
+      - name: Verify referenced opeator image has previously been built
+        uses: nick-fields/assert-action@v2
+        with:
+          expected: ${{ steps.operator-image.tag }}
+          actual: ${{ needs.build.outputs.build-tags }}
+          comparison: contains
       - name: Install qemu dependency
         run: |
           sudo apt-get update
@@ -123,13 +131,18 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-      - name: Read operator bundle images reference
+      - name: Read operator bundle image reference
         id: operator-bundle
         run: |
-          echo "images=$(make print-bundle-images)" >> $GITHUB_OUTPUT
+          echo "image=$(make print-bundle-image)" >> $GITHUB_OUTPUT
       - name: Run make catalog-build
         run: make catalog-build
-
+      - name: Verify referenced bundle has previously been built
+        uses: nick-fields/assert-action@v2
+        with:
+          expected: ${{ steps.operator-bundle.image }}
+          actual: ${{ needs.build-bundle.outputs.build-tags }}
+          comparison: contains
       - name: Install qemu dependency
         run: |
           sudo apt-get update
@@ -147,7 +160,7 @@ jobs:
             ./tmp/catalog/index.Dockerfile
 
       - name: Print Build Info
-        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Bundle IMGs = ${{ steps.operator-bundle.images }}"
+        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Bundle IMG = ${{ steps.operator-bundle.image }}"
 
       - name: Push Image
         if: github.repository_owner == 'kuadrant'
