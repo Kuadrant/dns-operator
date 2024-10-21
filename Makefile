@@ -445,9 +445,6 @@ bundle: manifests manifests-gen-base-csv kustomize operator-sdk ## Generate bund
 bundle-operator-image-url: $(YQ) ## Read operator image reference URL from the manifest bundle.
 	@$(YQ) '.metadata.annotations.containerImage' bundle/manifests/dns-operator.clusterserviceversion.yaml
 
-bundle-operator-image-tag: $(YQ) ## Read operator image reference TAG from the manifest bundle.
-	@$(YQ) '.metadata.annotations.containerImage | split(":") | .[1]' bundle/manifests/dns-operator.clusterserviceversion.yaml
-
 # Since operator-sdk 1.26.0, `make bundle` changes the `createdAt` field from the bundle
 # even if it is patched:
 #   https://github.com/operator-framework/operator-sdk/pull/6136

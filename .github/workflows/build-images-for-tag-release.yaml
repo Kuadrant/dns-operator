@@ -1,18 +1,13 @@
-name: Build and Publish Images
+name: Build and Publish Images For Tag Release
 
 on:
   push:
-    branches:
-      - main
-      - "release-*"
-  workflow_dispatch:
-
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
 env:
-  IMG_TAGS: ${{ github.sha }} ${{ github.ref_name }}
   IMG_REGISTRY_HOST: quay.io
   IMG_REGISTRY_ORG: kuadrant
   IMG_REGISTRY_REPO: dns-operator
-  MAIN_BRANCH_NAME: main
   OPERATOR_NAME: dns-operator
 
 jobs:
@@ -21,16 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build-tags: ${{ steps.build-image.outputs.tags }}
-      build-image: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ steps.build-image.outputs.image }}:${{ github.sha }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-
-      - name: Add latest tag
-        if: ${{ github.ref_name == env.MAIN_BRANCH_NAME }}
-        id: add-latest-tag
-        run: |
-          echo "IMG_TAGS=latest ${{ env.IMG_TAGS }}" >> $GITHUB_ENV
 
       - name: Install qemu dependency
         run: |
@@ -42,7 +30,7 @@ jobs:
         uses: redhat-actions/buildah-build@v2
         with:
           image: ${{ env.OPERATOR_NAME }}
-          tags: ${{ env.IMG_TAGS }}
+          tags: ${{ github.ref_name }}
           platforms: linux/amd64,linux/arm64
           build-args: |
             GIT_SHA=${{ github.sha }}
@@ -73,13 +61,22 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     outputs:
-      bundle-image: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ steps.build-image.outputs.image }}:${{ github.sha }}
+      build-tags: ${{ steps.build-image.outputs.tags }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-
-      - name: Run make bundle
-        run: make bundle IMG=${{ needs.build.outputs.build-image }}
+      - name: Install yq tool
+        run: |
+          # following sub-shells running make target should have yq already installed
+          make yq
+      - name: Read operator image reference URL from the manifest bundle
+        id: parsed-operator-image
+        run: |
+          url=`make bundle-operator-image-url`
+          echo url=$url >> $GITHUB_OUTPUT
+      - name: Verify referenced operator image tag matches the tag currently being built
+        if: ${{ needs.build.outputs.build-tags != steps.parsed-operator-image.outputs.url }}
+        run: exit 1
 
       - name: Install qemu dependency
         run: |
@@ -97,7 +94,7 @@ jobs:
             ./bundle.Dockerfile
 
       - name: Print Build Info
-        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Operator IMG = ${{ needs.build.outputs.build-image }}"
+        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Operator IMG = ${{ steps.parsed-operator-image.outputs.url }}"
 
       - name: Push Image
         if: github.repository_owner == 'kuadrant'
@@ -117,13 +114,25 @@ jobs:
     name: Build and Push catalog image
     needs: [build, build-bundle]
     runs-on: ubuntu-latest
+    outputs:
+      build-tags: ${{ steps.build-image.outputs.tags }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-
+      - name: Install yq tool
+        run: |
+          # following sub-shells running make target should have yq already installed
+          make yq
+      - name: Read operator bundle image reference
+        id: parsed-operator-bundle
+        run: |
+          image=`make print-bundle-image`
+          echo image=$image >> $GITHUB_OUTPUT
+      - name: Verify referenced bundle tag matches the bundle tag currently being built
+        if: ${{ needs.build-bundle.outputs.build-tags != steps.parsed-operator-bundle.outputs.image }}
+        run: exit 1
       - name: Run make catalog-build
-        run: make catalog-build BUNDLE_IMG=${{ needs.build-bundle.outputs.bundle-image }}
-
+        run: make catalog-build
       - name: Install qemu dependency
         run: |
           sudo apt-get update
@@ -141,7 +150,7 @@ jobs:
             ./tmp/catalog/index.Dockerfile
 
       - name: Print Build Info
-        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Bundle IMG = ${{ needs.build-bundle.outputs.bundle-image }}"
+        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Bundle IMG = ${{ steps.parsed-operator-bundle.outputs.image }}"
 
       - name: Push Image
         if: github.repository_owner == 'kuadrant'
@@ -156,3 +165,15 @@ jobs:
 
       - name: Print Image URL
         run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
+
+  verify-builds:
+    name: Ensure all image references are equal (operator, bundle, catalog)
+    needs: [build, build-bundle, build-catalog]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify bundle and operator image tags match
+        if: ${{ needs.build.outputs.build-tags != needs.build-bundle.outputs.build-tags }}
+        run: exit 1
+      - name: Verify catalog and bundle tags match
+        if: ${{ needs.build-bundle.outputs.build-tags != needs.build-catalog.outputs.build-tags }}
+        run: exit 1
