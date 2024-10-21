@@ -131,7 +131,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run make catalog-build
-        run: make catalog-build BUNDLE_IMG=${{ needs.build-bundle.outputs.bundle-image }}
+        run: make catalog-build
 
       - name: Install qemu dependency
         run: |
