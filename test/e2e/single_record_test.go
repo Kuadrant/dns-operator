@@ -646,7 +646,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			} else if testDNSProvider == "azure" {
 				SetTestEnv("testGeoCode", "GEO-EU")
 			} else {
-				SetTestEnv("testGeoCode", "EU")
+				SetTestEnv("testGeoCode", "GEO-EU")
 			}
 
 			SetTestEnv("TEST_DNS_PROVIDER_SECRET_NAME", testDNSProviderSecret.Name)

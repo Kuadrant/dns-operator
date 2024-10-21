@@ -49,6 +49,7 @@ const (
 	awsEvaluateTargetHealth                  = false
 	awsPreferCNAME                           = true
 	awsZoneCacheDuration                     = 0 * time.Second
+	providerContinentPrefix                  = "GEO-"
 )
 
 type Route53DNSProvider struct {
@@ -122,20 +123,34 @@ func (p *Route53DNSProvider) AdjustEndpoints(endpoints []*externaldnsendpoint.En
 	if err != nil {
 		return nil, err
 	}
-
+	p.logger.V(1).Info("adjusting aws endpoints")
 	for _, ep := range endpoints {
 		if prop, ok := ep.GetProviderSpecificProperty(v1alpha1.ProviderSpecificWeight); ok {
 			ep.DeleteProviderSpecificProperty(v1alpha1.ProviderSpecificWeight)
 			ep.WithProviderSpecific(providerSpecificWeight, prop)
+			p.logger.V(1).Info("set provider specific weight", "endpoint", ep)
 		}
 
 		if prop, ok := ep.GetProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode); ok {
 			ep.DeleteProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode)
+			prop = strings.ToUpper(prop)
+			if strings.HasPrefix(prop, providerContinentPrefix) {
+				continent := strings.Replace(prop, providerContinentPrefix, "", -1)
+				if !provider.IsContinentCode(continent) {
+					return nil, fmt.Errorf("unexpected continent code. %s", continent)
+				}
+				ep.WithProviderSpecific(providerSpecificGeolocationContinentCode, continent)
+				p.logger.V(1).Info("set provider specific continent code base GEO- prefix", "endpoint", ep)
+				continue
+			}
+
 			if provider.IsISO3166Alpha2Code(prop) || prop == "*" {
 				ep.WithProviderSpecific(providerSpecificGeolocationCountryCode, prop)
-			} else {
-				ep.WithProviderSpecific(providerSpecificGeolocationContinentCode, prop)
+				p.logger.V(1).Info("set provider specific country code", "endpoint", ep)
+				continue
 			}
+			//if we get to here there is a value we cannot use
+			return nil, fmt.Errorf("unexpected geo code. Prefix with %s for continents or use ISO_3166 Alpha 2 supported code for countries", providerContinentPrefix)
 		}
 	}
 	return endpoints, nil

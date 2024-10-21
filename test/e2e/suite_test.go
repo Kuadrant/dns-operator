@@ -125,7 +125,7 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 
 	testSuiteID = "dns-op-e2e-" + GenerateName()
 
-	geoCode := "EU"
+	geoCode := "GEO-EU"
 	if testDNSProvider == "google" {
 		geoCode = "europe-west1"
 	}
