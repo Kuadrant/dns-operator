@@ -128,6 +128,8 @@ jobs:
     name: Build and Push catalog image
     needs: [build, build-bundle]
     runs-on: ubuntu-20.04
+    outputs:
+      build-tags: ${{ steps.build-image.outputs.tags }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -175,3 +177,18 @@ jobs:
 
       - name: Print Image URL
         run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
+  verify-builds:
+    name: Ensure all image references are equal (operator, bundle, catalog)
+    needs: [build, build-bundle, build-catalog]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify bundle and image tags match
+        uses: nick-fields/assert-action@v2
+        with:
+          expected: ${{ needs.build.outputs.build-tags }}
+          actual: ${{ needs.build-bundle.outputs.build-tags }}
+      - name: Verify catalog and bundle tags match
+        uses: nick-fields/assert-action@v2
+        with:
+          expected: ${{ needs.build-bundle.outputs.build-tags }}
+          actual: ${{ needs.build-catalog.outputs.build-tags }}
