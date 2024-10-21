@@ -20,7 +20,7 @@ env:
 jobs:
   build:
     name: Build and Push image
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     outputs:
       build-tags: ${{ steps.build-image.outputs.tags }}
     steps:
@@ -72,23 +72,33 @@ jobs:
   build-bundle:
     name: Build and Push bundle image
     needs: [build]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     outputs:
       build-tags: ${{ steps.build-image.outputs.tags }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
-      - name: Read operator image reference from the manifest bundle
-        id: operator-image
+      - name: Install yq tool
         run: |
-          echo "url=$(make bundle-operator-image-url)" >> $GITHUB_OUTPUT
-          echo "tag=$(make bundle-operator-image-tag)" >> $GITHUB_OUTPUT
+          # following sub-shells running make target should have yq already installed
+          make yq
+      - name: Read operator image reference URL from the manifest bundle
+        id: operator-image-url
+        run: |
+          url=`make bundle-operator-image-url`
+          echo url=$url >> $GITHUB_OUTPUT
+      - name: Read operator image reference tag from the manifest bundle
+        id: operator-image-tag
+        run: |
+          tag=`make bundle-operator-image-tag`
+          echo tag=$tag >> $GITHUB_OUTPUT
       - name: Verify referenced opeator image has previously been built
         uses: nick-fields/assert-action@v2
         with:
-          expected: ${{ steps.operator-image.tag }}
+          expected: ${{ steps.operator-image-tag.outputs.tag }}
           actual: ${{ needs.build.outputs.build-tags }}
           comparison: contains
+
       - name: Install qemu dependency
         run: |
           sudo apt-get update
@@ -108,7 +118,7 @@ jobs:
             ./bundle.Dockerfile
 
       - name: Print Build Info
-        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Operator IMG = ${{ steps.operator-image.url }}"
+        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Operator IMG = ${{ steps.operator-image-url.outputs.url }}"
 
       - name: Push Image
         if: github.repository_owner == 'kuadrant'
@@ -127,22 +137,32 @@ jobs:
   build-catalog:
     name: Build and Push catalog image
     needs: [build, build-bundle]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     outputs:
       build-tags: ${{ steps.build-image.outputs.tags }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+      - name: Install yq tool
+        run: |
+          # following sub-shells running make target should have yq already installed
+          make yq
+      - name: Read operator image reference URL from the manifest bundle
+        id: operator-image-url
+        run: |
+          url=`make bundle-operator-image-url`
+          echo url=$url >> $GITHUB_OUTPUT
       - name: Read operator bundle image reference
         id: operator-bundle
         run: |
-          echo "image=$(make print-bundle-image)" >> $GITHUB_OUTPUT
+          image=`make print-bundle-image`
+          echo image=$image >> $GITHUB_OUTPUT
       - name: Run make catalog-build
         run: make catalog-build
       - name: Verify referenced bundle has previously been built
         uses: nick-fields/assert-action@v2
         with:
-          expected: ${{ steps.operator-bundle.image }}
+          expected: ${{ steps.operator-bundle.outputs.image }}
           actual: ${{ needs.build-bundle.outputs.build-tags }}
           comparison: contains
       - name: Install qemu dependency
@@ -162,7 +182,7 @@ jobs:
             ./tmp/catalog/index.Dockerfile
 
       - name: Print Build Info
-        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Bundle IMG = ${{ steps.operator-bundle.image }}"
+        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}, Bundle IMG = ${{ steps.operator-bundle.outputs.image }}"
 
       - name: Push Image
         if: github.repository_owner == 'kuadrant'
