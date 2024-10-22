@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build-tags: ${{ steps.build-image.outputs.tags }}
+      image: ${{ steps.push-to-quay.outputs.registry-path }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -62,6 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build-tags: ${{ steps.build-image.outputs.tags }}
+      image: ${{ steps.push-to-quay.outputs.registry-path }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -75,9 +77,9 @@ jobs:
           url=`make bundle-operator-image-url`
           echo url=$url >> $GITHUB_OUTPUT
       - name: Print tags and references
-        run: echo "Operator image tag = ${{ needs.build.outputs.build-tags }}, Reference in bundle = ${{ steps.parsed-operator-image.outputs.url }}"
+        run: echo "Operator image tag = ${{ needs.build.outputs.image }}, Reference in bundle = ${{ steps.parsed-operator-image.outputs.url }}"
       - name: Verify referenced operator image tag matches the tag currently being built
-        if: ${{ needs.build.outputs.build-tags != steps.parsed-operator-image.outputs.url }}
+        if: ${{ needs.build.outputs.image != steps.parsed-operator-image.outputs.url }}
         run: exit 1
 
       - name: Install qemu dependency
@@ -118,6 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build-tags: ${{ steps.build-image.outputs.tags }}
+      image: ${{ steps.push-to-quay.outputs.registry-path }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -131,9 +134,9 @@ jobs:
           image=`make print-bundle-image`
           echo image=$image >> $GITHUB_OUTPUT
       - name: Print tags and references
-        run: echo "Operator bundle image tag = ${{ needs.build-bundle.outputs.build-tags }}, Reference in catalog = ${{ steps.parsed-operator-bundle.outputs.image }}"
+        run: echo "Operator bundle image tag = ${{ needs.build-bundle.outputs.image }}, Reference in catalog = ${{ steps.parsed-operator-bundle.outputs.image }}"
       - name: Verify referenced bundle tag matches the bundle tag currently being built
-        if: ${{ needs.build-bundle.outputs.build-tags != steps.parsed-operator-bundle.outputs.image }}
+        if: ${{ needs.build-bundle.outputs.image != steps.parsed-operator-bundle.outputs.image }}
         run: exit 1
       - name: Run make catalog-build
         run: make catalog-build
