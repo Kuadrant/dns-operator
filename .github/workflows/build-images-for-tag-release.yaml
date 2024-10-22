@@ -74,6 +74,8 @@ jobs:
         run: |
           url=`make bundle-operator-image-url`
           echo url=$url >> $GITHUB_OUTPUT
+      - name: Print tags and references
+        run: echo "Operator image tag = ${{ needs.build.outputs.build-tags }}, Reference in bundle = ${{ steps.parsed-operator-image.outputs.url }}"
       - name: Verify referenced operator image tag matches the tag currently being built
         if: ${{ needs.build.outputs.build-tags != steps.parsed-operator-image.outputs.url }}
         run: exit 1
@@ -128,6 +130,8 @@ jobs:
         run: |
           image=`make print-bundle-image`
           echo image=$image >> $GITHUB_OUTPUT
+      - name: Print tags and references
+        run: echo "Operator bundle image tag = ${{ needs.build-bundle.outputs.build-tags }}, Reference in catalog = ${{ steps.parsed-operator-bundle.outputs.image }}"
       - name: Verify referenced bundle tag matches the bundle tag currently being built
         if: ${{ needs.build-bundle.outputs.build-tags != steps.parsed-operator-bundle.outputs.image }}
         run: exit 1
