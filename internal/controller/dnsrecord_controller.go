@@ -66,6 +66,9 @@ var (
 	randomizedValidationRequeue time.Duration
 	validFor                    time.Duration
 	reconcileStart              metav1.Time
+
+	probesEnabled     bool
+	allowInsecureCert bool
 )
 
 // DNSRecordReconciler reconciles a DNSRecord object
@@ -125,8 +128,10 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				return r.updateStatus(ctx, previous, dnsRecord, false, err)
 			}
 
-			if err = r.ReconcileHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
-				return ctrl.Result{}, err
+			if probesEnabled {
+				if err = r.DeleteHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
+					return ctrl.Result{}, err
+				}
 			}
 			hadChanges, err := r.deleteRecord(ctx, dnsRecord, dnsProvider)
 			if err != nil {
@@ -227,8 +232,10 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, hadChanges, err)
 	}
 
-	if err = r.ReconcileHealthChecks(ctx, dnsRecord); err != nil {
-		return ctrl.Result{}, err
+	if probesEnabled {
+		if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	return r.updateStatus(ctx, previous, dnsRecord, hadChanges, nil)
@@ -300,7 +307,6 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 	}
 
 	current.Status.ObservedGeneration = current.Generation
-	current.Status.Endpoints = current.Spec.Endpoints
 	current.Status.QueuedAt = reconcileStart
 
 	// update the record after setting the status
@@ -318,10 +324,12 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, validForDuration, minRequeue time.Duration) error {
+func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, validForDuration, minRequeue time.Duration, healthProbesEnabled, allowInsecureHealthCert bool) error {
 	defaultRequeueTime = maxRequeue
 	validFor = validForDuration
 	defaultValidationRequeue = minRequeue
+	probesEnabled = healthProbesEnabled
+	allowInsecureCert = allowInsecureHealthCert
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.DNSRecord{}).
@@ -498,6 +506,12 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return false, fmt.Errorf("adjusting specEndpoints: %w", err)
 	}
 
+	//healthySpecEndpoints = Records that this DNSRecord expects to exist, that do not have matching unhealthy probes
+	healthySpecEndpoints, _, err := r.removeUnhealthyEndpoints(ctx, specEndpoints, dnsRecord)
+	if err != nil {
+		return false, fmt.Errorf("removing unhealthy specEndpoints: %w", err)
+	}
+
 	//statusEndpoints = Records that were created/updated by this DNSRecord last
 	statusEndpoints, err := registry.AdjustEndpoints(dnsRecord.Status.Endpoints)
 	if err != nil {
@@ -511,9 +525,9 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 
 	//Note: All endpoint lists should be in the same provider specific format at this point
 	logger.V(1).Info("applyChanges", "zoneEndpoints", zoneEndpoints,
-		"specEndpoints", specEndpoints, "statusEndpoints", statusEndpoints)
+		"specEndpoints", healthySpecEndpoints, "statusEndpoints", statusEndpoints)
 
-	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, specEndpoints, []externaldnsplan.Policy{policy},
+	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, healthySpecEndpoints, []externaldnsplan.Policy{policy},
 		externaldnsendpoint.MatchAllDomainFilters{&zoneDomainFilter}, managedDNSRecordTypes, excludeDNSRecordTypes,
 		registry.OwnerID(), &rootDomainName,
 	)
@@ -523,6 +537,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return false, err
 	}
 	dnsRecord.Status.DomainOwners = plan.Owners
+	dnsRecord.Status.Endpoints = healthySpecEndpoints
 	if plan.Changes.HasChanges() {
 		logger.Info("Applying changes")
 		err = registry.ApplyChanges(ctx, plan.Changes)
