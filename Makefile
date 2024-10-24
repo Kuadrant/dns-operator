@@ -1,3 +1,6 @@
+MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
+PROJECT_PATH := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
+
 # VERSION defines the project version for the bundle.
 # Update this value when you upgrade the version of your project.
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
@@ -527,7 +530,7 @@ prepare-release: ## Generates a makefile that will override environment variable
 	VERSION=$(VERSION)\nREPLACES_VERSION=$(REPLACES_VERSION)" > $(RELEASE_FILE)
 	$(MAKE) bundle
 	$(MAKE) helm-build VERSION=$(VERSION)
-
+	sed -i -e 's/Version = ".*"/Version = "$(VERSION)"/' $(PROJECT_PATH)/internal/version/version.go
 
 # Include last to avoid changing MAKEFILE_LIST used above
 include ./make/*.mk
