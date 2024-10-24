@@ -230,13 +230,13 @@ local-deploy-namespaced: docker-build kind-load-image ## Deploy the dns operator
 ##@ Build
 
 .PHONY: build
-build: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown") 
+build: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 build: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 build: manifests generate fmt vet ## Build manager binary.
 	go build -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
 
 .PHONY: run
-run: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown") 
+run: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 run: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
@@ -253,7 +253,7 @@ run-with-probes: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown") 
+docker-build: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 docker-build: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG} . --build-arg GIT_SHA=$(GIT_SHA) --build-arg DIRTY=$(DIRTY)
@@ -442,6 +442,9 @@ bundle: manifests manifests-gen-base-csv kustomize operator-sdk ## Generate bund
 	$(OPERATOR_SDK) bundle validate ./bundle
 	$(MAKE) bundle-ignore-createdAt
 
+bundle-operator-image-url: $(YQ) ## Read operator image reference URL from the manifest bundle.
+	@$(YQ) '.metadata.annotations.containerImage' bundle/manifests/dns-operator.clusterserviceversion.yaml
+
 # Since operator-sdk 1.26.0, `make bundle` changes the `createdAt` field from the bundle
 # even if it is patched:
 #   https://github.com/operator-framework/operator-sdk/pull/6136
@@ -506,6 +509,9 @@ catalog-build: opm ## Build a catalog image.
 	mkdir -p tmp/catalog
 	cd tmp/catalog && $(OPM) index add --container-tool docker --mode semver --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT) --generate
 	cd tmp/catalog && docker build -t $(CATALOG_IMG) -f index.Dockerfile .
+
+print-bundle-image: ## Pring bundle images.
+	@echo $(BUNDLE_IMG)
 
 # Push the catalog image.
 .PHONY: catalog-push

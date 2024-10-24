@@ -32,7 +32,7 @@ git tag v0.2.0
 git push upstream release-0.2
 git push upstream v0.2.0
 ```
-8. Verify that the build [image workflow](https://github.com/Kuadrant/dns-operator/actions/workflows/build-images.yaml) is triggered and completes for the new tag
+8. Verify that the build [release tag workflow](https://github.com/Kuadrant/dns-operator/actions/workflows/build-images-for-tag-release.yaml) is triggered and completes for the new tag
 
 9. Verify the new version can be installed from the catalog image, see [Verify OLM Deployment](#verify-olm-deployment)
 
@@ -56,7 +56,7 @@ git tag v0.2.1
 git push upstream release-0.2
 git push upstream v0.2.1
 ```
-4. Verify that the build [image workflow](https://github.com/Kuadrant/dns-operator/actions/workflows/build-images.yaml) is triggered and completes for the new tag
+4. Verify that the build [release tag workflow](https://github.com/Kuadrant/dns-operator/actions/workflows/build-images-for-tag-release.yaml) is triggered and completes for the new tag
 
 5. Verify the new version can be installed from the catalog image, see [Verify OLM Deployment](#verify-olm-deployment)
 
