@@ -46,6 +46,7 @@ type HealthCheckSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self in ['HTTP','HTTPS']",message="Only HTTP or HTTPS protocols are allowed"
 	Protocol Protocol `json:"protocol,omitempty"`
 	// Interval defines how frequently this probe should execute
+	// +default:5m
 	Interval metav1.Duration `json:"interval,omitempty"`
 	// AdditionalHeadersRef refers to a secret that contains extra headers to send in the probe request, this is primarily useful if an authentication
 	// token is required by the endpoint.
