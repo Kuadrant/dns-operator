@@ -1,3 +1,6 @@
+MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
+PROJECT_PATH := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
+
 # VERSION defines the project version for the bundle.
 # Update this value when you upgrade the version of your project.
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
@@ -340,6 +343,17 @@ YQ = $(LOCALBIN)/yq
 GINKGO ?= $(LOCALBIN)/ginkgo
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 HELM ?= $(LOCALBIN)/helm
+ifeq ($(shell uname),Darwin)
+SED=$(shell which gsed)
+else
+SED=$(shell which sed)
+endif
+.PHONY: sed
+sed: ## Checks if GNU sed is installed
+ifeq ($(SED),)
+	@echo "Cannot find GNU sed installed."
+	exit 1
+endif
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
@@ -529,7 +543,15 @@ prepare-release: ## Generates a makefile that will override environment variable
 	VERSION=$(VERSION)\nREPLACES_VERSION=$(REPLACES_VERSION)" > $(RELEASE_FILE)
 	$(MAKE) bundle
 	$(MAKE) helm-build VERSION=$(VERSION)
+	$(MAKE) update-release-version VERSION=$(VERSION)
 
+.PHONY: read-version
+read-release-version: ## Reads release version
+	@$(SED) -n 's/^.*Version = "\([^"]*\)".*/\1/p' $(PROJECT_PATH)/internal/version/version.go
+
+.PHONY: update-release-version
+update-release-version: ## Updates release version to v$(VERSION). Note 'v' prefix.
+	$(SED) -i -e 's/Version = ".*"/Version = "v$(VERSION)"/' $(PROJECT_PATH)/internal/version/version.go
 
 # Include last to avoid changing MAKEFILE_LIST used above
 include ./make/*.mk
