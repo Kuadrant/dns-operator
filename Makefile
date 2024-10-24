@@ -548,8 +548,8 @@ read-release-version: ## Reads release version
 	@$(SED) -n 's/^.*Version = "\([^"]*\)".*/\1/p' $(PROJECT_PATH)/internal/version/version.go
 
 .PHONY: update-release-version
-update-release-version: ## Updates release version to $(VERSION)
-	$(SED) -i -e 's/Version = ".*"/Version = "$(VERSION)"/' $(PROJECT_PATH)/internal/version/version.go
+update-release-version: ## Updates release version to v$(VERSION). Note 'v' prefix.
+	$(SED) -i -e 's/Version = ".*"/Version = "v$(VERSION)"/' $(PROJECT_PATH)/internal/version/version.go
 
 # Include last to avoid changing MAKEFILE_LIST used above
 include ./make/*.mk
