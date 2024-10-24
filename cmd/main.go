@@ -79,8 +79,10 @@ func main() {
 	var maxRequeueTime time.Duration
 	var providers stringSliceFlags
 	var dnsProbesEnabled bool
+	var allowInsecureCerts bool
 
 	flag.BoolVar(&dnsProbesEnabled, "enable-probes", true, "Enable DNSHealthProbes controller.")
+	flag.BoolVar(&allowInsecureCerts, "insecure-health-checks", true, "Allow DNSHealthProbes to use insecure certificates")
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -153,7 +155,7 @@ func main() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
-	}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime); err != nil {
+	}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSRecord")
 		os.Exit(1)
 	}

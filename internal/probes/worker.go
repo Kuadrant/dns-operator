@@ -146,16 +146,16 @@ func (w *Probe) execute(ctx context.Context, probe *v1alpha1.DNSHealthCheckProbe
 
 	for _, ip = range ips {
 		result := w.performRequest(ctx, string(probe.Spec.Protocol), probe.Spec.Hostname, probe.Spec.Path, ip.String(), probe.Spec.Port, probe.Spec.AllowInsecureCertificate, w.probeHeaders)
-		// if any IP in a CNAME fails, it is a failed CNAME
-		if !result.Healthy {
+		// if any IP in a CNAME is healthy, it is a healthy CNAME
+		if result.Healthy {
 			return result
 		}
 	}
 
-	// all IPs returned a healthy result
+	// all IPs returned an unhealthy result
 	return ProbeResult{
 		CheckedAt: metav1.Now(),
-		Healthy:   true,
+		Healthy:   false,
 	}
 }
 
