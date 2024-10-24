@@ -22,6 +22,7 @@ import (
 )
 
 const (
+	ProbeOwnerLabel         = "kuadrant.io/health-probes-owner"
 	DNSHealthCheckFinalizer = "kuadrant.io/dns-health-check-probe"
 )
 

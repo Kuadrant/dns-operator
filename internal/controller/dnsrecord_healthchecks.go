@@ -2,180 +2,135 @@ package controller
 
 import (
 	"context"
-	"crypto/md5"
 	"fmt"
-	"io"
 	"reflect"
 
-	"k8s.io/apimachinery/pkg/api/meta"
+	"github.com/go-logr/logr"
+	"github.com/hashicorp/go-multierror"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	externaldns "sigs.k8s.io/external-dns/endpoint"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/utils/ptr"
+	controllerruntime "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
-	"github.com/kuadrant/dns-operator/internal/provider"
+	"github.com/kuadrant/dns-operator/internal/common"
 )
 
-// healthChecksConfig represents the user configuration for the health checks
-type healthChecksConfig struct {
-	Endpoint         string
-	Port             *int64
-	FailureThreshold *int64
-	Protocol         *provider.HealthCheckProtocol
+func (r *DNSRecordReconciler) ReconcileHealthChecks(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, allowInsecureCerts bool) error {
+	logger := log.FromContext(ctx).WithName("healthchecks")
+	logger.Info("Reconciling healthchecks")
+
+	// Probes enabled but no health check spec yet. Nothing to do
+	if dnsRecord.Spec.HealthCheck == nil {
+		return nil
+	}
+
+	desiredProbes := buildDesiredProbes(dnsRecord, common.GetLeafsTargets(common.MakeTreeFromDNSRecord(dnsRecord), ptr.To([]string{})), allowInsecureCerts)
+
+	for _, probe := range desiredProbes {
+		// if one of them fails - health checks for this record are invalid anyway, so no sense to continue
+		if err := controllerruntime.SetControllerReference(dnsRecord, probe, r.Scheme); err != nil {
+			return err
+		}
+		if err := r.ensureProbe(ctx, probe, logger); err != nil {
+			return err
+		}
+	}
+	logger.Info("Healthecks reconciled")
+	return nil
 }
 
-func (r *DNSRecordReconciler) ReconcileHealthChecks(ctx context.Context, dnsRecord *v1alpha1.DNSRecord) error {
-	var results []provider.HealthCheckResult
-	var err error
+// DeleteHealthChecks deletes all v1alpha1.DNSHealthCheckProbe that have ProbeOwnerLabel of passed in DNSRecord
+func (r *DNSRecordReconciler) DeleteHealthChecks(ctx context.Context, dnsRecord *v1alpha1.DNSRecord) error {
+	logger := log.FromContext(ctx).WithName("healthchecks")
+	logger.Info("Deleting healthchecks")
 
-	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
-	if err != nil {
+	healthProbes := v1alpha1.DNSHealthCheckProbeList{}
+
+	if err := r.List(ctx, &healthProbes, &client.ListOptions{
+		LabelSelector: labels.SelectorFromSet(map[string]string{
+			ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
+		}),
+		Namespace: dnsRecord.Namespace,
+	}); err != nil {
 		return err
 	}
 
-	healthCheckReconciler := dnsProvider.HealthCheckReconciler()
-
-	// Get the configuration for the health checks. If no configuration is
-	// set, ensure that the health checks are deleted
-	config := getHealthChecksConfig(dnsRecord)
-
-	for _, dnsEndpoint := range dnsRecord.Spec.Endpoints {
-		addresses := provider.GetExternalAddresses(dnsEndpoint, dnsRecord)
-		for _, address := range addresses {
-			probeStatus := r.getProbeStatus(address, dnsRecord)
-
-			// no config means delete the health checks
-			if config == nil {
-				result, err := healthCheckReconciler.Delete(ctx, dnsEndpoint, probeStatus)
-				if err != nil {
-					return err
-				}
-
-				results = append(results, result)
-				continue
-			}
-
-			// creating / updating health checks
-			endpointId, err := idForEndpoint(dnsRecord, dnsEndpoint, address)
-			if err != nil {
-				return err
-			}
-
-			spec := provider.HealthCheckSpec{
-				Id:               endpointId,
-				Name:             fmt.Sprintf("%s-%s-%s", dnsRecord.Spec.RootHost, dnsEndpoint.DNSName, address),
-				Host:             &dnsRecord.Spec.RootHost,
-				Path:             config.Endpoint,
-				Port:             config.Port,
-				Protocol:         config.Protocol,
-				FailureThreshold: config.FailureThreshold,
-			}
-
-			result := healthCheckReconciler.Reconcile(ctx, spec, dnsEndpoint, probeStatus, address)
-			results = append(results, result)
+	var deleteErrors error
+	for _, probe := range healthProbes.Items {
+		logger.V(1).Info(fmt.Sprintf("Deleting probe: %s", probe.Name))
+		if err := r.Delete(ctx, &probe); err != nil {
+			deleteErrors = multierror.Append(deleteErrors, err)
 		}
 	}
-
-	result := r.reconcileHealthCheckStatus(results, dnsRecord)
-	return result
+	return deleteErrors
 }
 
-func (r *DNSRecordReconciler) getProbeStatus(address string, dnsRecord *v1alpha1.DNSRecord) *v1alpha1.HealthCheckStatusProbe {
-	if dnsRecord.Status.HealthCheck == nil || dnsRecord.Status.HealthCheck.Probes == nil {
-		return nil
-	}
-	for _, probeStatus := range dnsRecord.Status.HealthCheck.Probes {
-		if probeStatus.IPAddress == address {
-			return &probeStatus
+func (r *DNSRecordReconciler) ensureProbe(ctx context.Context, generated *v1alpha1.DNSHealthCheckProbe, logger logr.Logger) error {
+	current := &v1alpha1.DNSHealthCheckProbe{}
+
+	if err := r.Get(ctx, client.ObjectKeyFromObject(generated), current); err != nil {
+		if errors.IsNotFound(err) {
+			logger.V(1).Info(fmt.Sprintf("Creating probe: %s", generated.Name))
+			return r.Create(ctx, generated)
 		}
+		return err
 	}
 
+	desired := current.DeepCopy()
+	desired.Spec = generated.Spec
+
+	if !reflect.DeepEqual(current, desired) {
+		logger.V(1).Info(fmt.Sprintf("Updating probe: %s", desired.Name))
+		if err := r.Update(ctx, desired); err != nil {
+			return err
+		}
+	}
+	logger.V(1).Info(fmt.Sprintf("No updates needed for probe: %s", desired.Name))
 	return nil
 }
 
-func (r *DNSRecordReconciler) reconcileHealthCheckStatus(results []provider.HealthCheckResult, dnsRecord *v1alpha1.DNSRecord) error {
-	var previousCondition *metav1.Condition
-	probesCondition := &metav1.Condition{
-		Reason: "AllProbesSynced",
-		Type:   "healthProbesSynced",
+func buildDesiredProbes(dnsRecord *v1alpha1.DNSRecord, leafs *[]string, allowInsecureCerts bool) []*v1alpha1.DNSHealthCheckProbe {
+	var probes []*v1alpha1.DNSHealthCheckProbe
+
+	if leafs == nil {
+		return probes
 	}
 
-	var allSynced = metav1.ConditionTrue
-
-	if dnsRecord.Status.HealthCheck == nil {
-		dnsRecord.Status.HealthCheck = &v1alpha1.HealthCheckStatus{
-			Conditions: []metav1.Condition{},
-			Probes:     []v1alpha1.HealthCheckStatusProbe{},
-		}
-	}
-
-	previousCondition = meta.FindStatusCondition(dnsRecord.Status.HealthCheck.Conditions, "HealthProbesSynced")
-	if previousCondition != nil {
-		probesCondition = previousCondition
-	}
-
-	dnsRecord.Status.HealthCheck.Probes = []v1alpha1.HealthCheckStatusProbe{}
-
-	for _, result := range results {
-		if result.Host == "" {
-			continue
-		}
-		status := true
-		if result.Result == provider.HealthCheckFailed {
-			status = false
-			allSynced = metav1.ConditionFalse
-		}
-
-		dnsRecord.Status.HealthCheck.Probes = append(dnsRecord.Status.HealthCheck.Probes, v1alpha1.HealthCheckStatusProbe{
-			ID:         result.ID,
-			IPAddress:  result.IPAddress,
-			Host:       result.Host,
-			Synced:     status,
-			Conditions: []metav1.Condition{result.Condition},
+	for _, leaf := range *leafs {
+		probes = append(probes, &v1alpha1.DNSHealthCheckProbe{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%s", dnsRecord.Name, leaf),
+				Namespace: dnsRecord.Namespace,
+				Labels:    map[string]string{ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord)},
+			},
+			Spec: v1alpha1.DNSHealthCheckProbeSpec{
+				Port:                     dnsRecord.Spec.HealthCheck.Port,
+				Hostname:                 dnsRecord.Spec.RootHost,
+				Address:                  leaf,
+				Path:                     dnsRecord.Spec.HealthCheck.Path,
+				Protocol:                 dnsRecord.Spec.HealthCheck.Protocol,
+				Interval:                 dnsRecord.Spec.HealthCheck.Interval,
+				AdditionalHeadersRef:     dnsRecord.Spec.HealthCheck.AdditionalHeadersRef,
+				FailureThreshold:         dnsRecord.Spec.HealthCheck.FailureThreshold,
+				AllowInsecureCertificate: allowInsecureCerts,
+			},
 		})
 	}
-
-	probesCondition.ObservedGeneration = dnsRecord.Generation
-	probesCondition.Status = allSynced
-
-	if allSynced == metav1.ConditionTrue {
-		probesCondition.Message = fmt.Sprintf("all %v probes synced successfully", len(dnsRecord.Status.HealthCheck.Probes))
-		probesCondition.Reason = "AllProbesSynced"
-	} else {
-		probesCondition.Reason = "UnsyncedProbes"
-		probesCondition.Message = "some probes have not yet successfully synced to the DNS Provider"
-	}
-
-	//probe condition changed? - update transition time
-	if !reflect.DeepEqual(previousCondition, probesCondition) {
-		probesCondition.LastTransitionTime = metav1.Now()
-	}
-
-	dnsRecord.Status.HealthCheck.Conditions = []metav1.Condition{*probesCondition}
-
-	return nil
+	return probes
 }
 
-func getHealthChecksConfig(dnsRecord *v1alpha1.DNSRecord) *healthChecksConfig {
-	if dnsRecord.Spec.HealthCheck == nil || dnsRecord.DeletionTimestamp != nil {
-		return nil
+// BuildOwnerLabelValue ensures label value does not exceed the 63 char limit
+// It uses the name of the record,
+// if the resulting string longer than 63 chars, it will use UIDHash of the record
+func BuildOwnerLabelValue(record *v1alpha1.DNSRecord) string {
+	value := record.Name
+	if len(value) > 63 {
+		return record.GetUIDHash()
 	}
-
-	port := int64(dnsRecord.Spec.HealthCheck.Port)
-	failureThreshold := int64(dnsRecord.Spec.HealthCheck.FailureThreshold)
-
-	return &healthChecksConfig{
-		Endpoint:         dnsRecord.Spec.HealthCheck.Path,
-		Port:             &port,
-		FailureThreshold: &failureThreshold,
-		Protocol:         (*provider.HealthCheckProtocol)(&dnsRecord.Spec.HealthCheck.Protocol),
-	}
-}
-
-// idForEndpoint returns a unique identifier for an endpoint
-func idForEndpoint(dnsRecord *v1alpha1.DNSRecord, endpoint *externaldns.Endpoint, address string) (string, error) {
-	hash := md5.New()
-	if _, err := io.WriteString(hash, fmt.Sprintf("%s/%s@%s:%s-%v", dnsRecord.Name, endpoint.SetIdentifier, endpoint.DNSName, address, dnsRecord.Generation)); err != nil {
-		return "", fmt.Errorf("unexpected error creating ID for endpoint %s", endpoint.SetIdentifier)
-	}
-	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+	return value
 }
