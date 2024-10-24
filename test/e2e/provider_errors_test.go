@@ -127,7 +127,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			validGeoCode = "GEO-NA"
 		} else {
 			//AWS
-			expectedProviderErr = "Value 'notageocode' with length = '11' is not facet-valid with respect to length '2' for type 'ContinentCode'"
+			expectedProviderErr = "unexpected geo code. Prefix with GEO- for continents or use ISO_3166 Alpha 2 supported code for countries"
 			validGeoCode = "US"
 		}
 

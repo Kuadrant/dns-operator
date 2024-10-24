@@ -270,3 +270,27 @@ func GetISO3166Alpha2Codes() []string {
 func IsISO3166Alpha2Code(code string) bool {
 	return slice.ContainsString(GetISO3166Alpha2Codes(), code)
 }
+
+const (
+	AWS_CONTINENT_CODE_AFRICA        = "AF"
+	AWS_CONTINENT_CODE_ANTARTICA     = "AN"
+	AWS_CONTINENT_CODE_ASIA          = "AS"
+	AWS_CONTINENT_CODE_EUROPE        = "EU"
+	AWS_CONTINENT_CODE_OCEANIA       = "OC"
+	AWS_CONTINENT_CODE_NORTH_AMERICA = "NA"
+	AWS_CONTINENT_CODE_SOUTH_AMERICA = "SA"
+)
+
+var AWSContinentCodes = []string{
+	AWS_CONTINENT_CODE_AFRICA,
+	AWS_CONTINENT_CODE_ANTARTICA,
+	AWS_CONTINENT_CODE_ASIA,
+	AWS_CONTINENT_CODE_EUROPE,
+	AWS_CONTINENT_CODE_OCEANIA,
+	AWS_CONTINENT_CODE_NORTH_AMERICA,
+	AWS_CONTINENT_CODE_SOUTH_AMERICA,
+}
+
+func IsContinentCode(code string) bool {
+	return slice.ContainsString(AWSContinentCodes, code)
+}

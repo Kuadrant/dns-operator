@@ -57,7 +57,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			weighted = "Weighted"
 		} else {
 			geoCode1 = "US"
-			geoCode2 = "EU"
+			geoCode2 = "GEO-EU"
 			weighted = "weighted"
 		}
 	})
