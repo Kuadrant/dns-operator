@@ -104,7 +104,7 @@ var _ = BeforeSuite(func() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
-	}).SetupWithManager(mgr, RequeueDuration, ValidityDuration, DefaultValidationDuration, true, true)
+	}).SetupWithManager(mgr, RequeueDuration, ValidityDuration, DefaultValidationDuration, EnableHealthCheckProbes, EnableHealthCheckInsecureEndpoints)
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {

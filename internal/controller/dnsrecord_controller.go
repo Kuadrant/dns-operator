@@ -48,6 +48,8 @@ import (
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
+type HealthCheckOption bool
+
 const (
 	DNSRecordFinalizer        = "kuadrant.io/dns-record"
 	validationRequeueVariance = 0.5
@@ -58,6 +60,11 @@ const (
 	txtRegistryEncryptEnabled      = false
 	txtRegistryEncryptAESKey       = ""
 	txtRegistryCacheInterval       = time.Duration(0)
+
+	EnableHealthCheckProbes             HealthCheckOption = true
+	DisableHealthCheckProbes            HealthCheckOption = false
+	EnableHealthCheckInsecureEndpoints  HealthCheckOption = true
+	DisableHealthCheckInsecureEndpoints HealthCheckOption = false
 )
 
 var (
@@ -325,12 +332,12 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, validForDuration, minRequeue time.Duration, healthProbesEnabled, allowInsecureHealthCert bool) error {
+func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, validForDuration, minRequeue time.Duration, healthProbesEnabled, allowInsecureHealthCert HealthCheckOption) error {
 	defaultRequeueTime = maxRequeue
 	validFor = validForDuration
 	defaultValidationRequeue = minRequeue
-	probesEnabled = healthProbesEnabled
-	allowInsecureCert = allowInsecureHealthCert
+	probesEnabled = bool(healthProbesEnabled)
+	allowInsecureCert = bool(allowInsecureHealthCert)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.DNSRecord{}).
