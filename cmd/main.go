@@ -80,6 +80,9 @@ func main() {
 	var providers stringSliceFlags
 	var dnsProbesEnabled bool
 	var allowInsecureCerts bool
+	var configmapTransport bool
+
+	flag.BoolVar(&configmapTransport, "e2e-test-only-use-mock-health-transport", false, "This enables a mock transport for health checks based on a configmap in the dns-operator namespace named test-health-checks. It will stop proper health checks happening")
 
 	flag.BoolVar(&dnsProbesEnabled, "enable-probes", true, "Enable DNSHealthProbes controller.")
 	flag.BoolVar(&allowInsecureCerts, "insecure-health-checks", true, "Allow DNSHealthProbes to use insecure certificates")
@@ -161,7 +164,10 @@ func main() {
 	}
 
 	if dnsProbesEnabled {
-		probeManager := probes.NewProbeManager()
+		probeManager := probes.NewProbeManager(configmapTransport)
+		if configmapTransport {
+			setupLog.Info("WARNING configmap based transport enabled for health checks")
+		}
 		if err = (&controller.DNSProbeReconciler{
 			Client:       mgr.GetClient(),
 			Scheme:       mgr.GetScheme(),
