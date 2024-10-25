@@ -66,6 +66,9 @@ var (
 	randomizedValidationRequeue time.Duration
 	validFor                    time.Duration
 	reconcileStart              metav1.Time
+
+	probesEnabled     bool
+	allowInsecureCert bool
 )
 
 // DNSRecordReconciler reconciles a DNSRecord object
@@ -125,8 +128,10 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				return r.updateStatus(ctx, previous, dnsRecord, false, err)
 			}
 
-			if err = r.ReconcileHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
-				return ctrl.Result{}, err
+			if probesEnabled {
+				if err = r.DeleteHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
+					return ctrl.Result{}, err
+				}
 			}
 			hadChanges, err := r.deleteRecord(ctx, dnsRecord, dnsProvider)
 			if err != nil {
@@ -227,8 +232,10 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, hadChanges, err)
 	}
 
-	if err = r.ReconcileHealthChecks(ctx, dnsRecord); err != nil {
-		return ctrl.Result{}, err
+	if probesEnabled {
+		if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	return r.updateStatus(ctx, previous, dnsRecord, hadChanges, nil)
@@ -318,10 +325,12 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, validForDuration, minRequeue time.Duration) error {
+func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, validForDuration, minRequeue time.Duration, healthProbesEnabled, allowInsecureHealthCert bool) error {
 	defaultRequeueTime = maxRequeue
 	validFor = validForDuration
 	defaultValidationRequeue = minRequeue
+	probesEnabled = healthProbesEnabled
+	allowInsecureCert = allowInsecureHealthCert
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.DNSRecord{}).
