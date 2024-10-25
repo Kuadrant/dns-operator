@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -203,11 +205,14 @@ func TransportWithDNSResponse(overrides map[string]string, allowInsecureCertific
 
 type ProbeManager struct {
 	probes map[string]context.CancelFunc
+	//main use for this is to configure a test transport
+	overrideTransport bool
 }
 
-func NewProbeManager() *ProbeManager {
+func NewProbeManager(overrideTransport bool) *ProbeManager {
 	return &ProbeManager{
-		probes: map[string]context.CancelFunc{},
+		probes:            map[string]context.CancelFunc{},
+		overrideTransport: overrideTransport,
 	}
 }
 
@@ -285,9 +290,44 @@ func (m *ProbeManager) EnsureProbeWorker(ctx context.Context, k8sClient client.C
 	// Either worker does not exist, or gen changed and old worker got killed. Creating a new one.
 	logger.V(2).Info("health: starting fresh worker for", "generation", probeCR.Generation, "probe", keyForProbe(probeCR))
 	probe := NewProbe(headers)
+	if m.overrideTransport {
+		rt, err := m.EnableConfigmapTransport(ctx, k8sClient, probeCR.Spec.Address)
+		if err != nil {
+			logger.Error(err, "failed to setup configmap transport")
+			return
+		}
+		probe.Transport = rt
+	}
 	m.probes[keyForProbe(probeCR)] = probe.Start(ctx, k8sClient, probeCR)
 }
 
 func keyForProbe(probe *v1alpha1.DNSHealthCheckProbe) string {
 	return fmt.Sprintf("%s/%s", probe.Name, probe.Namespace)
+}
+
+func (m *ProbeManager) EnableConfigmapTransport(ctx context.Context, k8sClient client.Client, ip string) (RoundTripperFunc, error) {
+	//debug and testing configmap
+	rt := func(r *http.Request) (*http.Response, error) {
+		cm := &v1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "mockhealthcheckresponses",
+				// we cannot guarantee this ns to be present
+				Namespace: "dns-operator-system",
+			},
+		}
+		if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(cm), cm); err != nil {
+			return nil, fmt.Errorf("failed to load test only configmap based transport %w", err)
+		}
+		if reponseCode, ok := cm.Data[ip]; ok {
+			code, err := strconv.ParseInt(reponseCode, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse response code from configmap %w", err)
+			}
+			return &http.Response{
+				StatusCode: int(code),
+			}, nil
+		}
+		return nil, fmt.Errorf("no response code in configmap for uri %s", r.URL.Host)
+	}
+	return rt, nil
 }

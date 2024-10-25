@@ -10,4 +10,4 @@ secretGenerator:
   - name: dns-provider-credentials
     type: "kuadrant.io/inmemory"
     literals:
-      - INMEM_INIT_ZONES=kuadrant.local
+      - INMEM_INIT_ZONES=e2e.hcpapps.net

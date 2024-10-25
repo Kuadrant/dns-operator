@@ -48,6 +48,8 @@ import (
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
+type HealthCheckOption bool
+
 const (
 	DNSRecordFinalizer        = "kuadrant.io/dns-record"
 	validationRequeueVariance = 0.5
@@ -58,6 +60,11 @@ const (
 	txtRegistryEncryptEnabled      = false
 	txtRegistryEncryptAESKey       = ""
 	txtRegistryCacheInterval       = time.Duration(0)
+
+	EnableHealthCheckProbes             HealthCheckOption = true
+	DisableHealthCheckProbes            HealthCheckOption = false
+	EnableHealthCheckInsecureEndpoints  HealthCheckOption = true
+	DisableHealthCheckInsecureEndpoints HealthCheckOption = false
 )
 
 var (
@@ -446,6 +453,7 @@ func setStatusConditions(record *v1alpha1.DNSRecord, hadChanges bool, notHealthy
 
 	// probes are disabled or not defined, or this is a wildcard record
 	if record.Spec.HealthCheck == nil || strings.HasPrefix(record.Spec.RootHost, v1alpha1.WildcardPrefix) {
+		meta.RemoveStatusCondition(&record.Status.Conditions, string(v1alpha1.ConditionTypeHealthy))
 		return
 	}
 

@@ -655,7 +655,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				SetTestEnv("testHostname", strings.Join([]string{testID + "-" + strconv.Itoa(i), testDomainName}, "."))
 				SetTestEnv("testID", testID+"-"+strconv.Itoa(i))
 
-				err := ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", testRecord, GetTestEnv)
+				err := ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord.yaml", testRecord, GetTestEnv)
 				By("creating DNS Record for host " + GetTestEnv("testHostname"))
 				Expect(err).ToNot(HaveOccurred())
 				err = k8sClient.Create(ctx, testRecord)

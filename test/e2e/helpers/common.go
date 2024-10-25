@@ -24,7 +24,7 @@ import (
 
 const (
 	TestTimeoutMedium = 10 * time.Second
-	TestTimeoutLong   = 60 * time.Second
+	TestTimeoutLong   = 2 * time.Minute
 )
 
 func GenerateName() string {

@@ -4,19 +4,12 @@ metadata:
   name: ${testID}
   namespace: ${testNamespace}
 spec:
-  healthCheck:
-    port: 80
-    path: "/health"
-    protocol: "HTTP"
-    interval: 1s
-    failureThreshold: 5
   endpoints:
     - dnsName: 14byhk-2k52h1.klb.${testHostname}
       recordTTL: 60
       recordType: A
       targets:
         - 172.32.200.1
-        - 172.32.200.2
     - dnsName: ${testHostname}
       recordTTL: 300
       recordType: CNAME

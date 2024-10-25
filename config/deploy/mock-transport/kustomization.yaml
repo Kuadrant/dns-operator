@@ -1,0 +1,17 @@
+# Local deployment overlay.
+#
+# Set mock transport layer arg for deployment
+#
+
+resources:
+  - ../local
+
+patches:
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --e2e-test-only-use-mock-health-transport
+    target:
+      kind: Deployment
+      name: controller-manager
+      namespace: system

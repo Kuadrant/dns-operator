@@ -171,6 +171,10 @@ test-integration: manifests generate fmt vet envtest ginkgo ## Run integration t
 test-e2e: ginkgo
 	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e ./test/e2e
 
+.PHONY: test-e2e-healthchecks
+test-e2e-healthchecks: ginkgo
+	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e_healthchecks ./test/e2e
+
 .PHONY: test-e2e-multi
 test-e2e-multi: ginkgo
 	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=multi_record ./test/e2e
@@ -242,10 +246,11 @@ run: manifests generate fmt vet ## Run a controller from your host.
 	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
 
 .PHONY: run-with-probes
+run-with-probes: MOCK_HEALTH_CHECKS=false
 run-with-probes: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 run-with-probes: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run-with-probes: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race  ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
+	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race  ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure --e2e-test-only-use-mock-health-transport=${MOCK_HEALTH_CHECKS}
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
@@ -292,9 +297,14 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
+deploy: MOCK_HEALTH_CHECKS=false
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/deploy/local | $(KUBECTL) apply -f -
+	@if [ ${MOCK_HEALTH_CHECKS} = "false" ]; then\
+		$(KUSTOMIZE) build config/deploy/local | $(KUBECTL) apply -f - ;\
+	else\
+		$(KUSTOMIZE) build config/deploy/mock-transport | $(KUBECTL) apply -f - ;\
+	fi ;\
 
 .PHONY: deploy-namespaced
 deploy-namespaced: manifests kustomize generate-cluster-overlay ## Deploy controller to the K8s cluster specified in ~/.kube/config.

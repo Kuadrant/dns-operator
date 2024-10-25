@@ -68,10 +68,16 @@ jobs:
       - name: Setup environment
         if: ${{ !inputs.ginkgoDryRun }}
         run: |
-          make local-setup DEPLOY=true TEST_NAMESPACE=${{ env.TEST_NAMESPACE }}
+          make local-setup DEPLOY=true MOCK_HEALTH_CHECKS=true TEST_NAMESPACE=${{ env.TEST_NAMESPACE }}
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-aws
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-gcp
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-azure
+      - name: Run healthcheck suite
+        run: |
+          export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-inmemory
+          export TEST_DNS_ZONE_DOMAIN_NAME=e2e.hcpapps.net
+          export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
+          make test-e2e-healthchecks
       - name: Run suite AWS
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-aws
