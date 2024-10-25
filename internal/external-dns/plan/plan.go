@@ -279,15 +279,6 @@ func (p *Plan) Calculate() *Plan {
 					if len(owners) == 0 {
 						managedChanges.deletes = append(managedChanges.deletes, records.current)
 					} else {
-						//ToDO Not ideal that this is also manipulating the desired record values here but we dont know if
-						// the update was caused by the deletion of a record or not later so we have to remove the previous
-						// values from the desired like this for now.
-						if records.previous != nil && len(candidate.Targets) > 1 {
-							removeEndpointTargets(records.previous.Targets, candidate)
-						}
-						//ToDo Need a test that tests the deletion of a record with two owners who are adding the same value
-						// If you delete one owner record, it currently removes the endpoint form desired causing an invalid record
-
 						managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous, isDelete: true})
 						managedChanges.dnsNameOwners[key.dnsName] = append(managedChanges.dnsNameOwners[key.dnsName], owners...)
 					}
@@ -503,6 +494,18 @@ func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 	if update.current.SetIdentifier != "" {
 		e.logger.V(1).Info(fmt.Sprintf("skipping update of desired for %s, has SetIdentifier", update.desired.DNSName))
 		return
+	}
+
+	// If we are deleting we need to remove the previous target values, but not if we are going to be left with none.
+	// This can happen if you are creating multiple records with the same hostname on the same cluster since they will
+	// all have the same addresses. If we get to this point we also know there is still another owner so removing all the
+	// target values is never going to be correct.
+	if update.isDelete && update.previous != nil {
+		desiredCopy := update.desired.DeepCopy()
+		removeEndpointTargets(update.previous.Targets, desiredCopy)
+		if len(desiredCopy.Targets) > 0 {
+			update.desired.Targets = desiredCopy.Targets
+		}
 	}
 
 	currentCopy := update.current.DeepCopy()

@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -42,6 +43,8 @@ var (
 	ErrRecordNotFound = errors.New("record not found")
 	// ErrDuplicateRecordFound when record is repeated in create/update/delete
 	ErrDuplicateRecordFound = errors.New("invalid batch request")
+	// ErrNoTargetValue when record has no target values in create/update
+	ErrNoTargetValue = errors.New("record has no target values")
 )
 
 // InMemoryProvider - dns provider only used for testing purposes
@@ -378,6 +381,9 @@ func (c *InMemoryClient) validateChangeBatch(zone string, changes *plan.Changes)
 	}
 	mesh := sets.New[endpoint.EndpointKey]()
 	for _, newEndpoint := range changes.Create {
+		if len(newEndpoint.Targets) == 0 {
+			return ErrNoTargetValue
+		}
 		if _, exists := curZone[newEndpoint.Key()]; exists {
 			return ErrRecordAlreadyExists
 		}
@@ -386,6 +392,9 @@ func (c *InMemoryClient) validateChangeBatch(zone string, changes *plan.Changes)
 		}
 	}
 	for _, updateEndpoint := range changes.UpdateNew {
+		if len(updateEndpoint.Targets) == 0 {
+			return ErrNoTargetValue
+		}
 		if _, exists := curZone[updateEndpoint.Key()]; !exists {
 			return ErrRecordNotFound
 		}
@@ -394,12 +403,12 @@ func (c *InMemoryClient) validateChangeBatch(zone string, changes *plan.Changes)
 		}
 	}
 	for _, updateOldEndpoint := range changes.UpdateOld {
-		if rec, exists := curZone[updateOldEndpoint.Key()]; !exists || rec.Targets[0] != updateOldEndpoint.Targets[0] {
+		if rec, exists := curZone[updateOldEndpoint.Key()]; !exists || !reflect.DeepEqual(rec.Targets, updateOldEndpoint.Targets) {
 			return ErrRecordNotFound
 		}
 	}
 	for _, deleteEndpoint := range changes.Delete {
-		if rec, exists := curZone[deleteEndpoint.Key()]; !exists || rec.Targets[0] != deleteEndpoint.Targets[0] {
+		if rec, exists := curZone[deleteEndpoint.Key()]; !exists || !reflect.DeepEqual(rec.Targets, deleteEndpoint.Targets) {
 			return ErrRecordNotFound
 		}
 		if err := c.updateMesh(mesh, deleteEndpoint); err != nil {

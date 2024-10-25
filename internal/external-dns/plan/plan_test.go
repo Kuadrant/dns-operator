@@ -62,6 +62,8 @@ type PlanTestSuite struct {
 	barA3OwnerNone *endpoint.Endpoint
 	barA4OwnerNone *endpoint.Endpoint
 	fooA1Owner1    *endpoint.Endpoint
+	fooA1Owner2    *endpoint.Endpoint
+	fooA1Owner12   *endpoint.Endpoint
 	fooA2Owner1    *endpoint.Endpoint
 	fooA2Owner2    *endpoint.Endpoint
 	fooA12Owner12  *endpoint.Endpoint
@@ -322,6 +324,22 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"1.1.1.1"},
 		Labels: map[string]string{
 			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.fooA1Owner2 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+	}
+	suite.fooA1Owner12 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1&&owner2",
 		},
 	}
 	suite.fooA2Owner1 = &endpoint.Endpoint{
@@ -1663,6 +1681,32 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordDelete() {
 		UpdateOld: []*endpoint.Endpoint{suite.fooA12Owner12.DeepCopy()},
 		UpdateNew: []*endpoint.Endpoint{suite.fooA1Owner1.DeepCopy()},
 		Delete:    []*endpoint.Endpoint{suite.barA4Owner2.DeepCopy()},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		Previous:       previous,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should delete record with the same host and target from two owners.
+func (suite *PlanTestSuite) TestMultiOwnerARecordDeleteSameAddress() {
+	current := []*endpoint.Endpoint{suite.fooA1Owner12}
+	previous := []*endpoint.Endpoint{suite.fooA1Owner2}
+	desired := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.fooA1Owner12.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.fooA1Owner1.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{},
 	}
 
 	p := &Plan{
