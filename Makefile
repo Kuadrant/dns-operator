@@ -528,7 +528,7 @@ prepare-release: ## Generates a makefile that will override environment variable
 	$(MAKE) bundle
 	$(MAKE) helm-build VERSION=$(VERSION)
 
-.PHONY: read-version
+.PHONY: read-release-version
 read-release-version: ## Reads release version
 	@echo "v$(VERSION)"
 
