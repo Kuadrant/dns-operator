@@ -1,6 +1,3 @@
-MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
-PROJECT_PATH := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
-
 # VERSION defines the project version for the bundle.
 # Update this value when you upgrade the version of your project.
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
@@ -236,19 +233,19 @@ local-deploy-namespaced: docker-build kind-load-image ## Deploy the dns operator
 build: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 build: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 build: manifests generate fmt vet ## Build manager binary.
-	go build -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
+	go build -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
 
 .PHONY: run
 run: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 run: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
+	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
 
 .PHONY: run-with-probes
 run-with-probes: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 run-with-probes: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run-with-probes: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race  ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
+	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race  ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
@@ -341,17 +338,6 @@ YQ = $(LOCALBIN)/yq
 GINKGO ?= $(LOCALBIN)/ginkgo
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 HELM ?= $(LOCALBIN)/helm
-ifeq ($(shell uname),Darwin)
-SED=$(shell which gsed)
-else
-SED=$(shell which sed)
-endif
-.PHONY: sed
-sed: ## Checks if GNU sed is installed
-ifeq ($(SED),)
-	@echo "Cannot find GNU sed installed."
-	exit 1
-endif
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.1
@@ -541,15 +527,10 @@ prepare-release: ## Generates a makefile that will override environment variable
 	VERSION=$(VERSION)\nREPLACES_VERSION=$(REPLACES_VERSION)" > $(RELEASE_FILE)
 	$(MAKE) bundle
 	$(MAKE) helm-build VERSION=$(VERSION)
-	$(MAKE) update-release-version VERSION=$(VERSION)
 
 .PHONY: read-version
 read-release-version: ## Reads release version
-	@$(SED) -n 's/^.*Version = "\([^"]*\)".*/\1/p' $(PROJECT_PATH)/internal/version/version.go
-
-.PHONY: update-release-version
-update-release-version: ## Updates release version to v$(VERSION). Note 'v' prefix.
-	$(SED) -i -e 's/Version = ".*"/Version = "v$(VERSION)"/' $(PROJECT_PATH)/internal/version/version.go
+	@echo "v$(VERSION)"
 
 # Include last to avoid changing MAKEFILE_LIST used above
 include ./make/*.mk
