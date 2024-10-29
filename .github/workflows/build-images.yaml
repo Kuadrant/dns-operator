@@ -26,6 +26,12 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
+      - name: Read release string version
+        id: release
+        run: |
+          version=`make read-release-version`
+          echo version=$version >> $GITHUB_OUTPUT
+
       - name: Add latest tag
         if: ${{ github.ref_name == env.MAIN_BRANCH_NAME }}
         id: add-latest-tag
@@ -47,6 +53,7 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
             DIRTY=false
+            VERSION=${{ steps.release.outputs.version }}
 
           dockerfiles: |
             ./Dockerfile

@@ -254,7 +254,7 @@ run-with-probes: manifests generate fmt vet ## Run a controller from your host.
 docker-build: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 docker-build: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} . --build-arg GIT_SHA=$(GIT_SHA) --build-arg DIRTY=$(DIRTY)
+	$(CONTAINER_TOOL) build -t ${IMG} . --build-arg VERSION=v$(VERSION) --build-arg GIT_SHA=$(GIT_SHA) --build-arg DIRTY=$(DIRTY)
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

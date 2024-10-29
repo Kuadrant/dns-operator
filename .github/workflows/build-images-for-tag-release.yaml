@@ -48,6 +48,7 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
             DIRTY=false
+            VERSION=${{ github.ref_name }}
 
           dockerfiles: |
             ./Dockerfile
