@@ -21,6 +21,18 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
+      - name: Read release string version
+        id: release
+        run: |
+          version=`make read-release-version`
+          echo version=$version >> $GITHUB_OUTPUT
+
+      - name: Print tags
+        run: echo "Git reference name = ${{ github.ref_name }}, release version = ${{ steps.release.outputs.version }}"
+      - name: Verify git reference name matches the release version
+        if: ${{ github.ref_name != steps.release.outputs.version }}
+        run: exit 1
+
       - name: Install qemu dependency
         run: |
           sudo apt-get update

@@ -233,19 +233,19 @@ local-deploy-namespaced: docker-build kind-load-image ## Deploy the dns operator
 build: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 build: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 build: manifests generate fmt vet ## Build manager binary.
-	go build -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
+	go build -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
 
 .PHONY: run
 run: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 run: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
+	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
 
 .PHONY: run-with-probes
 run-with-probes: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 run-with-probes: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run-with-probes: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "-X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race  ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
+	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race  ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
@@ -528,6 +528,9 @@ prepare-release: ## Generates a makefile that will override environment variable
 	$(MAKE) bundle
 	$(MAKE) helm-build VERSION=$(VERSION)
 
+.PHONY: read-release-version
+read-release-version: ## Reads release version
+	@echo "v$(VERSION)"
 
 # Include last to avoid changing MAKEFILE_LIST used above
 include ./make/*.mk
