@@ -191,7 +191,7 @@ func (w *Probe) performRequest(ctx context.Context, protocol, host, path, ip str
 	} else if err != nil {
 		return ProbeResult{CheckedAt: metav1.Now(), Healthy: false, Reason: fmt.Sprintf("error: %s, response: %+v", err.Error(), res)}
 	}
-
+	logger.V(1).Info("health: probe execution complete against ", "url", httpReq.URL, "status code", res.StatusCode)
 	if !slice.Contains[int](ExpectedResponses, func(i int) bool { return i == res.StatusCode }) {
 		return ProbeResult{
 			CheckedAt: metav1.Now(),
