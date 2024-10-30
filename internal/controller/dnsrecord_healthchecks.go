@@ -15,6 +15,7 @@ import (
 	controllerruntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common"
@@ -92,6 +93,72 @@ func (r *DNSRecordReconciler) ensureProbe(ctx context.Context, generated *v1alph
 	}
 	logger.V(1).Info(fmt.Sprintf("No updates needed for probe: %s", desired.Name))
 	return nil
+}
+
+// removeUnhealthyEndpoints fetches all probes associated with this record and uses the following criteria while removing endpoints:
+//   - If the Leaf Address has no health check CR - it is healthy
+//   - If the health check CR has insufficient failures - it is healthy
+//   - If the health check CR is deleting - it is healthy
+//   - If the health check is a CNAME and any IP is healthy - the CNAME is healthy
+//
+// If this leads to an empty array of endpoints it:
+//   - Does nothing (prevents NXDomain response) if we already published
+//   - Returns empty array of nothing is published (prevent from publishing unhealthy EPs)
+//
+// it returns the list of healthy endpoints, an array of unhealthy addresses and an error
+func (r *DNSRecordReconciler) removeUnhealthyEndpoints(ctx context.Context, specEndpoints []*endpoint.Endpoint, dnsRecord *v1alpha1.DNSRecord) ([]*endpoint.Endpoint, []string, error) {
+	probes := &v1alpha1.DNSHealthCheckProbeList{}
+
+	// we are deleting or don't have health checks - don't bother
+	if (dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero()) || dnsRecord.Spec.HealthCheck == nil {
+		return specEndpoints, []string{}, nil
+	}
+
+	// get all probes owned by this record
+	err := r.List(ctx, probes, &client.ListOptions{
+		LabelSelector: labels.SelectorFromSet(map[string]string{
+			ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
+		}),
+		Namespace: dnsRecord.Namespace,
+	})
+	if err != nil {
+		return nil, []string{}, err
+	}
+	unhealthyAddresses := make([]string, 0, len(probes.Items))
+
+	// use adjusted endpoints instead of spec ones
+	tree := common.MakeTreeFromDNSRecord(&v1alpha1.DNSRecord{
+		Spec: v1alpha1.DNSRecordSpec{
+			RootHost:  dnsRecord.Spec.RootHost,
+			Endpoints: specEndpoints,
+		},
+	})
+
+	var haveHealthyProbes bool
+	for _, probe := range probes.Items {
+		// if the probe is healthy or unknown, continue to the next probe
+		if probe.Status.Healthy != nil && *probe.Status.Healthy {
+			haveHealthyProbes = true
+			continue
+		}
+
+		// if we exceeded a threshold or we haven't probed yet
+		if probe.Status.ConsecutiveFailures >= dnsRecord.Spec.HealthCheck.FailureThreshold || probe.Status.Healthy == nil {
+			//delete bad endpoint from all endpoints targets
+			tree.RemoveNode(&common.DNSTreeNode{
+				Name: probe.Spec.Address,
+			})
+			unhealthyAddresses = append(unhealthyAddresses, probe.Spec.Address)
+		}
+
+	}
+
+	// if at least one of the leaf probes was healthy return healthy probes
+	if haveHealthyProbes {
+		return *common.ToEndpoints(tree, ptr.To([]*endpoint.Endpoint{})), unhealthyAddresses, nil
+	}
+	// if none of the probes are healthy or probes don't exist - don't modify endpoints
+	return dnsRecord.Status.Endpoints, unhealthyAddresses, nil
 }
 
 func buildDesiredProbes(dnsRecord *v1alpha1.DNSRecord, leafs *[]string, allowInsecureCerts bool) []*v1alpha1.DNSHealthCheckProbe {

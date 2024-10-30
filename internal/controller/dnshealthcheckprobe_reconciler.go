@@ -67,6 +67,8 @@ func (r *DNSProbeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	ctx, _ = r.setLoggerValues(ctx, baseLogger, dnsProbe)
 
 	if dnsProbe.DeletionTimestamp != nil && !dnsProbe.DeletionTimestamp.IsZero() {
+		logger.Info("healthcheckprobe deleted cleaning up workers")
+		r.ProbeManager.StopProbeWorker(ctx, dnsProbe)
 		controllerutil.RemoveFinalizer(dnsProbe, DNSHealthCheckFinalizer)
 		if err = r.Update(ctx, dnsProbe); client.IgnoreNotFound(err) != nil {
 			if apierrors.IsConflict(err) {
@@ -74,8 +76,7 @@ func (r *DNSProbeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			}
 			return ctrl.Result{}, err
 		}
-		logger.Info("healthcheckprobe deleted cleaning up workers")
-		r.ProbeManager.StopProbeWorker(ctx, dnsProbe)
+
 		return ctrl.Result{}, nil
 	}
 
