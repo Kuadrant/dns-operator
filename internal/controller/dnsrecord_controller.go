@@ -223,6 +223,12 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, false, err)
 	}
 
+	if probesEnabled {
+		if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+	// just check probes here and don't publish
 	// Publish the record
 	hadChanges, err := r.publishRecord(ctx, dnsRecord, dnsProvider)
 	if err != nil {
@@ -230,12 +236,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			"ProviderError", fmt.Sprintf("The DNS provider failed to ensure the record: %v", provider.SanitizeError(err)))
 		return r.updateStatus(ctx, previous, dnsRecord, hadChanges, err)
-	}
-
-	if probesEnabled {
-		if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
-			return ctrl.Result{}, err
-		}
 	}
 
 	return r.updateStatus(ctx, previous, dnsRecord, hadChanges, nil)
