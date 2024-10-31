@@ -47,7 +47,7 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 		Transport          func() probes.RoundTripperFunc
 		ProbeConfig        func() *v1alpha1.DNSHealthCheckProbe
 		ProbeHeaders       v1alpha1.AdditionalHeaders
-		Validate           func(t *testing.T, probe *v1alpha1.DNSHealthCheckProbe, tt *testTransport, expectedCalls int)
+		Validate           func(t *testing.T, results []probes.ProbeResult, tt *testTransport, expectedCalls int)
 		Ctx                context.Context
 		ExpectedProbeCalls int
 	}{
@@ -64,15 +64,17 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 			ProbeConfig: func() *v1alpha1.DNSHealthCheckProbe {
 				return testProbe.DeepCopy()
 			},
-			Validate: func(t *testing.T, probe *v1alpha1.DNSHealthCheckProbe, tt *testTransport, expectedCalls int) {
-				if probe.Status.ConsecutiveFailures != 0 {
-					t.Fatalf("expected no failures but got %v", probe.Status.ConsecutiveFailures)
+			Validate: func(t *testing.T, results []probes.ProbeResult, tt *testTransport, expectedCalls int) {
+				if len(results) != expectedCalls {
+					t.Fatalf("expected %v results got %v", expectedCalls, len(results))
 				}
-				if probe.Status.Healthy == nil || *probe.Status.Healthy != true {
-					t.Fatalf("expected the probe to be healthy")
+				lastResult := results[expectedCalls-1]
+				// get the last probe result
+				if lastResult.Healthy == false {
+					t.Fatalf("expected the result of the probe to be healthy but it was not")
 				}
-				if tt.calls != expectedCalls {
-					t.Fatalf("expected the number of health probe http calls to be %v but got %v", expectedCalls, tt.calls)
+				if lastResult.Status != 200 {
+					t.Fatalf("expected the result status to be 200 but got %v", lastResult.Status)
 				}
 			},
 		},
@@ -89,15 +91,16 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 				return testProbe.DeepCopy()
 			},
 			ExpectedProbeCalls: 3,
-			Validate: func(t *testing.T, probe *v1alpha1.DNSHealthCheckProbe, tt *testTransport, expectedCalls int) {
-				if probe.Status.ConsecutiveFailures != expectedCalls {
-					t.Fatalf("expected %v failures but got %v", expectedCalls, probe.Status.ConsecutiveFailures)
+			Validate: func(t *testing.T, results []probes.ProbeResult, tt *testTransport, expectedCalls int) {
+				if len(results) != expectedCalls {
+					t.Fatalf("expected %v results got %v", expectedCalls, len(results))
 				}
-				if probe.Status.Healthy == nil || *probe.Status.Healthy != false {
-					t.Fatalf("expected the probe to be unhealthy")
+				lastResult := results[expectedCalls-1]
+				if lastResult.Healthy != false {
+					t.Fatalf("expected the result of the probe to be un-healthy but it was not")
 				}
-				if tt.calls != expectedCalls {
-					t.Fatalf("expected the number of health probe http calls to be %v but got %v", expectedCalls, tt.calls)
+				if lastResult.Status != 503 {
+					t.Fatalf("expected result status to be 503 but got %v", lastResult.Status)
 				}
 			},
 		},
@@ -106,7 +109,7 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.Name, func(t *testing.T) {
 			probeConfig := test.ProbeConfig()
-			w := probes.NewProbe(probeConfig, test.ProbeHeaders)
+			w := probes.NewProbe(test.ProbeHeaders)
 			tTransport := &testTransport{}
 			tTransport.f = test.Transport()
 			w.Transport = tTransport.countedHTTP
@@ -116,11 +119,13 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 			wait := sync.WaitGroup{}
 			wait.Add(test.ExpectedProbeCalls)
 			// read from our channel
+			executedProbes := []probes.ProbeResult{}
 			go func() {
 				calls := 0
-				for range exChan {
+				for result := range exChan {
 					calls++
 					t.Logf("channel read %v", calls)
+					executedProbes = append(executedProbes, result)
 					wait.Done()
 				}
 			}()
@@ -135,7 +140,7 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 			// cancel our context and wait for the probe to exit
 			cancel()
 			wait.Wait()
-			test.Validate(t, probeConfig, tTransport, test.ExpectedProbeCalls)
+			test.Validate(t, executedProbes, tTransport, test.ExpectedProbeCalls)
 		})
 	}
 }
