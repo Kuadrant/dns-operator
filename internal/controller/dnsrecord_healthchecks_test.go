@@ -178,9 +178,9 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status":             Equal(metav1.ConditionTrue),
-					"Reason":             Equal("ProviderSuccess"),
-					"Message":            Equal("Provider ensured the dns record"),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal(string(v1alpha1.ConditionReasonUnhealthy)),
+					"Message":            Equal("None of the healthchecks succeeded"),
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
@@ -249,7 +249,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 			g.Expect(updated).To(BeTrue())
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
-		By("Ensure unhealthy endpoints are gone")
+		By("Ensure unhealthy endpoints are gone and status is updated")
 		Eventually(func(g Gomega) {
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 
@@ -259,6 +259,14 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 					"Targets": ConsistOf("172.32.200.2"),
 				})),
 			))
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":    Equal(string(v1alpha1.ConditionTypeHealthy)),
+					"Status":  Equal(metav1.ConditionFalse),
+					"Reason":  Equal(string(v1alpha1.ConditionReasonPartiallyHealthy)),
+					"Message": Equal("Not healthy addresses: [172.32.200.1]"),
+				})),
+			)
 
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
@@ -278,6 +286,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				if probe.Spec.Address == "172.32.200.2" {
 					probe.Status.Healthy = ptr.To(false)
 					probe.Status.LastCheckedAt = metav1.Now()
+					probe.Status.ConsecutiveFailures = dnsRecord.Spec.HealthCheck.FailureThreshold + 1
 					g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
 					updated = true
 				}
@@ -287,11 +296,26 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		// we don't remove EPs if this leads to empty EPs
-		By("Ensure endpoints are not changed ")
+		By("Ensure endpoints are not changed and status is updated")
 		Eventually(func(g Gomega) {
 			newRecord := &v1alpha1.DNSRecord{}
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), newRecord)).To(Succeed())
 			g.Expect(dnsRecord.Status.Endpoints).To(BeEquivalentTo(newRecord.Status.Endpoints))
+
+			g.Expect(newRecord.Status.Conditions).To(ContainElements(
+				MatchFields(IgnoreExtras, Fields{
+					"Type":    Equal(string(v1alpha1.ConditionTypeHealthy)),
+					"Status":  Equal(metav1.ConditionFalse),
+					"Reason":  Equal(string(v1alpha1.ConditionReasonUnhealthy)),
+					"Message": Equal("Not healthy addresses: [172.32.200.1 172.32.200.2]"),
+				}),
+				MatchFields(IgnoreExtras, Fields{
+					"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":  Equal(metav1.ConditionFalse),
+					"Reason":  Equal(string(v1alpha1.ConditionReasonUnhealthy)),
+					"Message": Equal("None of the healthchecks succeeded"),
+				}),
+			))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
