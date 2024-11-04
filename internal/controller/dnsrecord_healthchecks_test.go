@@ -187,6 +187,40 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
+	It("Should not create wildcard probes", func() {
+		// make record a wildcard one
+		dnsRecord.Spec.RootHost = v1alpha1.WildcardPrefix + dnsRecord.Spec.RootHost
+		dnsRecord.Spec.Endpoints = getTestEndpoints(v1alpha1.WildcardPrefix+testHostname, []string{"172.32.200.1", "172.32.200.2"})
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+		// ensure we have no probes
+		Eventually(func(g Gomega) {
+			probes := &v1alpha1.DNSHealthCheckProbeList{}
+
+			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
+				}),
+				Namespace: dnsRecord.Namespace,
+			})).To(Succeed())
+			g.Expect(len(probes.Items)).To(Equal(0))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		// make sure dnsrecord succeeded
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionTrue),
+					"Reason":             Equal(string(v1alpha1.ConditionReasonProviderSuccess)),
+					"Message":            Equal("Provider ensured the dns record"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+	})
+
 	It("Should remove unhealthy endpoints", func() {
 		//Create default test dnsrecord
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())

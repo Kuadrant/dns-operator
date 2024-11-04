@@ -444,8 +444,8 @@ func setStatusConditions(record *v1alpha1.DNSRecord, hadChanges bool, notHealthy
 	}
 	setDNSRecordCondition(record, string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
 
-	// probes are disabled or not defined
-	if record.Spec.HealthCheck == nil {
+	// probes are disabled or not defined, or this is a wildcard record
+	if record.Spec.HealthCheck == nil || strings.HasPrefix(record.Spec.RootHost, v1alpha1.WildcardPrefix) {
 		return
 	}
 
