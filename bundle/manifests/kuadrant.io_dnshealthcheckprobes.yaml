@@ -79,7 +79,7 @@ spec:
               hostname:
                 description: Hostname is the value sent in the host header, to route
                   the request to the correct service
-                pattern: ^[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+$
+                pattern: ^([a-z]|\*.)[a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+$
                 type: string
               interval:
                 description: Interval defines how frequently this probe should execute

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -128,6 +129,7 @@ func (w *Probe) execute(ctx context.Context, probe *v1alpha1.DNSHealthCheckProbe
 
 func (w *Probe) performRequest(ctx context.Context, protocol, host, path, ip string, port int, allowInsecure bool, headers v1alpha1.AdditionalHeaders) ProbeResult {
 	logger := log.FromContext(ctx).WithValues("health probe worker:", "preforming request")
+	host, _ = strings.CutPrefix(host, v1alpha1.WildcardPrefix)
 	probeClient := metrics.NewInstrumentedClient("probe", &http.Client{
 		Transport: TransportWithDNSResponse(map[string]string{host: ip}, allowInsecure),
 	})

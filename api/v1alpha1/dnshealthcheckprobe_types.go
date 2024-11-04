@@ -29,7 +29,7 @@ type DNSHealthCheckProbeSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self in [80, 443] || (self >= 1024 && self <= 49151)",message="Only ports 80, 443, 1024-49151 are allowed"
 	Port int `json:"port,omitempty"`
 	// Hostname is the value sent in the host header, to route the request to the correct service
-	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+$`
+	// +kubebuilder:validation:Pattern=`^([a-z]|\*.)[a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+$`
 	Hostname string `json:"hostname,omitempty"`
 	// Address to connect to the host on (IP Address (A Record) or hostname (CNAME)).
 	// +kubebuilder:validation:Pattern=`^([1-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?|[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+)?$`
