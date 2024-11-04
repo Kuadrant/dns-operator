@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/hashicorp/go-multierror"
@@ -27,6 +28,11 @@ func (r *DNSRecordReconciler) ReconcileHealthChecks(ctx context.Context, dnsReco
 
 	// Probes enabled but no health check spec yet. Nothing to do
 	if dnsRecord.Spec.HealthCheck == nil {
+		return nil
+	}
+
+	// we don't support probes for wildcard hosts
+	if strings.HasPrefix(dnsRecord.Spec.RootHost, v1alpha1.WildcardPrefix) {
 		return nil
 	}
 
@@ -111,6 +117,11 @@ func (r *DNSRecordReconciler) removeUnhealthyEndpoints(ctx context.Context, spec
 
 	// we are deleting or don't have health checks - don't bother
 	if (dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero()) || dnsRecord.Spec.HealthCheck == nil {
+		return specEndpoints, []string{}, nil
+	}
+
+	// we have wildcard record - healthchecks not supported
+	if strings.HasPrefix(dnsRecord.Spec.RootHost, v1alpha1.WildcardPrefix) {
 		return specEndpoints, []string{}, nil
 	}
 
