@@ -442,17 +442,23 @@ func setStatusConditions(record *v1alpha1.DNSRecord, hadChanges bool, notHealthy
 		setDNSRecordCondition(record, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonAwaitingValidation), "Awaiting validation")
 		return
 	}
+
 	setDNSRecordCondition(record, string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
 
 	// probes are disabled or not defined, or this is a wildcard record
 	if record.Spec.HealthCheck == nil || strings.HasPrefix(record.Spec.RootHost, v1alpha1.WildcardPrefix) {
+		meta.RemoveStatusCondition(&record.Status.Conditions, string(v1alpha1.ConditionTypeHealthy))
 		return
+	}
+
+	// if we haven't published because of the health failure, we won't have changes but the spec endpoints will be empty
+	if record.Status.Endpoints == nil || len(record.Status.Endpoints) == 0 {
+		setDNSRecordCondition(record, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Not publishing unhealthy records")
 	}
 
 	// we don't have probes yet
 	if cap(notHealthyProbes) == 0 {
 		setDNSRecordCondition(record, string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Probes are creating")
-		setDNSRecordCondition(record, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Probes are creating")
 		return
 	}
 
@@ -470,7 +476,6 @@ func setStatusConditions(record *v1alpha1.DNSRecord, hadChanges bool, notHealthy
 	}
 	// none of the probes is healthy (change ready condition to false)
 	setDNSRecordCondition(record, string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), fmt.Sprintf("Not healthy addresses: %s", notHealthyProbes))
-	setDNSRecordCondition(record, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "None of the healthchecks succeeded")
 
 }
 
