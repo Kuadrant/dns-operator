@@ -612,6 +612,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					if !provider.IsISO3166Alpha2Code(geoCode) {
 						awsGeoCodeKey = "aws/geolocation-continent-code"
 					}
+					awsGeoCodeValue := strings.TrimPrefix(geoCode, "GEO-")
 
 					Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(klbHostName),
@@ -621,7 +622,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "alias", Value: "false"},
-							{Name: awsGeoCodeKey, Value: geoCode},
+							{Name: awsGeoCodeKey, Value: awsGeoCodeValue},
 						}),
 					}))))
 					totalEndpointsChecked++
@@ -633,7 +634,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						"SetIdentifier": Equal(geoCode),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
-							{Name: awsGeoCodeKey, Value: geoCode},
+							{Name: awsGeoCodeKey, Value: awsGeoCodeValue},
 						}),
 					}))))
 					totalEndpointsChecked++
