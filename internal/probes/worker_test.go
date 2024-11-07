@@ -73,6 +73,12 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 				if lastResult.Healthy == false {
 					t.Fatalf("expected the result of the probe to be healthy but it was not")
 				}
+				if !lastResult.CheckedAt.After(results[len(results)-2].CheckedAt.Time) {
+					t.Fatalf("result checked at should be after the previous result checkAt ")
+				}
+				if !lastResult.CheckedAt.After(lastResult.PreviousCheck.Time) {
+					t.Fatalf("result checked at should be after the previousCheck")
+				}
 				if lastResult.Status != 200 {
 					t.Fatalf("expected the result status to be 200 but got %v", lastResult.Status)
 				}

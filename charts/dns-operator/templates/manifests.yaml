@@ -113,9 +113,6 @@ spec:
                 type: integer
               healthy:
                 type: boolean
-              lastCheckedAt:
-                format: date-time
-                type: string
               observedGeneration:
                 format: int64
                 type: integer
@@ -125,7 +122,6 @@ spec:
                 type: integer
             required:
             - healthy
-            - lastCheckedAt
             type: object
         type: object
     served: true

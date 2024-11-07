@@ -67,7 +67,7 @@ type AdditionalHeader struct {
 
 // DNSHealthCheckProbeStatus defines the observed state of DNSHealthCheckProbe
 type DNSHealthCheckProbeStatus struct {
-	LastCheckedAt       metav1.Time `json:"lastCheckedAt"`
+	LastCheckedAt       metav1.Time `json:"-"`
 	ConsecutiveFailures int         `json:"consecutiveFailures,omitempty"`
 	Reason              string      `json:"reason,omitempty"`
 	Status              int         `json:"status,omitempty"`
