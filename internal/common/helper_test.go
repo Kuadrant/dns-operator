@@ -25,8 +25,8 @@ func TestRandomizeDuration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			i := 0
 			for i < testIterations {
-				if got := RandomizeDuration(tt.variance, tt.duration); !isValidVariance(tt.duration, got, tt.variance) {
-					t.Errorf("RandomizeDuration() invalid randomization; got = %v", got.String())
+				if got := RandomizeValidationDuration(tt.variance, tt.duration); !isValidVariance(tt.duration, got, tt.variance) {
+					t.Errorf("RandomizeValidationDuration() invalid randomization; got = %v", got.String())
 				}
 				i++
 			}
