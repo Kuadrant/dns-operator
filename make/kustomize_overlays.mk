@@ -19,13 +19,18 @@ CLUSTER_OVERLAY_DIR ?= $(shell pwd)/tmp/overlays
 $(CLUSTER_OVERLAY_DIR):
 	mkdir -p $(CLUSTER_OVERLAY_DIR)
 
+USE_REMOTE_CONFIG ?= false
+DNS_OPERATOR_GITREF ?= main
+
+config_path_for = $(shell if [ $(USE_REMOTE_CONFIG) = 'true' ]; then echo "github.com/kuadrant/dns-operator/$(1)?ref=$(DNS_OPERATOR_GITREF)"; else realpath -m --relative-to=$(2) $(shell pwd)/$(1); fi)
+
 .PHONY: generate-cluster-overlay
 generate-cluster-overlay: remove-cluster-overlay ## Generate a cluster overlay with namespaced deployments for the current cluster (CLUSTER_NAME)
 	# Generate cluster overlay
 	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME) && \
 	touch kustomization.yaml && \
-	$(KUSTOMIZE) edit add resource "../../../config/crd"
+	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/crd",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME))
 
 	# Generate common dns provider kustomization
 	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers
@@ -33,7 +38,7 @@ generate-cluster-overlay: remove-cluster-overlay ## Generate a cluster overlay w
 	touch kustomization.yaml && \
 	$(KUSTOMIZE) edit add secret dns-provider-credentials-inmemory --disableNameSuffixHash --from-literal=INMEM_INIT_ZONES=kuadrant.local --type "kuadrant.io/inmemory"
 
-	# Add dns providers that require credentials
+	# Add dns providers that require credentials if credential files exist
 	@if [[ -f $(GCP_CREDENTIALS_FILE) ]]; then\
 		cp config/local-setup/dns-provider/gcp/gcp-credentials.env $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\
 		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
@@ -50,6 +55,7 @@ generate-cluster-overlay: remove-cluster-overlay ## Generate a cluster overlay w
 		$(KUSTOMIZE) edit add secret dns-provider-credentials-azure --disableNameSuffixHash --from-env-file=azure-credentials.env --type "kuadrant.io/azure" ;\
 	fi
 
+	# Add dns operator deployments based on the number of deployments requested
 	@n=1 ; while [[ $$n -le $(DEPLOYMENT_COUNT) ]] ; do \
 		$(MAKE) -s generate-operator-deployment-overlay DEPLOYMENT_NAME_SUFFIX=$$n DEPLOYMENT_NAMESPACE=${DEPLOYMENT_NAMESPACE}-$$n DEPLOYMENT_WATCH_NAMESPACES=${DEPLOYMENT_NAMESPACE}-$$n ;\
 		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME) && $(KUSTOMIZE) edit add resource namespace-${DEPLOYMENT_NAMESPACE}-$$n && cd - > /dev/null ;\
@@ -70,7 +76,7 @@ generate-operator-deployment-overlay: ## Generate a DNS Operator deployment over
 	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE)/dns-operator
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE)/dns-operator && \
 	touch kustomization.yaml && \
-	$(KUSTOMIZE) edit add resource "../../../../../config/local-setup/dns-operator" && \
+	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/local-setup/dns-operator",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE)/dns-operator) && \
 	$(KUSTOMIZE) edit set namesuffix -- -$(DEPLOYMENT_NAME_SUFFIX)  && \
 	$(KUSTOMIZE) edit add patch --kind Deployment --patch '[{"op": "replace", "path": "/spec/template/spec/containers/0/env/0", "value": {"name": "WATCH_NAMESPACES", "value": "$(DEPLOYMENT_WATCH_NAMESPACES)"}}]'
 
