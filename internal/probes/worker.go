@@ -31,10 +31,13 @@ const (
 )
 
 type ProbeResult struct {
+	// CheckedAt the current helath check time
 	CheckedAt metav1.Time
-	Healthy   bool
-	Reason    string
-	Status    int
+	// PreviousCheck the time it was checked before the current check
+	PreviousCheck metav1.Time
+	Healthy       bool
+	Reason        string
+	Status        int
 }
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
@@ -79,7 +82,10 @@ func (w *Probe) ExecuteProbe(ctx context.Context, probe *v1alpha1.DNSHealthCheck
 			case <-timer.C:
 				logger.V(2).Info("health probe worker: executing")
 				result := w.execute(ctx, localProbe)
+				// set the previous check time from the exsting probe
+				result.PreviousCheck = localProbe.Status.LastCheckedAt
 				// as this routine is just executing the local config it only cares about when it should execute again
+				// set the lastCheck based on the result
 				localProbe.Status.LastCheckedAt = result.CheckedAt
 				sig <- result
 			}
@@ -254,11 +260,11 @@ func (w *Probe) Start(clientctx context.Context, k8sClient client.Client, probe 
 			} else {
 				freshProbe.Status.ConsecutiveFailures = 0
 			}
+			logger.V(1).Info("health: execution complete ", "result", probeResult, "checked at", probeResult.CheckedAt.String(), "previoud check at ", probeResult.PreviousCheck)
 			freshProbe.Status.Healthy = &probeResult.Healthy
 			freshProbe.Status.LastCheckedAt = probeResult.CheckedAt
 			freshProbe.Status.Reason = probeResult.Reason
 			freshProbe.Status.Status = probeResult.Status
-			logger.V(1).Info("health: execution complete ", "result", probeResult)
 
 			logger.V(2).Info("health: probe finished updating status for probe", "status", freshProbe)
 			err := k8sClient.Status().Update(clientctx, freshProbe)
