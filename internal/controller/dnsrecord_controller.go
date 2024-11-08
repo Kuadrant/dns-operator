@@ -99,7 +99,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	defer postReconcile(ctx)
 
 	// randomize validation reconcile delay
-	randomizedValidationRequeue = common.RandomizeDuration(validationRequeueVariance, defaultValidationRequeue)
+	randomizedValidationRequeue = common.RandomizeValidationDuration(validationRequeueVariance, defaultValidationRequeue)
 
 	previous := &v1alpha1.DNSRecord{}
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, previous)

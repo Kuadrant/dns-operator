@@ -13,16 +13,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 	"github.com/kuadrant/dns-operator/internal/common/slice"
 	"github.com/kuadrant/dns-operator/internal/metrics"
 )
 
 var (
 	ExpectedResponses = []int{200, 201}
+
+	ProbeDelay = float64(time.Second.Milliseconds())
 )
 
 const (
 	PROBE_TIMEOUT = 3 * time.Second
+
+	ProbeDelayVariance = 0.5
 )
 
 type ProbeResult struct {
@@ -230,6 +235,9 @@ func (w *Probe) Start(clientctx context.Context, k8sClient client.Client, probe 
 	logger.V(1).Info("health: starting new worker for probe")
 
 	go func() {
+		// jitter probe execution so we aren't starting at the same time
+		time.Sleep(common.RandomizeDuration(ProbeDelayVariance, ProbeDelay))
+
 		metrics.ProbeCounter.WithLabelValues(probe.Name, probe.Namespace, probe.Spec.Hostname).Inc()
 		//each time the probe executes it will send a result on the channel returned by ExecuteProbe until the probe is cancelled. The probe can be cancelled by a new spec being created for the healthcheck or on shutdown
 		for probeResult := range w.ExecuteProbe(ctx, probe) {
