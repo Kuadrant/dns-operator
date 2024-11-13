@@ -83,7 +83,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 						"Address":  Equal("172.32.200.1"),
 						"Path":     Equal("/healthz"),
 						"Protocol": Equal(v1alpha1.Protocol("HTTPS")),
-						"Interval": Equal(metav1.Duration{Duration: time.Minute}),
+						"Interval": PointTo(Equal(metav1.Duration{Duration: time.Minute})),
 						"AdditionalHeadersRef": PointTo(MatchFields(IgnoreExtras, Fields{
 							"Name": Equal("headers"),
 						})),
@@ -102,7 +102,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 						"Address":  Equal("172.32.200.2"),
 						"Path":     Equal("/healthz"),
 						"Protocol": Equal(v1alpha1.Protocol("HTTPS")),
-						"Interval": Equal(metav1.Duration{Duration: time.Minute}),
+						"Interval": PointTo(Equal(metav1.Duration{Duration: time.Minute})),
 						"AdditionalHeadersRef": PointTo(MatchFields(IgnoreExtras, Fields{
 							"Name": Equal("headers"),
 						})),
@@ -164,6 +164,64 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				g.Expect(probes.Items).To(HaveLen(0))
 			}, TestTimeoutShort, time.Second)
 
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+	})
+
+	It("Should create valid probe CRs with default values", func() {
+		//Create test dnsrecord with nils for optional fields
+		dnsRecord.Spec.HealthCheck = &v1alpha1.HealthCheckSpec{
+			Path: "/health",
+		}
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+		By("Validating created probes")
+		Eventually(func(g Gomega) {
+			probes := &v1alpha1.DNSHealthCheckProbeList{}
+
+			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
+				}),
+				Namespace: dnsRecord.Namespace,
+			})).To(Succeed())
+
+			g.Expect(probes.Items).To(HaveLen(2))
+			g.Expect(probes.Items).To(ConsistOf(
+				MatchFields(IgnoreExtras, Fields{
+					"ObjectMeta": MatchFields(IgnoreExtras, Fields{
+						"Name":      Equal(fmt.Sprintf("%s-%s", dnsRecord.Name, "172.32.200.1")),
+						"Namespace": Equal(testNamespace),
+					}),
+					"Spec": MatchFields(IgnoreExtras, Fields{
+						"Port":                     Equal(443),
+						"Hostname":                 Equal(testHostname),
+						"Address":                  Equal("172.32.200.1"),
+						"Path":                     Equal("/health"),
+						"Protocol":                 Equal(v1alpha1.Protocol("HTTPS")),
+						"Interval":                 PointTo(Equal(metav1.Duration{Duration: 5 * time.Minute})),
+						"AdditionalHeadersRef":     BeNil(),
+						"FailureThreshold":         Equal(5),
+						"AllowInsecureCertificate": Equal(true),
+					}),
+				}),
+				MatchFields(IgnoreExtras, Fields{
+					"ObjectMeta": MatchFields(IgnoreExtras, Fields{
+						"Name":      Equal(fmt.Sprintf("%s-%s", dnsRecord.Name, "172.32.200.2")),
+						"Namespace": Equal(testNamespace),
+					}),
+					"Spec": MatchFields(IgnoreExtras, Fields{
+						"Port":                     Equal(443),
+						"Hostname":                 Equal(testHostname),
+						"Address":                  Equal("172.32.200.2"),
+						"Path":                     Equal("/health"),
+						"Protocol":                 Equal(v1alpha1.Protocol("HTTPS")),
+						"Interval":                 PointTo(Equal(metav1.Duration{Duration: 5 * time.Minute})),
+						"AdditionalHeadersRef":     BeNil(),
+						"FailureThreshold":         Equal(5),
+						"AllowInsecureCertificate": Equal(true),
+					}),
+				}),
+			))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 

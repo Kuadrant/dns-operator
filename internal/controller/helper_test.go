@@ -50,7 +50,7 @@ func getTestHealthCheckSpec() *v1alpha1.HealthCheckSpec {
 		Port:             443,
 		Protocol:         "HTTPS",
 		FailureThreshold: 5,
-		Interval:         metav1.Duration{Duration: time.Minute},
+		Interval:         &metav1.Duration{Duration: time.Minute},
 		AdditionalHeadersRef: &v1alpha1.AdditionalHeadersRef{
 			Name: "headers",
 		},
