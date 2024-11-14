@@ -63,12 +63,11 @@ spec:
               address:
                 description: Address to connect to the host on (IP Address (A Record)
                   or hostname (CNAME)).
-                pattern: ^([1-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?|[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+)?$
                 type: string
               allowInsecureCertificate:
                 description: |-
                   AllowInsecureCertificate will instruct the health check probe to not fail on a self-signed or otherwise invalid SSL certificate
-                  this is primarily used in development or testing environments
+                  this is primarily used in development or testing environments and is set by the --insecure-health-checks flag
                 type: boolean
               failureThreshold:
                 description: FailureThreshold is a limit of consecutive failures that
@@ -78,9 +77,9 @@ spec:
                 - message: Failure threshold must be greater than 0
                   rule: self > 0
               hostname:
-                description: Hostname is the value sent in the host header, to route
-                  the request to the correct service
-                pattern: ^[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+$
+                description: |-
+                  Hostname is the value sent in the host header, to route the request to the correct service
+                  Represents a root host of the parent DNS Record.
                 type: string
               interval:
                 description: Interval defines how frequently this probe should execute
@@ -241,15 +240,19 @@ spec:
                     - name
                     type: object
                   failureThreshold:
-                    description: FailureThreshold is a limit of consecutive failures
-                      that must occur for a host to be considered unhealthy
+                    default: 5
+                    description: |-
+                      FailureThreshold is a limit of consecutive failures that must occur for a host to be considered unhealthy
+                      Defaults to 5
                     type: integer
                     x-kubernetes-validations:
                     - message: Failure threshold must be greater than 0
                       rule: self > 0
                   interval:
-                    description: Interval defines how frequently this probe should
-                      execute
+                    default: 5m
+                    description: |-
+                      Interval defines how frequently this probe should execute
+                      Defaults to 5 minutes
                     type: string
                   path:
                     description: |-
@@ -258,15 +261,19 @@ spec:
                     pattern: ^(?:\?|\/)[\w\-.~:\/?#\[\]@!$&'()*+,;=]+(?:[a-zA-Z0-9]|\/){1}$
                     type: string
                   port:
-                    description: Port to connect to the host on. Must be either 80,
-                      443 or 1024-49151
+                    default: 443
+                    description: |-
+                      Port to connect to the host on. Must be either 80, 443 or 1024-49151
+                      Defaults to port 443
                     type: integer
                     x-kubernetes-validations:
                     - message: Only ports 80, 443, 1024-49151 are allowed
                       rule: self in [80, 443] || (self >= 1024 && self <= 49151)
                   protocol:
-                    description: Protocol to use when connecting to the host, valid
-                      values are "HTTP" or "HTTPS"
+                    default: HTTPS
+                    description: |-
+                      Protocol to use when connecting to the host, valid values are "HTTP" or "HTTPS"
+                      Defaults to HTTPS
                     type: string
                     x-kubernetes-validations:
                     - message: Only HTTP or HTTPS protocols are allowed

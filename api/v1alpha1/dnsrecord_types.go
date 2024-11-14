@@ -36,23 +36,36 @@ const HttpsProtocol Protocol = "HTTPS"
 // the listeners assigned to the target gateway
 type HealthCheckSpec struct {
 	// Port to connect to the host on. Must be either 80, 443 or 1024-49151
+	// Defaults to port 443
 	// +kubebuilder:validation:XValidation:rule="self in [80, 443] || (self >= 1024 && self <= 49151)",message="Only ports 80, 443, 1024-49151 are allowed"
+	// +kubebuilder:default=443
 	Port int `json:"port,omitempty"`
+
 	// Path is the path to append to the host to reach the expected health check.
 	// Must start with "?" or "/", contain only valid URL characters and end with alphanumeric char or "/". For example "/" or "/healthz" are common
 	// +kubebuilder:validation:Pattern=`^(?:\?|\/)[\w\-.~:\/?#\[\]@!$&'()*+,;=]+(?:[a-zA-Z0-9]|\/){1}$`
 	Path string `json:"path,omitempty"`
+
 	// Protocol to use when connecting to the host, valid values are "HTTP" or "HTTPS"
+	// Defaults to HTTPS
 	// +kubebuilder:validation:XValidation:rule="self in ['HTTP','HTTPS']",message="Only HTTP or HTTPS protocols are allowed"
+	// +kubebuilder:default=HTTPS
 	Protocol Protocol `json:"protocol,omitempty"`
+
 	// Interval defines how frequently this probe should execute
-	// +default:5m
-	Interval metav1.Duration `json:"interval,omitempty"`
+	// Defaults to 5 minutes
+	// +kubebuilder:default="5m"
+	Interval *metav1.Duration `json:"interval,omitempty"`
+
 	// AdditionalHeadersRef refers to a secret that contains extra headers to send in the probe request, this is primarily useful if an authentication
 	// token is required by the endpoint.
+	// +optional
 	AdditionalHeadersRef *AdditionalHeadersRef `json:"additionalHeadersRef,omitempty"`
+
 	// FailureThreshold is a limit of consecutive failures that must occur for a host to be considered unhealthy
+	// Defaults to 5
 	// +kubebuilder:validation:XValidation:rule="self > 0",message="Failure threshold must be greater than 0"
+	// +kubebuilder:default=5
 	FailureThreshold int `json:"failureThreshold,omitempty"`
 }
 

@@ -35,7 +35,7 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 			Hostname:         "example.com",
 			Address:          "1.2.1.1",
 			Path:             "/test",
-			Interval:         v1.Duration{Duration: time.Second},
+			Interval:         &v1.Duration{Duration: time.Second},
 			Port:             80,
 			Protocol:         v1alpha1.HttpProtocol,
 			FailureThreshold: 3,

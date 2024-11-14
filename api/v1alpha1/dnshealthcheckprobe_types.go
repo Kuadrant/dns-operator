@@ -28,29 +28,37 @@ type DNSHealthCheckProbeSpec struct {
 	// Port to connect to the host on. Must be either 80, 443 or 1024-49151
 	// +kubebuilder:validation:XValidation:rule="self in [80, 443] || (self >= 1024 && self <= 49151)",message="Only ports 80, 443, 1024-49151 are allowed"
 	Port int `json:"port,omitempty"`
+
 	// Hostname is the value sent in the host header, to route the request to the correct service
-	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+$`
+	// Represents a root host of the parent DNS Record.
 	Hostname string `json:"hostname,omitempty"`
+
 	// Address to connect to the host on (IP Address (A Record) or hostname (CNAME)).
-	// +kubebuilder:validation:Pattern=`^([1-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?\.[0-9][0-9]?[0-9]?|[a-z][a-z0-9\-]+\.([a-z][a-z0-9\-]+\.)*[a-z][a-z0-9\-]+)?$`
 	Address string `json:"address,omitempty"`
+
 	// Path is the path to append to the host to reach the expected health check.
 	// Must start with "?" or "/", contain only valid URL characters and end with alphanumeric char or "/". For example "/" or "/healthz" are common
 	// +kubebuilder:validation:Pattern=`^(?:\?|\/)[\w\-.~:\/?#\[\]@!$&'()*+,;=]+(?:[a-zA-Z0-9]|\/){1}$`
 	Path string `json:"path,omitempty"`
+
 	// Protocol to use when connecting to the host, valid values are "HTTP" or "HTTPS"
 	// +kubebuilder:validation:XValidation:rule="self in ['HTTP','HTTPS']",message="Only HTTP or HTTPS protocols are allowed"
 	Protocol Protocol `json:"protocol,omitempty"`
+
 	// Interval defines how frequently this probe should execute
-	Interval metav1.Duration `json:"interval,omitempty"`
+	Interval *metav1.Duration `json:"interval,omitempty"`
+
 	// AdditionalHeadersRef refers to a secret that contains extra headers to send in the probe request, this is primarily useful if an authentication
 	// token is required by the endpoint.
+	// +optional
 	AdditionalHeadersRef *AdditionalHeadersRef `json:"additionalHeadersRef,omitempty"`
+
 	// FailureThreshold is a limit of consecutive failures that must occur for a host to be considered unhealthy
 	// +kubebuilder:validation:XValidation:rule="self > 0",message="Failure threshold must be greater than 0"
 	FailureThreshold int `json:"failureThreshold,omitempty"`
+
 	// AllowInsecureCertificate will instruct the health check probe to not fail on a self-signed or otherwise invalid SSL certificate
-	// this is primarily used in development or testing environments
+	// this is primarily used in development or testing environments and is set by the --insecure-health-checks flag
 	AllowInsecureCertificate bool `json:"allowInsecureCertificate,omitempty"`
 }
 
