@@ -265,6 +265,87 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
+	It("Should reconcile prematurely on healthcheck change", func() {
+		// Create a default record
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+		By("Making probes healthy")
+		Eventually(func(g Gomega) {
+			probes := &v1alpha1.DNSHealthCheckProbeList{}
+
+			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
+				}),
+				Namespace: dnsRecord.Namespace,
+			})).To(Succeed())
+			g.Expect(len(probes.Items)).To(Equal(2))
+
+			// make probes healthy
+			for _, probe := range probes.Items {
+				probe.Status.Healthy = ptr.To(true)
+				probe.Status.LastCheckedAt = metav1.Now()
+				probe.Status.ConsecutiveFailures = 0
+				g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
+			}
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		// Override valid for to 1 hour to make sure we are always premature
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			// update only after we are ready
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status": Equal(metav1.ConditionTrue),
+				})),
+			)
+			dnsRecord.Status.ValidFor = "1h"
+			g.Expect(k8sClient.Status().Update(ctx, dnsRecord)).To(Succeed())
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		// validate that it is still 1 hour - we hit the premature loop
+		// we purposefully are not updating anything on premature loops
+		// so can't be sure if we have had a short loop or not yet
+		By("Verify premature loop did not occur")
+		Eventually(func(g Gomega) {
+			newRecord := &v1alpha1.DNSRecord{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), newRecord)).To(Succeed())
+			g.Expect(newRecord.Status.ValidFor).To(Equal("1h"))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		By("Making probes unhealthy")
+		Eventually(func(g Gomega) {
+			probes := &v1alpha1.DNSHealthCheckProbeList{}
+
+			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
+				}),
+				Namespace: dnsRecord.Namespace,
+			})).To(Succeed())
+			g.Expect(len(probes.Items)).To(Equal(2))
+
+			// make probes healthy
+			for _, probe := range probes.Items {
+				probe.Status.Healthy = ptr.To(false)
+				probe.Status.LastCheckedAt = metav1.Now()
+				probe.Status.ConsecutiveFailures = 5
+				g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
+			}
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		// check that record has valid for not an hour - we did the full reconcile and updated valid for
+		By("Validate premature loop occurred")
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			// on the full loop we will always update ValidFor unless it is max duration.
+			// since we had 1 hour the logic should set it to the max.
+			// meaning that changing probes triggered dnsrecornd reconciler
+			// and we had a fool loop before we were supposed to
+			g.Expect(dnsRecord.Status.ValidFor).To(Equal(RequeueDuration.String()))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+	})
 	It("Should not publish unhealthy enpoints", func() {
 		//Create default test dnsrecord
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())

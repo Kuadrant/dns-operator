@@ -112,11 +112,10 @@ func (r *DNSRecordReconciler) ensureProbe(ctx context.Context, generated *v1alph
 //   - Returns empty array if nothing is published (prevent from publishing unhealthy EPs)
 //
 // it returns the list of healthy endpoints, an array of unhealthy addresses and an error
-func (r *DNSRecordReconciler) removeUnhealthyEndpoints(ctx context.Context, specEndpoints []*endpoint.Endpoint, dnsRecord *v1alpha1.DNSRecord) ([]*endpoint.Endpoint, []string, error) {
-	probes := &v1alpha1.DNSHealthCheckProbeList{}
+func removeUnhealthyEndpoints(specEndpoints []*endpoint.Endpoint, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList) ([]*endpoint.Endpoint, []string, error) {
 
 	// we are deleting or don't have health checks - don't bother
-	if (dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero()) || dnsRecord.Spec.HealthCheck == nil {
+	if (dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero()) || dnsRecord.Spec.HealthCheck == nil || !probesEnabled {
 		return specEndpoints, []string{}, nil
 	}
 
@@ -125,16 +124,6 @@ func (r *DNSRecordReconciler) removeUnhealthyEndpoints(ctx context.Context, spec
 		return specEndpoints, []string{}, nil
 	}
 
-	// get all probes owned by this record
-	err := r.List(ctx, probes, &client.ListOptions{
-		LabelSelector: labels.SelectorFromSet(map[string]string{
-			ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
-		}),
-		Namespace: dnsRecord.Namespace,
-	})
-	if err != nil {
-		return nil, []string{}, err
-	}
 	unhealthyAddresses := make([]string, 0, len(probes.Items))
 
 	// use adjusted endpoints instead of spec ones
@@ -211,4 +200,10 @@ func BuildOwnerLabelValue(record *v1alpha1.DNSRecord) string {
 		return record.GetUIDHash()
 	}
 	return value
+}
+
+// GetOwnerFromLabel returns a name or UID of probe owner
+// A reverse to BuildOwnerLabelValue
+func GetOwnerFromLabel(probe *v1alpha1.DNSHealthCheckProbe) string {
+	return probe.GetLabels()[ProbeOwnerLabel]
 }
