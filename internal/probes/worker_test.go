@@ -2,6 +2,7 @@ package probes_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 	"testing"
@@ -42,9 +43,24 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 		Status: v1alpha1.DNSHealthCheckProbeStatus{},
 	}
 
+	var testHeaders = []v1alpha1.AdditionalHeader{
+		{Name: "first", Value: "test"},
+		{Name: "second", Value: "test"},
+	}
+
+	var validateHeaders = func(r *http.Request, headers v1alpha1.AdditionalHeaders) error {
+		for _, kv := range headers {
+			header := r.Header.Get(kv.Name)
+			if header != kv.Value {
+				return fmt.Errorf("expected header %s with value %s but got value %s ", kv.Name, kv.Value, header)
+			}
+		}
+		return nil
+	}
+
 	testCases := []struct {
 		Name               string
-		Transport          func() probes.RoundTripperFunc
+		Transport          func(headers v1alpha1.AdditionalHeaders) probes.RoundTripperFunc
 		ProbeConfig        func() *v1alpha1.DNSHealthCheckProbe
 		ProbeHeaders       v1alpha1.AdditionalHeaders
 		Validate           func(t *testing.T, results []probes.ProbeResult, tt *testTransport, expectedCalls int)
@@ -53,17 +69,18 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 	}{
 		{
 			Name: "test health check success",
-			Transport: func() probes.RoundTripperFunc {
+			Transport: func(expectedHeaders v1alpha1.AdditionalHeaders) probes.RoundTripperFunc {
 				return func(r *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: 200,
-					}, nil
+					}, validateHeaders(r, expectedHeaders)
 				}
 			},
 			ExpectedProbeCalls: 5,
 			ProbeConfig: func() *v1alpha1.DNSHealthCheckProbe {
 				return testProbe.DeepCopy()
 			},
+			ProbeHeaders: testHeaders,
 			Validate: func(t *testing.T, results []probes.ProbeResult, tt *testTransport, expectedCalls int) {
 				if len(results) != expectedCalls {
 					t.Fatalf("expected %v results got %v", expectedCalls, len(results))
@@ -86,7 +103,7 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 		},
 		{
 			Name: "test healthcheck failure ",
-			Transport: func() probes.RoundTripperFunc {
+			Transport: func(headers v1alpha1.AdditionalHeaders) probes.RoundTripperFunc {
 				return func(r *http.Request) (*http.Response, error) {
 					return &http.Response{
 						StatusCode: 503,
@@ -117,7 +134,7 @@ func TestWorker_ProbeSuccess(t *testing.T) {
 			probeConfig := test.ProbeConfig()
 			w := probes.NewProbe(test.ProbeHeaders)
 			tTransport := &testTransport{}
-			tTransport.f = test.Transport()
+			tTransport.f = test.Transport(test.ProbeHeaders)
 			w.Transport = tTransport.countedHTTP
 			ctx, cancel := context.WithCancel(context.TODO())
 			//setup our channel
