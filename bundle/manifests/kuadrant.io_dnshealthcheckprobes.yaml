@@ -19,10 +19,6 @@ spec:
       jsonPath: .status.healthy
       name: Healthy
       type: boolean
-    - description: Last checked at.
-      jsonPath: .status.lastCheckedAt
-      name: Last Checked
-      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:

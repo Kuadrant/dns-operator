@@ -28,7 +28,7 @@ func (r *DNSRecordReconciler) ReconcileHealthChecks(ctx context.Context, dnsReco
 
 	// Probes enabled but no health check spec yet. Nothing to do
 	if dnsRecord.Spec.HealthCheck == nil {
-		return nil
+		return r.DeleteHealthChecks(ctx, dnsRecord)
 	}
 
 	// we don't support probes for wildcard hosts

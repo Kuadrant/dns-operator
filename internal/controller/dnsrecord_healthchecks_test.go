@@ -167,6 +167,46 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
+	It("Should create valid probe CRs and remove them when definition removed", func() {
+		//Create default test dnsrecord
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+		By("Validating created probes")
+		Eventually(func(g Gomega) {
+			probes := &v1alpha1.DNSHealthCheckProbeList{}
+
+			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
+				}),
+				Namespace: dnsRecord.Namespace,
+			})).To(Succeed())
+
+			g.Expect(probes.Items).To(HaveLen(2))
+
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		By("updating the DNSRecord and and ensuring the healthcheck is removed")
+		Eventually(func(g Gomega) {
+			recordCopy := &v1alpha1.DNSRecord{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), recordCopy)).
+				Should(Succeed())
+			recordCopy.Spec.HealthCheck = nil
+			g.Expect(k8sClient.Update(ctx, recordCopy)).
+				Should(Succeed())
+			probes := &v1alpha1.DNSHealthCheckProbeList{}
+
+			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
+				}),
+				Namespace: dnsRecord.Namespace,
+			})).To(Succeed())
+
+			g.Expect(probes.Items).To(HaveLen(0))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+	})
+
 	It("Should create valid probe CRs with default values", func() {
 		//Create test dnsrecord with nils for optional fields
 		dnsRecord.Spec.HealthCheck = &v1alpha1.HealthCheckSpec{
@@ -495,8 +535,10 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 
 		By("Remove health spec")
 		Eventually(func(g Gomega) {
-			dnsRecord.Spec.HealthCheck = nil
-			g.Expect(k8sClient.Update(ctx, dnsRecord)).To(Succeed())
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			cpRecord := dnsRecord.DeepCopy()
+			cpRecord.Spec.HealthCheck = nil
+			g.Expect(k8sClient.Update(ctx, cpRecord)).To(Succeed())
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		// we don't remove EPs if this leads to empty EPs
