@@ -86,7 +86,6 @@ type DNSHealthCheckProbeStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Healthy",type="boolean",JSONPath=".status.healthy",description="DNSHealthCheckProbe healthy."
-//+kubebuilder:printcolumn:name="Last Checked",type="date",JSONPath=".status.lastCheckedAt",description="Last checked at."
 
 // DNSHealthCheckProbe is the Schema for the dnshealthcheckprobes API
 type DNSHealthCheckProbe struct {
