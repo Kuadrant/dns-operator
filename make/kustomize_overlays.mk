@@ -6,7 +6,7 @@
 CLUSTER_NAME ?= $(KIND_CLUSTER_NAME)
 
 DEPLOYMENT_COUNT ?= 2
-DEPLOYMENT_NAMESPACE ?= dns-operator
+DEPLOYMENT_NAMESPACE ?= kuadrant-dns-operator
 DEPLOYMENT_NAME_SUFFIX ?= 1
 DEPLOYMENT_WATCH_NAMESPACES ?=
 
@@ -25,7 +25,7 @@ DNS_OPERATOR_GITREF ?= main
 config_path_for = $(shell if [ $(USE_REMOTE_CONFIG) = 'true' ]; then echo "github.com/kuadrant/dns-operator/$(1)?ref=$(DNS_OPERATOR_GITREF)"; else realpath -m --relative-to=$(2) $(shell pwd)/$(1); fi)
 
 .PHONY: generate-cluster-overlay
-generate-cluster-overlay: remove-cluster-overlay ## Generate a cluster overlay with namespaced deployments for the current cluster (CLUSTER_NAME)
+generate-cluster-overlay: ## Generate a cluster overlay with namespaced deployments for the current cluster (CLUSTER_NAME)
 	# Generate cluster overlay
 	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME) && \
@@ -58,7 +58,7 @@ generate-cluster-overlay: remove-cluster-overlay ## Generate a cluster overlay w
 	# Add dns operator deployments based on the number of deployments requested
 	@n=1 ; while [[ $$n -le $(DEPLOYMENT_COUNT) ]] ; do \
 		$(MAKE) -s generate-operator-deployment-overlay DEPLOYMENT_NAME_SUFFIX=$$n DEPLOYMENT_NAMESPACE=${DEPLOYMENT_NAMESPACE}-$$n DEPLOYMENT_WATCH_NAMESPACES=${DEPLOYMENT_NAMESPACE}-$$n ;\
-		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME) && $(KUSTOMIZE) edit add resource namespace-${DEPLOYMENT_NAMESPACE}-$$n && cd - > /dev/null ;\
+		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME) && $(KUSTOMIZE) edit add resource ${DEPLOYMENT_NAMESPACE}-$$n && cd - > /dev/null ;\
 		((n = n + 1)) ;\
 	done ;\
 
@@ -71,18 +71,31 @@ remove-all-cluster-overlays: ## Remove all existing cluster overlays (kuadrant-d
 	rm -rf $(CLUSTER_OVERLAY_DIR)/kuadrant-dns-local*
 
 .PHONY: generate-operator-deployment-overlay
+generate-operator-deployment-overlay: DEPLOYMENT_REPLICAS=1
 generate-operator-deployment-overlay: ## Generate a DNS Operator deployment overlay for the current cluster (CLUSTER_NAME)
 	# Generate dns-operator deployment overlay
-	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE)/dns-operator
-	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE)/dns-operator && \
+	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator
+	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator && \
 	touch kustomization.yaml && \
-	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/local-setup/dns-operator",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE)/dns-operator) && \
-	$(KUSTOMIZE) edit set namesuffix -- -$(DEPLOYMENT_NAME_SUFFIX)  && \
-	$(KUSTOMIZE) edit add patch --kind Deployment --patch '[{"op": "replace", "path": "/spec/template/spec/containers/0/env/0", "value": {"name": "WATCH_NAMESPACES", "value": "$(DEPLOYMENT_WATCH_NAMESPACES)"}}]'
+	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/local-setup/dns-operator",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator) && \
+	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/prometheus",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator)
 
-	# Generate namespace overlay with dns-operator and dns provider resources
-	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/namespace-$(DEPLOYMENT_NAMESPACE) && \
+	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/dns-operator
+	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/dns-operator && \
+	touch kustomization.yaml && \
+	$(KUSTOMIZE) edit add resource "../../dns-operator" && \
+	$(KUSTOMIZE) edit set namesuffix -- -$(DEPLOYMENT_NAME_SUFFIX)  && \
+	$(KUSTOMIZE) edit add patch --kind Deployment --patch '[{"op": "replace", "path": "/spec/template/spec/containers/0/env/0", "value": {"name": "WATCH_NAMESPACES", "value": "$(DEPLOYMENT_WATCH_NAMESPACES)"}}]' && \
+	$(KUSTOMIZE) edit add patch --kind Deployment --patch '[{"op": "replace", "path": "/spec/replicas", "value": ${DEPLOYMENT_REPLICAS}}]'
+
+	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/dns-providers
+	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/dns-providers && \
+	touch kustomization.yaml && \
+    $(KUSTOMIZE) edit add resource "../../dns-providers"
+
+	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE) && \
 	touch kustomization.yaml && \
 	$(KUSTOMIZE) edit set namespace $(DEPLOYMENT_NAMESPACE)  && \
 	$(KUSTOMIZE) edit add resource "./dns-operator" && \
-	$(KUSTOMIZE) edit add resource "../dns-providers"
+	$(KUSTOMIZE) edit add resource "./dns-providers" && \
+	$(KUSTOMIZE) edit add label -f app.kubernetes.io/part-of:kuadrant
