@@ -7,6 +7,7 @@ helm-build: yq manifests kustomize operator-sdk ## Build the helm chart from kus
 	# Build the helm chart templates from kustomize manifests
 	$(KUSTOMIZE) build config/helm > charts/dns-operator/templates/manifests.yaml
 	V="$(VERSION)" $(YQ) eval '.version = strenv(V)' -i charts/dns-operator/Chart.yaml
+	V="$(VERSION)" $(YQ) eval '.appVersion = strenv(V)' -i charts/dns-operator/Chart.yaml
 
 .PHONY: helm-install
 helm-install: $(HELM) ## Install the helm chart
