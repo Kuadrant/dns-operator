@@ -90,10 +90,6 @@ func (p *InMemoryDNSProvider) DNSZoneForHost(ctx context.Context, host string) (
 	return provider.FindDNSZoneForHost(ctx, host, zones)
 }
 
-func (i *InMemoryDNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
-	return &provider.FakeHealthCheckReconciler{}
-}
-
 func (i *InMemoryDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 	return provider.ProviderSpecificLabels{}
 }

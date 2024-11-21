@@ -54,10 +54,9 @@ const (
 
 type Route53DNSProvider struct {
 	*externaldnsprovideraws.AWSProvider
-	awsConfig             externaldnsprovideraws.AWSConfig
-	logger                logr.Logger
-	route53Client         *route53.Route53
-	healthCheckReconciler provider.HealthCheckReconciler
+	awsConfig     externaldnsprovideraws.AWSConfig
+	logger        logr.Logger
+	route53Client *route53.Route53
 }
 
 var _ provider.Provider = &Route53DNSProvider{}
@@ -181,14 +180,6 @@ func (p *Route53DNSProvider) DNSZoneForHost(ctx context.Context, host string) (*
 		return nil, err
 	}
 	return provider.FindDNSZoneForHost(ctx, host, zones)
-}
-
-func (p *Route53DNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
-	if p.healthCheckReconciler == nil {
-		p.healthCheckReconciler = NewRoute53HealthCheckReconciler(p.route53Client)
-	}
-
-	return p.healthCheckReconciler
 }
 
 func (*Route53DNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {

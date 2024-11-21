@@ -100,10 +100,6 @@ func (p *AzureProvider) DNSZoneForHost(ctx context.Context, host string) (*provi
 	return provider.FindDNSZoneForHost(ctx, host, zones)
 }
 
-func (p *AzureProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
-	return NewAzureHealthCheckReconciler()
-}
-
 func (p *AzureProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 	return provider.ProviderSpecificLabels{}
 }
