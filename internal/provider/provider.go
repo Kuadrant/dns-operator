@@ -33,9 +33,6 @@ type Provider interface {
 	// DNSZoneForHost returns the DNSZone that best matches the given host in the providers list of zones
 	DNSZoneForHost(ctx context.Context, host string) (*DNSZone, error)
 
-	// HealthCheckReconciler Get an instance of HealthCheckReconciler for this provider
-	HealthCheckReconciler() HealthCheckReconciler
-
 	ProviderSpecific() ProviderSpecificLabels
 }
 

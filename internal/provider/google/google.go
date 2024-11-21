@@ -322,10 +322,6 @@ func (p *GoogleDNSProvider) DNSZoneForHost(ctx context.Context, host string) (*p
 	return provider.FindDNSZoneForHost(ctx, host, zones)
 }
 
-func (p *GoogleDNSProvider) HealthCheckReconciler() provider.HealthCheckReconciler {
-	return NewGCPHealthCheckReconciler()
-}
-
 func (p *GoogleDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 	return provider.ProviderSpecificLabels{}
 }
