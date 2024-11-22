@@ -466,8 +466,10 @@ func CleanAzureError(err error) error {
 	reg := regexp.MustCompile(`\"message\": \".*\"`)
 	errMsg := err.Error()
 	msg := reg.FindString(errMsg)
-	msgBits := strings.SplitAfterN(msg, ":", 2)
-	msgBits = strings.Split(msgBits[1], `"`)
-	msg = msgBits[1]
+	if msgBits := strings.SplitAfterN(msg, ":", 2); len(msgBits) > 1 {
+		if msgBits = strings.Split(msgBits[1], `"`); len(msgBits) > 1 {
+			msg = msgBits[1]
+		}
+	}
 	return errors.New(msg)
 }
