@@ -575,6 +575,14 @@ func TestCleanAzureError(t *testing.T) {
 				Expect(err.Error()).To(Equal("The following locations specified in the geoMapping property for endpoint ‘foo-example-com’ are not supported: NOTAGEOCODE. For a list of supported locations, see the Traffic Manager documentation."))
 			},
 		},
+		{
+			name: "cleans up error that doesn't match expected format",
+			err:  fmt.Errorf("some other error"),
+			Verify: func(err error) {
+				Expect(err).ToNot(BeNil())
+				Expect(err.Error()).To(Equal(""))
+			},
+		},
 	}
 
 	for _, tt := range tests {
