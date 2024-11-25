@@ -136,20 +136,18 @@ func removeUnhealthyEndpoints(specEndpoints []*endpoint.Endpoint, dnsRecord *v1a
 
 	var haveHealthyProbes bool
 	for _, probe := range probes.Items {
-		// if the probe is healthy or unknown, continue to the next probe
+		// if the probe is healthy, continue to the next probe
 		if probe.Status.Healthy != nil && *probe.Status.Healthy {
 			haveHealthyProbes = true
 			continue
 		}
 
-		// if we exceeded a threshold or we haven't probed yet
-		if probe.Status.ConsecutiveFailures >= dnsRecord.Spec.HealthCheck.FailureThreshold || probe.Status.Healthy == nil {
-			//delete bad endpoint from all endpoints targets
-			tree.RemoveNode(&common.DNSTreeNode{
-				Name: probe.Spec.Address,
-			})
-			unhealthyAddresses = append(unhealthyAddresses, probe.Spec.Address)
-		}
+		// if unhealthy or we haven't probed yet
+		//delete bad endpoint from all endpoints targets
+		tree.RemoveNode(&common.DNSTreeNode{
+			Name: probe.Spec.Address,
+		})
+		unhealthyAddresses = append(unhealthyAddresses, probe.Spec.Address)
 
 	}
 

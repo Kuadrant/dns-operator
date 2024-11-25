@@ -453,7 +453,6 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				if probe.Spec.Address == "172.32.200.1" {
 					probe.Status.Healthy = ptr.To(false)
 					probe.Status.LastCheckedAt = metav1.Now()
-					probe.Status.ConsecutiveFailures = dnsRecord.Spec.HealthCheck.FailureThreshold + 1
 					g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
 					updated = true
 				}
@@ -499,7 +498,6 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				if probe.Spec.Address == "172.32.200.2" {
 					probe.Status.Healthy = ptr.To(false)
 					probe.Status.LastCheckedAt = metav1.Now()
-					probe.Status.ConsecutiveFailures = dnsRecord.Spec.HealthCheck.FailureThreshold + 1
 					g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
 					updated = true
 				}
@@ -585,7 +583,6 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				if probe.Spec.Address == "172.32.200.1" {
 					probe.Status.Healthy = ptr.To(false)
 					probe.Status.LastCheckedAt = metav1.Now()
-					probe.Status.ConsecutiveFailures = dnsRecord.Spec.HealthCheck.FailureThreshold + 1
 					g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
 					updated = true
 				}
