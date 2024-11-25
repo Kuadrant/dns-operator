@@ -257,11 +257,14 @@ func (w *Probe) Start(clientctx context.Context, k8sClient client.Client, probe 
 			freshProbe.Status.ObservedGeneration = freshProbe.Generation
 			if !probeResult.Healthy {
 				freshProbe.Status.ConsecutiveFailures++
+				if freshProbe.Status.ConsecutiveFailures > freshProbe.Spec.FailureThreshold {
+					freshProbe.Status.Healthy = &probeResult.Healthy
+				}
 			} else {
 				freshProbe.Status.ConsecutiveFailures = 0
+				freshProbe.Status.Healthy = &probeResult.Healthy
 			}
 			logger.V(1).Info("health: execution complete ", "result", probeResult, "checked at", probeResult.CheckedAt.String(), "previoud check at ", probeResult.PreviousCheck)
-			freshProbe.Status.Healthy = &probeResult.Healthy
 			freshProbe.Status.LastCheckedAt = probeResult.CheckedAt
 			freshProbe.Status.Reason = probeResult.Reason
 			freshProbe.Status.Status = probeResult.Status
