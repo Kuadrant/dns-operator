@@ -389,36 +389,39 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, val
 				logger.V(1).Info("unexpected object type", "error", fmt.Sprintf("%T is not a *v1alpha1.DNSHealthCheckProbe", o))
 				return []reconcile.Request{}
 			}
-			onCluster := &v1alpha1.DNSHealthCheckProbe{}
-			if err := mgr.GetClient().Get(ctx, client.ObjectKeyFromObject(probe), onCluster); client.IgnoreNotFound(err) != nil {
-				logger.Error(err, "failed to get probe")
-				return []reconcile.Request{}
-			}
-
-			probeOwner := &v1alpha1.DNSRecord{
-				ObjectMeta: metav1.ObjectMeta{},
-			}
-			for _, ro := range probe.GetOwnerReferences() {
-				if ro.Kind == "DNSRecord" {
-					probeOwner.Name = ro.Name
-					probeOwner.Namespace = probe.Namespace
-					break
-				}
-			}
 
 			// haven't probed yet or deleting - nothing to do
 			if probe.Status.Healthy == nil {
 				return []reconcile.Request{}
 			}
 
-			// probe.Status.Healthy is not nil here
-			// we probed for the first time - reconcile
-			// or none are nil and status changed - reconcile
-			if onCluster.Status.Healthy == nil || *probe.Status.Healthy != *onCluster.Status.Healthy {
-				return []reconcile.Request{{NamespacedName: client.ObjectKeyFromObject(probeOwner)}}
+			record := &v1alpha1.DNSRecord{ObjectMeta: metav1.ObjectMeta{}}
+			for _, ro := range probe.GetOwnerReferences() {
+				if ro.Kind == "DNSRecord" {
+					record.Name = ro.Name
+					record.Namespace = probe.Namespace
+					break
+				}
 			}
 
-			// none are nil and status is the same - nothing to do
+			if err := mgr.GetClient().Get(ctx, client.ObjectKeyFromObject(record), record); client.IgnoreNotFound(err) != nil {
+				logger.Error(err, "failed to get record")
+				return []reconcile.Request{}
+			}
+
+			condition := meta.FindStatusCondition(record.Status.Conditions, string(v1alpha1.ConditionTypeHealthy))
+			// no condition - record is not precessed yet
+			if condition == nil {
+				return []reconcile.Request{}
+			}
+
+			isHealthy := condition.Status == metav1.ConditionTrue
+
+			// record and probe disagree on health - requeue
+			if *probe.Status.Healthy != isHealthy {
+				return []reconcile.Request{{NamespacedName: client.ObjectKeyFromObject(record)}}
+			}
+			// nothing to do
 			return []reconcile.Request{}
 		})).
 		Complete(r)
@@ -490,14 +493,13 @@ func recordReceivedPrematurely(record *v1alpha1.DNSRecord, probes *v1alpha1.DNSH
 		// healthy is true only if we have probes and they are all healthy
 		isHealthy := healthyCond.Status == metav1.ConditionTrue
 
-		// if at least one not healthy - this will lock in false
-		allProbesHealthy := true
+		// if at least one is healthy - this will lock in true
+		allProbesHealthy := false
 		for _, probe := range probes.Items {
 			if probe.Status.Healthy != nil {
-				allProbesHealthy = allProbesHealthy && *probe.Status.Healthy
+				allProbesHealthy = allProbesHealthy || *probe.Status.Healthy
 			}
 		}
-
 		// prematurely is true here. return false in case we need full reconcile
 		return isHealthy == allProbesHealthy, requeueIn
 	}

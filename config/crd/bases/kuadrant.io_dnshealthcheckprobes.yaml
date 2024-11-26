@@ -114,8 +114,6 @@ spec:
                 type: string
               status:
                 type: integer
-            required:
-            - healthy
             type: object
         type: object
     served: true
