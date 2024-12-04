@@ -1,0 +1,12 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: k8s
+  namespace: monitoring
+spec:
+  remoteWrite:
+    - url: http://thanos-receive-router:19291/api/v1/receive
+      writeRelabelConfigs:
+        - action: replace
+          replacement: cluster1
+          targetLabel: cluster_id
