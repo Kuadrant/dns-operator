@@ -50,18 +50,37 @@ jobs:
       - objectTemplate: ./echo-app/echo-app-service.yaml
         kind: Service
         replicas: 1
+      {{if (eq .DNS_PROVIDER "inmemory")}}
       - objectTemplate: ./inmemory-credentials.yaml
         kind: Secret
         replicas: 1
         inputVars:
-          KUADRANT_ZONE_ROOT_DOMAIN: {{ .KUADRANT_ZONE_ROOT_DOMAIN }}
+          KUADRANT_ZONE_ROOT_DOMAIN: '{{ .KUADRANT_ZONE_ROOT_DOMAIN }}'
+      {{end}}
+      {{if (eq .DNS_PROVIDER "aws")}}
       - objectTemplate: ./aws-credentials.yaml
         kind: Secret
         replicas: 1
         inputVars:
-          KUADRANT_AWS_ACCESS_KEY_ID: {{ .KUADRANT_AWS_ACCESS_KEY_ID }}
-          KUADRANT_AWS_REGION: {{ .KUADRANT_AWS_REGION }}
-          KUADRANT_AWS_SECRET_ACCESS_KEY: {{ .KUADRANT_AWS_SECRET_ACCESS_KEY }}
+          KUADRANT_AWS_ACCESS_KEY_ID: '{{ .KUADRANT_AWS_ACCESS_KEY_ID }}'
+          KUADRANT_AWS_REGION: '{{ .KUADRANT_AWS_REGION }}'
+          KUADRANT_AWS_SECRET_ACCESS_KEY: '{{ .KUADRANT_AWS_SECRET_ACCESS_KEY }}'
+      {{end}}
+      {{if (eq .DNS_PROVIDER "gcp")}}
+      - objectTemplate: ./gcp-credentials.yaml
+        kind: Secret
+        replicas: 1
+        inputVars:
+          KUADRANT_GCP_GOOGLE_CREDENTIALS: '{{ .KUADRANT_GCP_GOOGLE_CREDENTIALS }}'
+          KUADRANT_GCP_PROJECT_ID: '{{ .KUADRANT_GCP_PROJECT_ID }}'
+      {{end}}
+      {{if (eq .DNS_PROVIDER "azure")}}
+      - objectTemplate: ./azure-credentials.yaml
+        kind: Secret
+        replicas: 1
+        inputVars:
+          KUADRANT_AZURE_CREDENTIALS: '{{ .KUADRANT_AZURE_CREDENTIALS }}'
+      {{end}}
   - name: scale-test-loadbalanced
     jobType: create #default
     jobIterations: {{ .JOB_ITERATIONS }}
@@ -71,11 +90,12 @@ jobs:
     maxWaitTimeout: 2m
     objects:
       - objectTemplate: ./dnsrecord-loadbalanced.yaml
-        kind: Deployment
+        kind: DNSRecord
         replicas: 1
         inputVars:
           KUADRANT_ZONE_ROOT_DOMAIN: {{ .KUADRANT_ZONE_ROOT_DOMAIN }}
           DNS_PROVIDER: {{ .DNS_PROVIDER }}
+          GeoCode: {{if (eq .DNS_PROVIDER "aws")}} GEO-EU {{else if (eq .DNS_PROVIDER "gcp")}} europe-west1 {{else if (eq .DNS_PROVIDER "azure")}} GEO-EU {{else}} foo {{end}}
         waitOptions:
           forCondition: "Ready"
   - name: scale-test-dnsrecord-read

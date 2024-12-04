@@ -175,6 +175,13 @@ test-e2e: ginkgo
 test-e2e-multi: ginkgo
 	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=multi_record ./test/e2e
 
+.PHONY: test-scale
+test-scale: export JOB_ITERATIONS := 1
+test-scale: export KUADRANT_ZONE_ROOT_DOMAIN := kuadrant.local
+test-scale: export DNS_PROVIDER := inmemory
+test-scale: kube-burner
+	cd test/scale && $(KUBE_BURNER) init -c config.yaml --log-level debug
+
 .PHONY: local-setup-cluster
 local-setup-cluster: DEPLOY=false
 local-setup-cluster: TEST_NAMESPACE=dnstest

@@ -15,7 +15,7 @@ spec:
       recordType: CNAME
       targets:
         - klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
-    - dnsName: ie.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+    - dnsName: {{.GeoCode | trim | lower }}.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
       providerSpecific:
         - name: weight
           value: "200"
@@ -27,12 +27,12 @@ spec:
     - dnsName: klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
       providerSpecific:
         - name: geo-code
-          value: IE
+          value: {{.GeoCode}}
       recordTTL: 300
       recordType: CNAME
-      setIdentifier: IE
+      setIdentifier: {{.GeoCode}}
       targets:
-        - ie.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+        - {{.GeoCode | trim | lower }}.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
     - dnsName: klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
       providerSpecific:
         - name: geo-code
@@ -41,6 +41,6 @@ spec:
       recordType: CNAME
       setIdentifier: default
       targets:
-        - ie.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+        - {{.GeoCode | trim | lower }}.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
   providerRef:
     name: {{.DNS_PROVIDER}}-credentials
