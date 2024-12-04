@@ -338,6 +338,7 @@ YQ = $(LOCALBIN)/yq
 GINKGO ?= $(LOCALBIN)/ginkgo
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 HELM ?= $(LOCALBIN)/helm
+KUBE_BURNER ?= $(LOCALBIN)/kube-burner
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.5.0
@@ -349,6 +350,7 @@ YQ_VERSION := v4.34.2
 GINKGO_VERSION ?= v2.17.1
 GOLANGCI_LINT_VERSION ?= v1.55.2
 HELM_VERSION = v3.15.0
+KUBE_BURNER_VERSION = v1.11.1
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -430,6 +432,20 @@ $(GINKGO): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+
+.PHONY: kube-burner
+kube-burner: $(KUBE_BURNER) ## Download kube-burner locally if necessary.
+$(KUBE_BURNER):
+	@{ \
+	set -e ;\
+	mkdir -p $(dir $(KUBE_BURNER)) ;\
+	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
+	wget -O kube-burner.tar.gz https://github.com/kube-burner/kube-burner/releases/download/v1.11.1/kube-burner-V1.11.1-linux-x86_64.tar.gz ;\
+	tar -zxvf kube-burner.tar.gz ;\
+	mv kube-burner $(KUBE_BURNER) ;\
+	chmod +x $(KUBE_BURNER) ;\
+	rm -rf $${OS}-$${ARCH} kube-burner.tar.gz ;\
+	}
 
 .PHONY: bundle
 bundle: manifests manifests-gen-base-csv kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.

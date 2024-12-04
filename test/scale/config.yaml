@@ -1,0 +1,94 @@
+jobs:
+  - name: scale-test-setup-dns-operator-cluster-roles
+    jobIterations: 1
+    verifyObjects: false
+    objects:
+      - objectTemplate: ../../config/rbac/role.yaml
+        kind: ClusterRole
+        runOnce: true
+        replicas: 1
+  - name: scale-test-setup-dns-operator
+    jobType: create #default
+    jobIterations: {{ .JOB_ITERATIONS }}
+    namespacedIterations: true #default
+    namespace: kuadrant-dns-operator
+    waitWhenFinished: true #default
+    maxWaitTimeout: 5m
+    preLoadImages: false
+    objects:
+      - objectTemplate: ../../config/rbac/leader_election_role.yaml
+        kind: Role
+        replicas: 1
+      - objectTemplate: ./dns-operator/role-binding.yaml
+        kind: ClusterRoleBinding
+        replicas: 1
+        inputVars:
+          Namespace: "kuadrant-dns-operator"
+      - objectTemplate: ./dns-operator/leader-election-role-binding.yaml
+        kind: RoleBinding
+        replicas: 1
+        inputVars:
+          Namespace: "kuadrant-dns-operator"
+      - objectTemplate: ./dns-operator/service-account.yaml
+        kind: ServiceAccount
+        replicas: 1
+      - objectTemplate: ./dns-operator/dns-operator-deployment.yaml
+        kind: Deployment
+        replicas: 1
+  - name: scale-test-setup
+    jobType: create #default
+    jobIterations: {{ .JOB_ITERATIONS }}
+    namespacedIterations: true #default
+    namespace: scale-test
+    waitWhenFinished: true #default
+    maxWaitTimeout: 5m
+    preLoadImages: false
+    objects:
+      - objectTemplate: ./echo-app/echo-app-deployment.yaml
+        kind: Deployment
+        replicas: 1
+      - objectTemplate: ./echo-app/echo-app-service.yaml
+        kind: Service
+        replicas: 1
+      - objectTemplate: ./inmemory-credentials.yaml
+        kind: Secret
+        replicas: 1
+        inputVars:
+          KUADRANT_ZONE_ROOT_DOMAIN: {{ .KUADRANT_ZONE_ROOT_DOMAIN }}
+      - objectTemplate: ./aws-credentials.yaml
+        kind: Secret
+        replicas: 1
+        inputVars:
+          KUADRANT_AWS_ACCESS_KEY_ID: {{ .KUADRANT_AWS_ACCESS_KEY_ID }}
+          KUADRANT_AWS_REGION: {{ .KUADRANT_AWS_REGION }}
+          KUADRANT_AWS_SECRET_ACCESS_KEY: {{ .KUADRANT_AWS_SECRET_ACCESS_KEY }}
+  - name: scale-test-loadbalanced
+    jobType: create #default
+    jobIterations: {{ .JOB_ITERATIONS }}
+    namespacedIterations: true #default
+    namespace: scale-test
+    waitWhenFinished: true #default
+    maxWaitTimeout: 2m
+    objects:
+      - objectTemplate: ./dnsrecord-loadbalanced.yaml
+        kind: Deployment
+        replicas: 1
+        inputVars:
+          KUADRANT_ZONE_ROOT_DOMAIN: {{ .KUADRANT_ZONE_ROOT_DOMAIN }}
+          DNS_PROVIDER: {{ .DNS_PROVIDER }}
+        waitOptions:
+          forCondition: "Ready"
+  - name: scale-test-dnsrecord-read
+    jobType: read
+    jobIterations: 1
+    jobPause: 30s
+    objects:
+      - kind: DNSRecord
+        apiVersion: kuadrant.io/v1alpha1
+        labelSelector: {kube-burner-job: scale-test-loadbalanced}
+  - name: scale-test-dnsrecord-cleanup
+    jobType: delete
+    objects:
+      - kind: DNSRecord
+        apiVersion: kuadrant.io/v1alpha1
+        labelSelector: {kube-burner-job: scale-test-loadbalanced}
