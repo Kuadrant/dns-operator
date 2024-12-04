@@ -1,0 +1,46 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced-{{.dnsProvider}}-{{.recNum}}
+spec:
+  rootHost: api.{{$.JobName}}.{{$.zoneRootDomain}}
+  endpoints:
+    - dnsName: rec{{.recNum}}-ns{{.Iteration}}.klb.api.{{$.JobName}}.{{$.zoneRootDomain}}
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.{{.Iteration}}
+    - dnsName: api.{{$.JobName}}.{{$.zoneRootDomain}}
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.{{$.JobName}}.{{$.zoneRootDomain}}
+    - dnsName: {{.geoCode | trim | lower }}.klb.api.{{$.JobName}}.{{$.zoneRootDomain}}
+      providerSpecific:
+        - name: weight
+          value: "200"
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: rec{{.recNum}}-ns{{.Iteration}}.klb.api.{{$.JobName}}.{{$.zoneRootDomain}}
+      targets:
+        - rec{{.recNum}}-ns{{.Iteration}}.klb.api.{{$.JobName}}.{{$.zoneRootDomain}}
+    - dnsName: klb.api.{{$.JobName}}.{{$.zoneRootDomain}}
+      providerSpecific:
+        - name: geo-code
+          value: {{.geoCode}}
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: {{.geoCode}}
+      targets:
+        - {{.geoCode | trim | lower }}.klb.api.{{$.JobName}}.{{$.zoneRootDomain}}
+    - dnsName: klb.api.{{$.JobName}}.{{$.zoneRootDomain}}
+      providerSpecific:
+        - name: geo-code
+          value: '*'
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: default
+      targets:
+        - {{.geoCode | trim | lower }}.klb.api.{{$.JobName}}.{{$.zoneRootDomain}}
+  providerRef:
+    name: {{.dnsProvider}}-credentials

@@ -175,6 +175,18 @@ test-e2e: ginkgo
 test-e2e-multi: ginkgo
 	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=multi_record ./test/e2e
 
+.PHONY: test-scale
+test-scale: export JOB_ITERATIONS := 1
+test-scale: export NUM_RECORDS := 1
+test-scale: export DNS_PROVIDER := inmemory
+test-scale: export SKIP_CLEANUP := false
+test-scale: export PROMETHEUS_URL ?= http://127.0.0.1:9090
+test-scale: export PROMETHEUS_TOKEN ?= ""
+test-scale: export KUADRANT_ZONE_ROOT_DOMAIN ?= kuadrant.local
+test-scale: kube-burner
+	@echo "test-scale: JOB_ITERATIONS=${JOB_ITERATIONS} NUM_RECORDS=${NUM_RECORDS} DNS_PROVIDER=${DNS_PROVIDER} KUADRANT_ZONE_ROOT_DOMAIN=${KUADRANT_ZONE_ROOT_DOMAIN} SKIP_CLEANUP=${SKIP_CLEANUP} PROMETHEUS_URL=${PROMETHEUS_URL} PROMETHEUS_TOKEN=${PROMETHEUS_TOKEN}"
+	cd test/scale && $(KUBE_BURNER) init -c config.yaml --log-level debug
+
 .PHONY: local-setup-cluster
 local-setup-cluster: DEPLOY=false
 local-setup-cluster: TEST_NAMESPACE=dnstest
@@ -338,6 +350,7 @@ YQ = $(LOCALBIN)/yq
 GINKGO ?= $(LOCALBIN)/ginkgo
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 HELM ?= $(LOCALBIN)/helm
+KUBE_BURNER ?= $(LOCALBIN)/kube-burner
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.5.0
@@ -349,6 +362,7 @@ YQ_VERSION := v4.34.2
 GINKGO_VERSION ?= v2.17.1
 GOLANGCI_LINT_VERSION ?= v1.55.2
 HELM_VERSION = v3.15.0
+KUBE_BURNER_VERSION = v1.11.1
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -430,6 +444,20 @@ $(GINKGO): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+
+.PHONY: kube-burner
+kube-burner: $(KUBE_BURNER) ## Download kube-burner locally if necessary.
+$(KUBE_BURNER):
+	@{ \
+	set -e ;\
+	mkdir -p $(dir $(KUBE_BURNER)) ;\
+	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
+	wget -O kube-burner.tar.gz https://github.com/kube-burner/kube-burner/releases/download/v1.11.1/kube-burner-V1.11.1-linux-x86_64.tar.gz ;\
+	tar -zxvf kube-burner.tar.gz ;\
+	mv kube-burner $(KUBE_BURNER) ;\
+	chmod +x $(KUBE_BURNER) ;\
+	rm -rf $${OS}-$${ARCH} kube-burner.tar.gz ;\
+	}
 
 .PHONY: bundle
 bundle: manifests manifests-gen-base-csv kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.

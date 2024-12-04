@@ -1,0 +1,10 @@
+resources:
+  - github.com/kuadrant/kuadrant-operator/config/thanos?ref=main
+
+patches:
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: monitoring

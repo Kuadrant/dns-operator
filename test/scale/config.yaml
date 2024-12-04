@@ -1,0 +1,149 @@
+{{- $dnsProviders := splitList "," .DNS_PROVIDER }}
+{{- $numRecords := .NUM_RECORDS | atoi }}
+metricsEndpoints:
+  - endpoint: {{ .PROMETHEUS_URL }}
+    token: {{ .PROMETHEUS_TOKEN }}
+    metrics:
+      - ./metrics.yaml
+    alerts:
+      - ./alerts.yaml
+    indexer:
+      type: local
+      metricsDirectory: ./metrics
+
+jobs:
+  - name: scale-test-setup-dns-operator-cluster-roles
+    jobIterations: 1
+    verifyObjects: false
+    objects:
+      - objectTemplate: ../../config/rbac/role.yaml
+        kind: ClusterRole
+        runOnce: true
+        replicas: 1
+  - name: scale-test-setup-dns-operator
+    jobType: create #default
+    jobIterations: {{ .JOB_ITERATIONS }}
+    namespacedIterations: true #default
+    namespace: kuadrant-dns-operator
+    waitWhenFinished: true #default
+    maxWaitTimeout: 5m
+    preLoadImages: false
+    objects:
+      - objectTemplate: ../../config/rbac/leader_election_role.yaml
+        kind: Role
+        replicas: 1
+      - objectTemplate: ./kubeburner-object-templates/dns-operator/role-binding.yaml
+        kind: ClusterRoleBinding
+        replicas: 1
+        inputVars:
+          Namespace: "kuadrant-dns-operator"
+      - objectTemplate: ./kubeburner-object-templates/dns-operator/leader-election-role-binding.yaml
+        kind: RoleBinding
+        replicas: 1
+        inputVars:
+          Namespace: "kuadrant-dns-operator"
+      - objectTemplate: ./kubeburner-object-templates/dns-operator/service-account.yaml
+        kind: ServiceAccount
+        replicas: 1
+      - objectTemplate: ./kubeburner-object-templates/dns-operator/dns-operator-deployment.yaml
+        kind: Deployment
+        replicas: 1
+      - objectTemplate: ./kubeburner-object-templates/dns-operator/metrics-service.yaml
+        kind: Service
+        replicas: 1
+      - objectTemplate: ./kubeburner-object-templates/dns-operator/service-monitor.yaml
+        kind: ServiceMonitor
+        replicas: 1
+  - name: scale-test-setup
+    jobType: create #default
+    jobIterations: {{ .JOB_ITERATIONS }}
+    namespacedIterations: true #default
+    namespace: scale-test
+    waitWhenFinished: true #default
+    maxWaitTimeout: 5m
+    preLoadImages: false
+    objects:
+      {{ range $dnsProviders }}
+        {{ if (eq . "inmemory") }}
+      - objectTemplate: ./kubeburner-object-templates/inmemory-credentials.yaml
+        kind: Secret
+        replicas: 1
+        inputVars:
+          KUADRANT_ZONE_ROOT_DOMAIN: '{{ $.KUADRANT_ZONE_ROOT_DOMAIN }}'
+        {{ end }}
+        {{ if (eq . "aws") }}
+      - objectTemplate: ./kubeburner-object-templates/aws-credentials.yaml
+        kind: Secret
+        replicas: 1
+        inputVars:
+          KUADRANT_AWS_ACCESS_KEY_ID: '{{ $.KUADRANT_AWS_ACCESS_KEY_ID }}'
+          KUADRANT_AWS_REGION: '{{ $.KUADRANT_AWS_REGION }}'
+          KUADRANT_AWS_SECRET_ACCESS_KEY: '{{ $.KUADRANT_AWS_SECRET_ACCESS_KEY }}'
+        {{ end }}
+        {{ if (eq . "gcp") }}
+      - objectTemplate: ./kubeburner-object-templates/gcp-credentials.yaml
+        kind: Secret
+        replicas: 1
+        inputVars:
+          KUADRANT_GCP_GOOGLE_CREDENTIALS: '{{ $.KUADRANT_GCP_GOOGLE_CREDENTIALS }}'
+          KUADRANT_GCP_PROJECT_ID: '{{ $.KUADRANT_GCP_PROJECT_ID }}'
+        {{ end }}
+        {{ if (eq . "azure") }}
+      - objectTemplate: ./kubeburner-object-templates/azure-credentials.yaml
+        kind: Secret
+        replicas: 1
+        inputVars:
+          KUADRANT_AZURE_CREDENTIALS: '{{ $.KUADRANT_AZURE_CREDENTIALS }}'
+        {{ end }}
+      {{ end }}
+  - name: scale-test-loadbalanced
+    jobType: create #default
+    jobIterations: {{ .JOB_ITERATIONS }}
+    namespacedIterations: true #default
+    namespace: scale-test
+    waitWhenFinished: true #default
+    maxWaitTimeout: 2m
+    objects:
+    {{- range $index := until $numRecords }}
+      {{- $recNum := add1 $index }}
+      {{- range $dnsProviders }}
+        {{ $geoCode := "foo" }}
+        {{ $zoneRootDomain := $.KUADRANT_ZONE_ROOT_DOMAIN }}
+        {{ if (eq . "aws") }}
+          {{ $geoCode = "GEO-EU" }}
+          {{ $zoneRootDomain = $.KUADRANT_AWS_ZONE_ROOT_DOMAIN }}
+        {{ else if (eq . "gcp") }}
+          {{ $geoCode = "europe-west1" }}
+          {{ $zoneRootDomain = $.KUADRANT_GCP_ZONE_ROOT_DOMAIN }}
+        {{ else if (eq . "azure") }}
+          {{ $geoCode = "GEO-EU" }}
+          {{ $zoneRootDomain = $.KUADRANT_AZURE_ZONE_ROOT_DOMAIN }}
+        {{ end }}
+      - objectTemplate: ./kubeburner-object-templates/dnsrecord-loadbalanced.yaml
+        kind: DNSRecord
+        replicas: 1
+        inputVars:
+          zoneRootDomain: {{ $zoneRootDomain }}
+          dnsProvider: {{ . }}
+          geoCode: {{ $geoCode }}
+          recNum: {{ $recNum }}
+        waitOptions:
+          forCondition: "Ready"
+      {{- end }}
+    {{- end }}
+  - name: scale-test-dnsrecord-read
+    jobType: read
+    jobIterations: 1
+    jobPause: 30s
+    objects:
+      - kind: DNSRecord
+        apiVersion: kuadrant.io/v1alpha1
+        labelSelector: { kube-burner-job: scale-test-loadbalanced }
+  {{ if (ne .SKIP_CLEANUP "true") }}
+  - name: scale-test-dnsrecord-cleanup
+    jobType: delete
+    objects:
+      - kind: DNSRecord
+        apiVersion: kuadrant.io/v1alpha1
+        labelSelector: { kube-burner-job: scale-test-loadbalanced }
+  {{ end }}
