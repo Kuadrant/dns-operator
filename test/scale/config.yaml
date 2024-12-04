@@ -3,6 +3,8 @@ metricsEndpoints:
     token: {{ .PROMETHEUS_TOKEN }}
     metrics:
       - ./metrics.yaml
+    alerts:
+      - ./alerts.yaml
     indexer:
       type: local
       metricsDirectory: ./metrics
