@@ -1,0 +1,46 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced-{{.DNS_PROVIDER}}
+spec:
+  rootHost: api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+  endpoints:
+    - dnsName: gw{{.Iteration}}-ns1.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.{{.Iteration}}
+    - dnsName: api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+    - dnsName: {{.GeoCode | trim | lower }}.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+      providerSpecific:
+        - name: weight
+          value: "200"
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: gw{{.Iteration}}-ns1.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+      targets:
+        - gw{{.Iteration}}-ns1.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+    - dnsName: klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+      providerSpecific:
+        - name: geo-code
+          value: {{.GeoCode}}
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: {{.GeoCode}}
+      targets:
+        - {{.GeoCode | trim | lower }}.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+    - dnsName: klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+      providerSpecific:
+        - name: geo-code
+          value: '*'
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: default
+      targets:
+        - {{.GeoCode | trim | lower }}.klb.api.scale-test-loadbalanced.{{.KUADRANT_ZONE_ROOT_DOMAIN}}
+  providerRef:
+    name: {{.DNS_PROVIDER}}-credentials

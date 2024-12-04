@@ -1,0 +1,3 @@
+- expr: increase(kube_pod_container_status_restarts_total{container="manager", namespace=~"kuadrant-system|kuadrant-dns-operator-.*"}[5m]) > 0
+  description: manager pod restarts
+  severity: error
