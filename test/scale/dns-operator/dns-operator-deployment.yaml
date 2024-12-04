@@ -19,6 +19,7 @@ spec:
       containers:
       - args:
         - --leader-elect
+        - --metrics-bind-address=:8080
         - --provider=aws,google,inmemory,azure
         - --zap-log-level=debug
         command:
@@ -34,6 +35,9 @@ spec:
           initialDelaySeconds: 15
           periodSeconds: 20
         name: manager
+        ports:
+          - containerPort: 8080
+            name: metrics
         readinessProbe:
           httpGet:
             path: /readyz

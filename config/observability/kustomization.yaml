@@ -1,0 +1,16 @@
+resources:
+  - github.com/kuadrant/kuadrant-operator/config/observability?ref=main
+  - ./thanos
+  - github.com/kuadrant/kuadrant-operator/examples/dashboards?ref=main
+  - github.com/kuadrant/kuadrant-operator/examples/alerts?ref=main
+
+patches:
+  - target:
+      kind: ServiceMonitor
+    patch: |
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: ANY
+  - path: k8s_prometheus_patch.yaml

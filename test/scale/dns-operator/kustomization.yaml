@@ -1,5 +1,5 @@
 resources:
-- ../../../config/manager
+- ../../../config/default
 
 patches:
   - patch: |-

@@ -1,3 +1,12 @@
+metricsEndpoints:
+  - endpoint: {{ .PROMETHEUS_URL }}
+    token: {{ .PROMETHEUS_TOKEN }}
+    metrics:
+      - ./metrics.yaml
+    indexer:
+      type: local
+      metricsDirectory: ./metrics
+
 jobs:
   - name: scale-test-setup-dns-operator-cluster-roles
     jobIterations: 1
@@ -34,6 +43,12 @@ jobs:
         replicas: 1
       - objectTemplate: ./dns-operator/dns-operator-deployment.yaml
         kind: Deployment
+        replicas: 1
+      - objectTemplate: ./dns-operator/metrics-service.yaml
+        kind: Service
+        replicas: 1
+      - objectTemplate: ./dns-operator/service-monitor.yaml
+        kind: ServiceMonitor
         replicas: 1
   - name: scale-test-setup
     jobType: create #default
