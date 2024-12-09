@@ -19,6 +19,11 @@ spec:
       jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
+    - description: DNSRecord healthy.
+      jsonPath: .status.conditions[?(@.type=="Healthy")].status
+      name: Healthy
+      priority: 2
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
