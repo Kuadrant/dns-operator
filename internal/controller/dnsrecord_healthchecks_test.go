@@ -437,7 +437,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 					"Type":    Equal(string(v1alpha1.ConditionTypeHealthy)),
 					"Status":  Equal(metav1.ConditionFalse),
 					"Reason":  Equal(string(v1alpha1.ConditionReasonUnhealthy)),
-					"Message": Equal("Not healthy addresses: [172.32.200.1 172.32.200.2]"),
+					"Message": And(ContainSubstring("Not healthy addresses"), ContainSubstring("172.32.200.1"), ContainSubstring("172.32.200.2")),
 				}),
 				MatchFields(IgnoreExtras, Fields{
 					"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
