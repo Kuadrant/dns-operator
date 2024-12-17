@@ -30,3 +30,5 @@ Dockerfile.cross
 tmp
 
 config/local-setup/**/*.env
+
+*.log
