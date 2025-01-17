@@ -2,8 +2,8 @@
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FKuadrant%2Fdns-operator.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2FKuadrant%2Fdns-operator?ref=badge_shield)
 
 
-The DNS Operator is a kubernetes based controller responsible for reconciling DNS Record custom resources. It interfaces with cloud DNS providers such as AWS and Google to bring the DNS zone into the state declared in these CRDs.
-One of the key use cases the DNS operator solves, is allowing complex DNS routing strategies such as Geo and Weighted to be expressed allowing you to leverage DNS as the first layer of traffic management. In order to make these strategies valuable, it also works across multiple clusters allowing you to use a shared domain name balance traffic based on your requirements.
+The DNS Operator is a kubernetes based controller responsible for reconciling DNS Record custom resources. It interfaces with cloud DNS providers such as AWS, Google and Azure to bring the DNS zone into the state declared in these CRDs.
+One of the key use cases the DNS operator solves, is allowing complex DNS routing strategies such as Geo and Weighted to be expressed. This allows you to leverage DNS as the first layer of traffic management. These strategies increase in value as you works across multiple clusters. DNS operator can be deployed to multiple cluster and coordinate on a given zone allowing you to use a shared domain name to balance traffic based on your requirements.
 
 ## Getting Started
 
