@@ -163,6 +163,10 @@ type DNSRecordStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type==\"Ready\")].status",description="DNSRecord ready."
 //+kubebuilder:printcolumn:name="Healthy",type="string",JSONPath=".status.conditions[?(@.type==\"Healthy\")].status",description="DNSRecord healthy.",priority=2
+//+kubebuilder:printcolumn:name="Root Host",type="string",JSONPath=".spec.rootHost",description="DNSRecord root host.",priority=2
+//+kubebuilder:printcolumn:name="Owner ID",type="string",JSONPath=".status.ownerID",description="DNSRecord owner id.",priority=2
+//+kubebuilder:printcolumn:name="Zone Domain",type="string",JSONPath=".status.zoneDomainName",description="DNSRecord zone domain name.",priority=2
+//+kubebuilder:printcolumn:name="Zone ID",type="string",JSONPath=".status.zoneID",description="DNSRecord zone id.",priority=2
 
 // DNSRecord is the Schema for the dnsrecords API
 type DNSRecord struct {
