@@ -149,6 +149,26 @@ spec:
       name: Healthy
       priority: 2
       type: string
+    - description: DNSRecord root host.
+      jsonPath: .spec.rootHost
+      name: Root Host
+      priority: 2
+      type: string
+    - description: DNSRecord owner id.
+      jsonPath: .status.ownerID
+      name: Owner ID
+      priority: 2
+      type: string
+    - description: DNSRecord zone domain name.
+      jsonPath: .status.zoneDomainName
+      name: Zone Domain
+      priority: 2
+      type: string
+    - description: DNSRecord zone id.
+      jsonPath: .status.zoneID
+      name: Zone ID
+      priority: 2
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
