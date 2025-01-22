@@ -1,0 +1,36 @@
+resources:
+  - github.com/kuadrant/kuadrant-operator/config/observability?ref=main
+  - ./thanos
+  - github.com/kuadrant/kuadrant-operator/examples/dashboards?ref=main
+  - github.com/kuadrant/kuadrant-operator/examples/alerts?ref=main
+
+patches:
+  - patch: |
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: authorino-operator-metrics
+        namespace: kuadrant-system
+  - patch: |
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: dns-operator-metrics-monitor
+        namespace: kuadrant-system
+  - patch: |
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: kuadrant-operator-metrics
+        namespace: kuadrant-system
+  - patch: |
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: limitador-operator-metrics
+        namespace: kuadrant-system
+  - path: k8s_prometheus_patch.yaml

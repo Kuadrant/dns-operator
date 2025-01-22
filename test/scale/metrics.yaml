@@ -1,0 +1,5 @@
+- query: sum(rate(container_cpu_usage_seconds_total{container="",namespace=~"kuadrant-system|kuadrant-dns-operator-*|scale-test-.*"}[5m])) by(namespace)
+  metricName: namespaceCPU
+
+- query: sum(rate(kube_pod_container_status_restarts_total{container="manager", namespace=~"kuadrant-system|kuadrant-dns-operator-.*"}[5m])) by(namespace)
+  metricName: managerPodRestarts

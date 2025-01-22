@@ -1,0 +1,28 @@
+resources:
+- ../../../../config/default
+
+patches:
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: system
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: controller-manager-metrics-service
+        namespace: system
+  - patch: |-
+      - op: remove
+        path: /metadata/namespace
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --provider=aws,google,inmemory,azure
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --zap-log-level=debug
+    target:
+      kind: Deployment
