@@ -23,6 +23,7 @@ on:
       - 'LICENSE'
   merge_group:
     types: [checks_requested]
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -129,7 +130,6 @@ jobs:
       - name: Verify generate command
         run: |
           make verify-generate
-
   verify-go-mod:
     name: Verify go.mod
     runs-on: ubuntu-latest
@@ -145,7 +145,6 @@ jobs:
       - name: Verify generate command
         run: |
           make verify-go-mod
-
   unit_test_suite:
     name: Unit Test Suite
     runs-on: ubuntu-latest
@@ -170,3 +169,11 @@ jobs:
       - name: Run suite
         run: |
           make test-integration
+  required-checks:
+    name: CI Required Checks
+    needs: [ lint, verify-code, verify-manifests, verify-bundle, verify-helm-build, verify-imports, verify-generate, verify-go-mod, unit_test_suite, integration_test_suite]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo '${{ toJSON(needs) }}' | jq -e 'to_entries | all(.value.result == "success")'
