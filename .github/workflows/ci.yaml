@@ -193,7 +193,7 @@ jobs:
           fetch-depth: 10
       - id: check_files
         name: Get changed files
-        uses: tj-actions/changed-files@v23.1
+        uses: tj-actions/changed-files@v41
         with:
           files: |
             samples/**
