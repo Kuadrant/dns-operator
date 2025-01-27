@@ -7,20 +7,10 @@ on:
       - "release-*"
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
-    paths-ignore:
-      - '**.adoc'
-      - '**.md'
-      - 'samples/**'
-      - 'LICENSE'
   pull_request:
     branches:
       - main
       - "release-*"
-    paths-ignore:
-      - '**.adoc'
-      - '**.md'
-      - 'samples/**'
-      - 'LICENSE'
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
@@ -28,6 +18,7 @@ on:
 jobs:
   lint:
     name: lint
+    if: ${{ needs.is_path_ignore.outputs.ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +33,7 @@ jobs:
           args: --timeout=5m
   verify-code:
     name: Verify code
+    if: ${{ needs.is_path_ignore.outputs.ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -57,6 +49,7 @@ jobs:
           make verify-code
   verify-manifests:
     name: Verify manifests
+    if: ${{ needs.is_path_ignore.outputs.ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -72,6 +65,7 @@ jobs:
           make verify-manifests
   verify-bundle:
     name: Verify bundle
+    if: ${{ needs.is_path_ignore.outputs.ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -87,6 +81,7 @@ jobs:
           make verify-bundle
   verify-helm-build:
     name: Verify helm build
+    if: ${{ needs.is_path_ignore.outputs.ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -102,6 +97,7 @@ jobs:
           make verify-helm-build
   verify-imports:
     name: Verify imports
+    if: ${{ needs.is_path_ignore.outputs.ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -117,6 +113,7 @@ jobs:
           make verify-imports
   verify-generate:
     name: Verify generate
+    if: ${{ needs.is_path_ignore.outputs.ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -132,6 +129,7 @@ jobs:
           make verify-generate
   verify-go-mod:
     name: Verify go.mod
+    if: ${{ needs.is_path_ignore.outputs.ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -147,6 +145,7 @@ jobs:
           make verify-go-mod
   unit_test_suite:
     name: Unit Test Suite
+    if: ${{ needs.is_path_ignore.outputs.ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -159,6 +158,7 @@ jobs:
           make test-unit
   integration_test_suite:
     name: Integration Test Suite
+    if: ${{ needs.is_path_ignore.outputs.ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -177,3 +177,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: echo '${{ toJSON(needs) }}' | jq -e 'to_entries | all(.value.result == "success")'
+
+
+  is_path_ignore:
+    if: always()
+    name: Check for changes on path_ignore
+    outputs:
+      ignore: ${{ steps.is_path_ignore.outputs.ignore }}
+    runs-on:
+      - ubuntu-20.04
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 10
+      - id: check_files
+        name: Get changed files
+        uses: tj-actions/changed-files@v23.1
+        with:
+          files: |
+            samples/**
+            LICENSE
+          file-types: "**.adoc,**.md"
+      - id: set_output
+        if: steps.check_files.outputs.any_changed == 'true' && steps.check_files.outputs.files != steps.check_files.outputs.all_changed_files
+        name: Set output based on only files being changed that should be ignored
+        run: echo '::set-output name=ignore=true'
