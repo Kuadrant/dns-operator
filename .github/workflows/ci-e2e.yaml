@@ -8,20 +8,10 @@ on:
       - "ci_*"
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
-    paths-ignore:
-      - '**.adoc'
-      - '**.md'
-      - 'samples/**'
-      - 'LICENSE'
   pull_request_target:
     branches:
       - main
       - "release-*"
-    paths-ignore:
-      - '**.adoc'
-      - '**.md'
-      - 'samples/**'
-      - 'LICENSE'
   workflow_dispatch:
     inputs:
       ginkgoParallel:
@@ -48,6 +38,8 @@ env:
 jobs:
   e2e_test_suite:
     name: E2E Test Suite
+    needs: is_path_ignore
+    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -112,3 +104,32 @@ jobs:
         run: |
           echo "Executed using dry run, exiting as failure"
           exit 1
+
+
+  is_path_ignore:
+    if: always()
+    name: Check for changes on path_ignore
+    outputs:
+      should_ignore: ${{ steps.is_path_ignore.outputs.should_ignore }}
+    runs-on:
+      - ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 10
+      - id: check_files
+        name: Get changed files
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            LICENSE
+          file-types: "**.adoc,**.md"
+      - id: set_output
+        name: Set output based on only files being changed that should be ignored
+        run: |
+          if [[ "${{ steps.check_files.outputs.any_changed }}" == "true" ]] && "${{ steps.check_files.outputs.files }}" == "${{ steps.check_files.outputs.all_changed_files }}"; then
+            echo "should_ignore=true" >> $GITHUB_ENV
+          else
+            echo "should_ignore=false" >> $GITHUB_ENV
+          fi
