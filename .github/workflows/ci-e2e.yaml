@@ -118,17 +118,21 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 10
-      - id: check_files
-        name: Get changed files
+      - id: check_skip_files
+        name: Get changed files to skip
         uses: tj-actions/changed-files@v41
         with:
           files: |
             LICENSE
-          file-types: "**.adoc,**.md"
+            **.md
+            docs/**.md
+      - id: check_all_files
+        name: Get all changed files
+        uses: tj-actions/changed-files@v41
       - id: set_output
         name: Set output based on only files being changed that should be ignored
         run: |
-          if [[ "${{ steps.check_files.outputs.any_changed }}" == "true" ]] && "${{ steps.check_files.outputs.files }}" == "${{ steps.check_files.outputs.all_changed_files }}"; then
+          if [[ "${{ steps.check_skip_files.outputs.any_changed }}" == "true" ]] && "${{ steps.check_files.outputs.all_changed_files }}" == "${{ steps.check_all_files.outputs.all_changed_files }}"; then
             echo "should_ignore=true" >> $GITHUB_ENV
           else
             echo "should_ignore=false" >> $GITHUB_ENV
