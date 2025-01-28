@@ -1,0 +1,52 @@
+name: CI-Docs
+
+on:
+  pull_request:
+    branches:
+      - main
+      - "release-*"
+    paths:
+      - '**.adoc'
+      - '**.md'
+      - 'LICENSE'
+
+jobs:
+  required-ci-checks:
+    name: CI Required Checks
+    if: ${{ needs.check_changes.outputs.docs_only == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Docs Only changes, Skipped CI Checks'
+  required-e2e-checks:
+    name: CI-E2E Required Checks
+    if: ${{ needs.check_changes.outputs.docs_only == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Docs Only changes, Skipped CI E2E Checks'
+  check_changes:
+    if: always()
+    name: Check for changes
+    outputs:
+      docs_only: ${{ steps.is_path_ignore.outputs.docs_only }}
+    runs-on:
+      - ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 10
+      - id: check_files
+        name: Get changed files
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            LICENSE
+          file-types: "**.adoc,**.md"
+      - id: set_output
+        name: Set output based on only files being changed that should be ignored
+        run: |
+          if [[ "${{ steps.check_files.outputs.any_changed }}" == "true" ]] && "${{ steps.check_files.outputs.files }}" == "${{ steps.check_files.outputs.all_changed_files }}"; then
+            echo "docs_only=true" >> $GITHUB_ENV
+          else
+            echo "docs_only=false" >> $GITHUB_ENV
+          fi

@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches:
-      - main
       - "release-*"
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
@@ -11,6 +10,11 @@ on:
     branches:
       - main
       - "release-*"
+    paths-ignore:
+      - '**.adoc'
+      - '**.md'
+      - 'samples/**'
+      - 'LICENSE'
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
@@ -18,8 +22,6 @@ on:
 jobs:
   lint:
     name: lint
-    needs: is_path_ignore
-    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,8 +36,6 @@ jobs:
           args: --timeout=5m
   verify-code:
     name: Verify code
-    needs: is_path_ignore
-    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -51,8 +51,6 @@ jobs:
           make verify-code
   verify-manifests:
     name: Verify manifests
-    needs: is_path_ignore
-    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -68,8 +66,6 @@ jobs:
           make verify-manifests
   verify-bundle:
     name: Verify bundle
-    needs: is_path_ignore
-    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -85,8 +81,6 @@ jobs:
           make verify-bundle
   verify-helm-build:
     name: Verify helm build
-    needs: is_path_ignore
-    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -102,8 +96,6 @@ jobs:
           make verify-helm-build
   verify-imports:
     name: Verify imports
-    needs: is_path_ignore
-    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -119,8 +111,6 @@ jobs:
           make verify-imports
   verify-generate:
     name: Verify generate
-    needs: is_path_ignore
-    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -136,8 +126,6 @@ jobs:
           make verify-generate
   verify-go-mod:
     name: Verify go.mod
-    needs: is_path_ignore
-    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go 1.21.x
@@ -153,8 +141,6 @@ jobs:
           make verify-go-mod
   unit_test_suite:
     name: Unit Test Suite
-    needs: is_path_ignore
-    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -167,8 +153,6 @@ jobs:
           make test-unit
   integration_test_suite:
     name: Integration Test Suite
-    needs: is_path_ignore
-    if: ${{ needs.is_path_ignore.outputs.should_ignore != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -186,33 +170,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: echo '${{ toJSON(needs) }}' | jq -e 'all(.[]; .result == "success" or .result == "skipped")'
-
-
-  is_path_ignore:
-    if: always()
-    name: Check for changes on path_ignore
-    outputs:
-      should_ignore: ${{ steps.is_path_ignore.outputs.should_ignore }}
-    runs-on:
-      - ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 10
-      - id: check_files
-        name: Get changed files
-        uses: tj-actions/changed-files@v41
-        with:
-          files: |
-            LICENSE
-          file-types: "**.adoc,**.md"
-      - id: set_output
-        name: Set output based on only files being changed that should be ignored
-        run: |
-          if [[ "${{ steps.check_files.outputs.any_changed }}" == "true" ]] && "${{ steps.check_files.outputs.files }}" == "${{ steps.check_files.outputs.all_changed_files }}"; then
-            echo "should_ignore=true" >> $GITHUB_ENV
-          else
-            echo "should_ignore=false" >> $GITHUB_ENV
-          fi
+      - run: echo '${{ toJSON(needs) }}' | jq -e 'all(.[]; .result == "success")'
