@@ -1,0 +1,13 @@
+# CoreDNS installation without ServiceMonitor.
+
+resources:
+  - ../coredns
+
+patches:
+  - patch: |-
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: kuadrant-coredns
+        namespace: kuadrant-coredns

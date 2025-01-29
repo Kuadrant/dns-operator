@@ -1,0 +1,11 @@
+namespace: kuadrant-coredns-1
+nameSuffix: "-1"
+
+resources:
+  - ../../coredns-unmonitored
+
+patches:
+  - patch: '[{"op": "replace", "path": "/spec/template/spec/containers/0/env/0", "value":
+    {"name": "WATCH_NAMESPACES", "value": "kuadrant-coredns-1"}}]'
+    target:
+      kind: Deployment
