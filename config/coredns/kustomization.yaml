@@ -1,0 +1,88 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: kuadrant-dns
+resources:
+  - namespace.yaml
+helmCharts:
+  - name: coredns
+    repo: https://coredns.github.io/helm
+    releaseName: kuadrant
+    valuesInline:
+      isClusterService: false
+      serviceType: LoadBalancer
+      prometheus:
+        service:
+          enabled: true
+        monitor:
+          enabled: true
+          namespace: kuadrant-dns
+      servers:
+        - zones:
+          - zone: foo.bar.baz
+          port: 53
+          plugins:
+            - name: file
+              parameters: /etc/coredns/foo.bar.baz.db
+            - name: cache
+              parameters: 10
+            - name: prometheus
+              parameters: 0.0.0.0:9153
+            - name: log
+            - name: loadbalance
+              parameters: weighted /etc/coredns/foo.bar.baz.weights
+              configBlock: |-
+                reload 10s
+        - zones:
+          - zone: .
+          port: 53
+          plugins:
+            - name: whoami
+            - name: errors
+            # Serves a /health endpoint on :8080, required for livenessProbe
+            - name: health
+              configBlock: |-
+                lameduck 5s
+            # Serves a /ready endpoint on :8181, required for readinessProbe
+            - name: ready
+            # Required to query kubernetes API for data
+            - name: kubernetes
+              parameters: cluster.local in-addr.arpa ip6.arpa
+              configBlock: |-
+                pods insecure
+                fallthrough in-addr.arpa ip6.arpa
+                ttl 30
+            # Serves a /metrics endpoint on :9153, required for serviceMonitor
+            - name: prometheus
+              parameters: 0.0.0.0:9153
+            - name: forward
+              parameters: . /etc/resolv.conf
+            - name: cache
+              parameters: 30
+            - name: loop
+            - name: reload
+            - name: log
+      zoneFiles:
+        - filename: foo.bar.baz.db
+          domain: foo.bar.baz
+          contents: |
+            foo.bar.baz.   IN SOA ns1.foo.bar.baz. root.foo.bar.baz. 2015082541 7200 3600 1209600 3600
+            foo.bar.baz.   IN NS  ns1.foo.bar.baz.
+            foo.bar.baz.   IN NS  ns2.foo.bar.baz.
+            rec1.foo.bar.baz.   IN A   1.2.3.4
+            rec1.foo.bar.baz.   IN A   2.3.4.5
+            rec2.foo.bar.baz.   IN A   3.4.5.6
+            rec2.foo.bar.baz.   IN A   4.5.6.7
+            lb.foo.bar.baz.   IN CNAME  rec2.foo.bar.baz.
+            *.foo.bar.baz. IN A   9.9.9.9
+        - filename: foo.bar.baz.weights
+          domain: foo.bar.baz
+          contents: |
+            rec1.foo.bar.baz
+            1.2.3.4 10
+            2.3.4.5 1
+            rec2.foo.bar.baz
+            3.4.5.6 2
+            4.5.6.7 1
+
+patches:
+  - path: k8s_prometheus_patch.yaml

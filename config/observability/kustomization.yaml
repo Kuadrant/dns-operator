@@ -3,6 +3,7 @@ resources:
   - ./thanos
   - github.com/kuadrant/kuadrant-operator/examples/dashboards?ref=main
   - github.com/kuadrant/kuadrant-operator/examples/alerts?ref=main
+  - ./coredns
 
 patches:
   - patch: |
@@ -33,4 +34,22 @@ patches:
       metadata:
         name: limitador-operator-metrics
         namespace: kuadrant-system
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: grafana-coredns
+          configMap:
+            defaultMode: 420
+            name: grafana-coredns
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: grafana-coredns
+          mountPath: /grafana-dashboard-definitions/0/grafana-coredns
+    target:
+      version: v1
+      kind: Deployment
+      name: grafana
+      namespace: monitoring
   - path: k8s_prometheus_patch.yaml
