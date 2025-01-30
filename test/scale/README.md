@@ -10,6 +10,7 @@ Create a kind cluster with prometheus/thanos installed and configured
 cd ../.. && make local-setup
 kubectl apply --server-side -k config/observability
 kubectl apply --server-side -k config/observability # Run twice if it fails the first time
+kubectl -n monitoring wait --timeout=60s --for=condition=Available deployments --all
 ```
 
 Forward port for prometheus
