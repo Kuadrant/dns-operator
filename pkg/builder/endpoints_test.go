@@ -20,7 +20,7 @@ const (
 var (
 	testHost          string
 	testTarget        TestTargetImpl
-	testLoadbalancing *LoadBalancing
+	testLoadBalancing *LoadBalancing
 
 	testName      = "TestName"
 	testNamespace = "TestNamespace"
@@ -52,7 +52,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 			},
 		}
 
-		testLoadbalancing = &LoadBalancing{}
+		testLoadBalancing = &LoadBalancing{}
 	})
 	Context("Success scenarios", func() {
 		Context("Simple routing Strategy", func() {
@@ -125,7 +125,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 						Value: ipAddressTwo,
 					},
 				}
-				testLoadbalancing = &LoadBalancing{
+				testLoadBalancing = &LoadBalancing{
 					Weight:       weight,
 					Geo:          geo,
 					IsDefaultGeo: true,
@@ -137,7 +137,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 				It("Should generate endpoints", func() {
 					testHost = HostOne(domain)
 					endpoints, err := NewEndpointsBuilder(testTarget, testHost).
-						WithLoadBalancing(testLoadbalancing).
+						WithLoadBalancing(testLoadBalancing).
 						Build()
 					Expect(err).NotTo(HaveOccurred())
 					Expect(EndpointsTraversable(endpoints, HostOne(domain), []string{ipAddressOne, ipAddressTwo})).To(BeTrue())
@@ -186,7 +186,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 				It("Should generate wildcard endpoints", func() {
 					testHost = HostWildcard(domain)
 					endpoints, err := NewEndpointsBuilder(testTarget, testHost).
-						WithLoadBalancing(testLoadbalancing).
+						WithLoadBalancing(testLoadBalancing).
 						Build()
 					Expect(err).NotTo(HaveOccurred())
 					Expect(EndpointsTraversable(endpoints, HostWildcard(domain), []string{ipAddressOne, ipAddressTwo})).To(BeTrue())
@@ -235,13 +235,13 @@ var _ = Describe("DnsrecordEndpoints", func() {
 
 			Context("With non-default geo", func() {
 				BeforeEach(func() {
-					testLoadbalancing.IsDefaultGeo = false
-					testLoadbalancing.Geo = "CAD"
+					testLoadBalancing.IsDefaultGeo = false
+					testLoadBalancing.Geo = "CAD"
 				})
 				It("Should generate endpoints", func() {
 					testHost = HostOne(domain)
 					endpoints, err := NewEndpointsBuilder(testTarget, testHost).
-						WithLoadBalancing(testLoadbalancing).
+						WithLoadBalancing(testLoadBalancing).
 						Build()
 					Expect(err).NotTo(HaveOccurred())
 					Expect(EndpointsTraversable(endpoints, HostOne(domain), []string{ipAddressOne, ipAddressTwo})).To(BeTrue())
@@ -282,7 +282,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 				It("Should generate wildcard endpoints", func() {
 					testHost = HostWildcard(domain)
 					endpoints, err := NewEndpointsBuilder(testTarget, testHost).
-						WithLoadBalancing(testLoadbalancing).
+						WithLoadBalancing(testLoadBalancing).
 						Build()
 					Expect(err).NotTo(HaveOccurred())
 					Expect(EndpointsTraversable(endpoints, HostWildcard(domain), []string{ipAddressOne, ipAddressTwo})).To(BeTrue())

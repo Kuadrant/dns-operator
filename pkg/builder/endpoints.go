@@ -147,7 +147,7 @@ func (builder *EndpointsBuilder) Validate() error {
 
 	// following only applicable for load-balancing strategy
 	if builder.loadBalancing != nil {
-		// Id must not be an empty string
+		// ID must not be an empty string
 		if builder.loadBalancing.Id == "" {
 			return fmt.Errorf("ID is required")
 		}

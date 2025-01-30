@@ -54,7 +54,7 @@ func (r *DNSProbeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err = client.IgnoreNotFound(err); err == nil {
 			return ctrl.Result{}, err
 		} else {
-			// not found error stop any exsting worker will create a new one if a new probe is created
+			// not found error stop any existing worker will create a new one if a new probe is created
 			logger.V(1).Info("probe not found cleaning up any executing health checks")
 			previous.Name = req.Name
 			previous.Namespace = req.Namespace
