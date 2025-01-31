@@ -26,6 +26,9 @@ Dockerfile.cross
 *.swo
 *~
 
+# Helm chart packages
+*operator*.tgz*
+
 # Temporary files and directories
 tmp
 
