@@ -79,8 +79,8 @@ type DNSRecordReconciler struct {
 	ProviderFactory provider.Factory
 }
 
-func postReconcile(ctx context.Context) {
-	log.FromContext(ctx).Info(fmt.Sprintf("Reconciled DNSRecord in %s", time.Since(reconcileStart.Time)))
+func postReconcile(ctx context.Context, name, ns string) {
+	log.FromContext(ctx).Info(fmt.Sprintf("Reconciled DNSRecord %s from namespace %s in %s", name, ns, time.Since(reconcileStart.Time)))
 }
 
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
@@ -98,7 +98,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	reconcileStart = metav1.Now()
 	probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-	defer postReconcile(ctx)
+	defer postReconcile(ctx, req.Name, req.Namespace)
 
 	// randomize validation reconcile delay
 	randomizedValidationRequeue = common.RandomizeValidationDuration(validationRequeueVariance, defaultValidationRequeue)
