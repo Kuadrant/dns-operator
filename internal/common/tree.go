@@ -148,29 +148,33 @@ func MakeTreeFromDNSRecord(record *v1alpha1.DNSRecord) *DNSTreeNode {
 	if record == nil {
 		return &DNSTreeNode{}
 	}
-	rootNode := &DNSTreeNode{Name: record.Spec.RootHost}
-	populateNode(rootNode, record)
+	return MakeTreeFromEndpoints(record.Spec.RootHost, record.Spec.Endpoints)
+}
+
+func MakeTreeFromEndpoints(rootHost string, endpoints []*endpoint.Endpoint) *DNSTreeNode {
+	rootNode := &DNSTreeNode{Name: rootHost}
+	populateNode(rootNode, endpoints)
 	return rootNode
 }
 
-func populateNode(node *DNSTreeNode, record *v1alpha1.DNSRecord) {
-	node.DataSets = findDataSets(node.Name, record)
+func populateNode(node *DNSTreeNode, endpoints []*endpoint.Endpoint) {
+	node.DataSets = findDataSets(node.Name, endpoints)
 
-	children := findChildren(node.Name, record)
+	children := findChildren(node.Name, endpoints)
 	if len(children) == 0 {
 		return
 	}
 
 	for _, c := range children {
-		populateNode(c, record)
+		populateNode(c, endpoints)
 	}
 	node.Children = children
 }
 
-func findChildren(name string, record *v1alpha1.DNSRecord) []*DNSTreeNode {
+func findChildren(name string, endpoints []*endpoint.Endpoint) []*DNSTreeNode {
 	nodes := []*DNSTreeNode{}
 	targets := map[string]string{}
-	for _, ep := range record.Spec.Endpoints {
+	for _, ep := range endpoints {
 		if ep.DNSName == name {
 			for _, t := range ep.Targets {
 				targets[t] = t
@@ -184,9 +188,9 @@ func findChildren(name string, record *v1alpha1.DNSRecord) []*DNSTreeNode {
 	return nodes
 }
 
-func findDataSets(name string, record *v1alpha1.DNSRecord) []DNSTreeNodeData {
+func findDataSets(name string, endpoints []*endpoint.Endpoint) []DNSTreeNodeData {
 	dataSets := []DNSTreeNodeData{}
-	for _, ep := range record.Spec.Endpoints {
+	for _, ep := range endpoints {
 		if ep.DNSName == name {
 			dataSets = append(dataSets, DNSTreeNodeData{
 				RecordType:       ep.RecordType,
