@@ -1,0 +1,50 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced-aws-cluster1
+spec:
+  rootHost: loadbalanced.pb.hcpapps.net
+  endpoints:
+    - dnsName: cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.1
+    - dnsName: loadbalanced.pb.hcpapps.net
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.loadbalanced.pb.hcpapps.net
+    - dnsName: ie.klb.loadbalanced.pb.hcpapps.net
+      providerSpecific:
+        - name: weight
+          value: "200"
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net
+      targets:
+        - cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net
+    - dnsName: klb.loadbalanced.pb.hcpapps.net
+      providerSpecific:
+        - name: geo-code
+          value: IE
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: IE
+      targets:
+        - ie.klb.loadbalanced.pb.hcpapps.net
+      labels:
+        stop_soft_delete: "true"
+    - dnsName: klb.loadbalanced.pb.hcpapps.net
+      providerSpecific:
+        - name: geo-code
+          value: '*'
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: default
+      targets:
+        - ie.klb.loadbalanced.pb.hcpapps.net
+      labels:
+        stop_soft_delete: "true"
+  providerRef:
+    name: dns-provider-credentials-aws
