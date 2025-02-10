@@ -1,9 +1,12 @@
 package common
 
 import (
+	"fmt"
+	"io"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
+	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 )
 
 // RandomizeValidationDuration randomizes duration for a given variance with a min value of 1 sec
@@ -26,4 +29,35 @@ func RandomizeDuration(variance, duration float64) time.Duration {
 	return time.Millisecond * time.Duration(rand.Int63nRange(
 		int64(lowerLimit),
 		int64(upperLimit)))
+}
+
+func WriteEndpoints(s io.Writer, endpoints []*externaldnsendpoint.Endpoint, title string) {
+	fmt.Fprintf(s, "\n====== %s ======\n", title)
+	for _, ep := range endpoints {
+		fmt.Fprintf(s, "	endpoint: %v > %+v with labels: %+v and flags: %+v\n", ep.DNSName, ep.Targets, ep.Labels, ep.ProviderSpecific)
+	}
+	fmt.Fprintf(s, "====== %s ======\n\n", title)
+}
+
+func RemoveLabelFromEndpoint(label string, endpoint *externaldnsendpoint.Endpoint) *externaldnsendpoint.Endpoint {
+	if endpoint.Labels == nil {
+		return endpoint
+	}
+
+	delete(endpoint.Labels, label)
+	return endpoint
+}
+
+func RemoveLabelFromEndpoints(label string, endpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
+	for _, e := range endpoints {
+		RemoveLabelFromEndpoint(label, e)
+	}
+	return endpoints
+}
+func RemoveLabelsFromEndpoints(labels []string, endpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
+	for _, l := range labels {
+		RemoveLabelFromEndpoints(l, endpoints)
+	}
+
+	return endpoints
 }

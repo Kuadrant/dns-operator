@@ -2126,6 +2126,183 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordDelete() {
 	assert.Empty(suite.T(), cp.Errors)
 }
 
+// Should only create records that are not labelled for soft delete
+func (suite *PlanTestSuite) TestSoftDeleteLabelDoesntCreate() {
+	labelledEP := suite.fooecCNAMEbarecOwnerNone.DeepCopy()
+	labelledEP.Labels = map[string]string{
+		SoftDeleteLabel: "true",
+	}
+	current := []*endpoint.Endpoint{}
+	previous := []*endpoint.Endpoint{}
+	desired := []*endpoint.Endpoint{labelledEP}
+
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner1",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		Previous:       previous,
+		RootHost:       ptr.To("foo.example.com"),
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should only create records that are not labelled for soft delete
+func (suite *PlanTestSuite) TestAbsentSoftDeletelabelledCreates() {
+	current := []*endpoint.Endpoint{}
+	previous := []*endpoint.Endpoint{}
+	desired := []*endpoint.Endpoint{suite.fooecCNAMEbarecOwnerNone}
+
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{suite.fooecCNAMEbarecOwnerNone},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner1",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		Previous:       previous,
+		RootHost:       ptr.To("foo.example.com"),
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should not unpublish records that are labelled for soft delete, when there are no alternatives left
+func (suite *PlanTestSuite) TestSoloSoftDeleteLabelDoesntUnpublish() {
+	labelledEP := suite.fooecCNAMEbarecOwner1.DeepCopy()
+	labelledEP.Labels = map[string]string{
+		SoftDeleteLabel: "true",
+	}
+	current := []*endpoint.Endpoint{suite.fooecCNAMEbarecOwner1}
+	previous := []*endpoint.Endpoint{}
+	desired := []*endpoint.Endpoint{labelledEP}
+
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner1",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		Previous:       previous,
+		RootHost:       ptr.To("foo.example.com"),
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should unpublish records that are labelled for soft delete, when there are alternatives left
+func (suite *PlanTestSuite) TestSoftDeleteLabelDoesUnpublish() {
+	/*
+		input tree:
+			root.example.com >
+				leaf1.root.example.com > 1.2.3.4 (marked for delete)
+				leaf2.root.example.com > 2.3.4.5
+		expected tree:
+			root.example.com >
+				leaf2.root.example.com > 2.3.4.5
+	*/
+	current := []*endpoint.Endpoint{
+		{
+			DNSName:    "root.example.com",
+			RecordType: "CNAME",
+			Targets:    endpoint.Targets{"leaf1.root.example.com", "leaf2.root.example.com"},
+			Labels: map[string]string{
+				endpoint.OwnerLabelKey: "owner1" + OwnerLabelDeliminator + "owner2",
+			},
+		},
+		{
+			DNSName:    "leaf1.root.example.com",
+			RecordType: "A",
+			Labels: map[string]string{
+				endpoint.OwnerLabelKey: "owner1",
+			},
+			Targets: endpoint.Targets{"1.2.3.4"},
+		},
+		{
+			DNSName:    "leaf2.root.example.com",
+			RecordType: "A",
+			Labels: map[string]string{
+				endpoint.OwnerLabelKey: "owner2",
+			},
+			Targets: endpoint.Targets{"2.3.4.5"},
+		},
+	}
+	previous := []*endpoint.Endpoint{}
+	desired := []*endpoint.Endpoint{
+		{
+			DNSName:    "root.example.com",
+			RecordType: "CNAME",
+			Targets:    endpoint.Targets{"leaf1.root.example.com"},
+		},
+		{
+			DNSName:    "leaf1.root.example.com",
+			RecordType: "A",
+			Labels: endpoint.Labels{
+				SoftDeleteLabel: SoftDeleteLabelValue,
+			},
+			Targets: endpoint.Targets{"1.2.3.4"},
+		},
+	}
+
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete: []*endpoint.Endpoint{
+			{
+				DNSName:    "leaf1.root.example.com",
+				RecordType: "A",
+				Labels: endpoint.Labels{
+					endpoint.OwnerLabelKey: "owner1",
+				},
+				Targets: endpoint.Targets{"1.2.3.4"},
+			},
+		},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner1",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		Previous:       previous,
+		RootHost:       ptr.To("root.example.com"),
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
 func TestPlan(t *testing.T) {
 	suite.Run(t, new(PlanTestSuite))
 }
