@@ -1,0 +1,17 @@
+k.example.com {
+   debug
+   errors
+   log
+   kuadrant {
+        kubeconfig /home/mnairn/.kube/config kind-kuadrant-dns-local-1
+   }
+}
+f.example.com {
+   debug
+   errors
+   log
+   file db.f.example.com
+}
+. {
+   forward . /etc/resolv.conf
+}

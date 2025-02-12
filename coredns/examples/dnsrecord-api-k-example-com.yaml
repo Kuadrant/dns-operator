@@ -1,0 +1,44 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: api-k-example-com
+spec:
+  rootHost: api.k.example.com
+  endpoints:
+    - dnsName: rec1.k.example.com
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 1.1.1.1
+    - dnsName: rec1.k.example.com
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 2.2.2.2
+    - dnsName: rec2.k.example.com
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 3.3.3.3
+    - dnsName: rec3.k.example.com
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 4.4.4.4
+    - dnsName: lb.api.k.example.com
+      recordTTL: 120
+      recordType: CNAME
+      targets:
+        - rec1.k.example.com
+    - dnsName: api.k.example.com
+      recordTTL: 120
+      recordType: CNAME
+      targets:
+        - lb.api.k.example.com
+    - dnsName: "*.api.k.example.com"
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 9.9.9.9
+  providerRef:
+    name: dns-provider-credentials-coredns
