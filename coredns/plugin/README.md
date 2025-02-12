@@ -1,0 +1,2 @@
+# kuadrant CoreDNS Plugin
+
