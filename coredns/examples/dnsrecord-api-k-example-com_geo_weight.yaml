@@ -1,0 +1,81 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: api-k-example-com
+  labels:
+    kuadrant.io/zone-name: k.example.com
+spec:
+  rootHost: api.k.example.com
+  endpoints:
+    - dnsName: api.k.example.com
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.api.k.example.com
+    - dnsName: klb.api.k.example.com
+      providerSpecific:
+        - name: geo-code
+          value: GEO-EU
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: GEO-EU
+      targets:
+        - geo-eu.klb.api.k.example.com
+    - dnsName: klb.api.k.example.com
+      providerSpecific:
+        - name: geo-code
+          value: GEO-US
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: GEO-US
+      targets:
+        - geo-us.klb.api.k.example.com
+    - dnsName: geo-us.klb.api.k.example.com
+      providerSpecific:
+        - name: weight
+          value: '200'
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster1.klb.api.k.example.com
+      targets:
+        - cluster1.klb.api.k.example.com
+    - dnsName: geo-eu.klb.api.k.example.com
+      providerSpecific:
+        - name: weight
+          value: '200'
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster2.klb.api.k.example.com
+      targets:
+        - cluster2.klb.api.k.example.com
+    - dnsName: geo-eu.klb.api.k.example.com
+      providerSpecific:
+        - name: weight
+          value: '200'
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster3.klb.api.k.example.com
+      targets:
+        - cluster3.klb.api.k.example.com
+    - dnsName: cluster3.klb.api.k.example.com
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 127.0.0.3
+    - dnsName: cluster2.klb.api.k.example.com
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 127.0.0.2
+    - dnsName: cluster1.klb.api.k.example.com
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 127.0.0.1
+    - dnsName: "*.api.k.example.com"
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 9.9.9.9
+  providerRef:
+    name: dns-provider-credentials-coredns
