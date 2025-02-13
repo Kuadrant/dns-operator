@@ -32,7 +32,7 @@ helmCharts:
             - name: prometheus
               parameters: 0.0.0.0:9153
         - zones:
-          - zone: f.example.com
+            - zone: f.example.com
           port: 53
           plugins:
             - name: debug
@@ -43,7 +43,7 @@ helmCharts:
             - name: prometheus
               parameters: 0.0.0.0:9153
         - zones:
-          - zone: .
+            - zone: .
           port: 53
           plugins:
             - name: whoami
@@ -80,3 +80,18 @@ helmCharts:
 
 patches:
   - path: k8s_prometheus_patch.yaml
+  - target:
+      kind: ClusterRole
+      name: kuadrant-coredns
+    patch: |
+      - op: add
+        path: /rules/-
+        value:
+          apiGroups:
+            - kuadrant.io
+          resources:
+            - dnsrecords
+          verbs:
+            - get
+            - list
+            - watch
