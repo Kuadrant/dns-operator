@@ -7,9 +7,6 @@ k.example.com {
    }
 }
 f.example.com {
-   debug
-   errors
-   log
    file db.f.example.com
 }
 . {

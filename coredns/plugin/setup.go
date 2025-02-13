@@ -6,6 +6,7 @@ import (
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/file"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 )
 
@@ -43,8 +44,16 @@ func setup(c *caddy.Controller) error {
 func parse(c *caddy.Controller) (*Kuadrant, error) {
 	k := newKuadrant()
 
+	z := make(map[string]*file.Zone)
+	names := []string{}
+
 	for c.Next() {
-		k.Zones = plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
+		origins := plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
+
+		for i := range origins {
+			z[origins[i]] = file.NewZone(origins[i], "")
+			names = append(names, origins[i])
+		}
 
 		for c.NextBlock() {
 			key := c.Val()
@@ -66,6 +75,8 @@ func parse(c *caddy.Controller) (*Kuadrant, error) {
 			}
 		}
 	}
+
+	k.Zones = Zones{Z: z, Names: names}
 
 	return k, nil
 }

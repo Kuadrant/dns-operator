@@ -2,72 +2,155 @@ package kuadrant
 
 import (
 	"context"
-	"strings"
+	"net"
+
+	"github.com/coredns/coredns/plugin/file"
+	"github.com/coredns/coredns/plugin/pkg/dnsutil"
+	"github.com/miekg/dns"
 
 	core "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-	externaldns "sigs.k8s.io/external-dns/endpoint"
-
-	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/coredns-kuadrant/dnsop"
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
 const (
-	defaultResyncPeriod  = 0
-	dnsRecordUniqueIndex = "dnsRecordIndex"
+	ZoneNameLabel       = "kuadrant.io/zone-name"
+	defaultResyncPeriod = 0
 )
 
-type LookupDNSRecordEndpoint func(indexKey string) (record *v1alpha1.DNSRecord, endpoint *externaldns.Endpoint)
-
-type ResourceWithLookup struct {
-	Name   string
-	Lookup LookupDNSRecordEndpoint
+type zoneInformer struct {
+	cache.SharedInformer
+	zone       *file.Zone
+	zoneOrigin string
 }
 
-var Resources = struct {
-	DNSRecord *ResourceWithLookup
-}{
-	DNSRecord: &ResourceWithLookup{
-		Name: "DNSRecord",
-	},
+func (zi *zoneInformer) refreshZone() {
+	log.Infof("updating zone %s", zi.zoneOrigin)
+	newZ := file.NewZone(zi.zoneOrigin, "")
+
+	ns := &dns.NS{Hdr: dns.RR_Header{Name: dns.Fqdn(zi.zoneOrigin), Rrtype: dns.TypeNS, Ttl: ttlSOA, Class: dns.ClassINET},
+		Ns: dnsutil.Join("ns1", zi.zoneOrigin),
+	}
+	newZ.Insert(ns)
+
+	soa := &dns.SOA{Hdr: dns.RR_Header{Name: dns.Fqdn(zi.zoneOrigin), Rrtype: dns.TypeSOA, Ttl: ttlSOA, Class: dns.ClassINET},
+		Mbox:    dnsutil.Join("hostmaster", zi.zoneOrigin),
+		Ns:      dnsutil.Join("ns1", zi.zoneOrigin),
+		Serial:  12345,
+		Refresh: 7200,
+		Retry:   1800,
+		Expire:  86400,
+		Minttl:  ttlSOA,
+	}
+	newZ.Insert(soa)
+
+	for _, obj := range zi.GetStore().List() {
+		rec := obj.(*v1alpha1.DNSRecord)
+		for _, ep := range rec.Spec.Endpoints {
+			log.Debugf("adding %s record for %s to zone %s", ep.RecordType, ep.DNSName, zi.zoneOrigin)
+
+			if ep.RecordType == endpoint.RecordTypeA {
+				for _, t := range ep.Targets {
+					a := &dns.A{Hdr: dns.RR_Header{Name: dns.Fqdn(ep.DNSName), Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: uint32(ep.RecordTTL)},
+						A: net.ParseIP(t)}
+					newZ.Insert(a)
+				}
+			}
+
+			if ep.RecordType == endpoint.RecordTypeAAAA {
+				for _, t := range ep.Targets {
+					aaaa := &dns.AAAA{Hdr: dns.RR_Header{Name: dns.Fqdn(ep.DNSName), Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: uint32(ep.RecordTTL)},
+						AAAA: net.ParseIP(t)}
+					newZ.Insert(aaaa)
+				}
+			}
+
+			if ep.RecordType == endpoint.RecordTypeTXT {
+				txt := &dns.TXT{Hdr: dns.RR_Header{Name: dns.Fqdn(ep.DNSName), Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: uint32(ep.RecordTTL)},
+					Txt: ep.Targets}
+				newZ.Insert(txt)
+			}
+
+			if ep.RecordType == endpoint.RecordTypeCNAME {
+				cname := &dns.CNAME{Hdr: dns.RR_Header{Name: dns.Fqdn(ep.DNSName), Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: uint32(ep.RecordTTL)},
+					Target: dns.Fqdn(ep.Targets[0])}
+				newZ.Insert(cname)
+			}
+		}
+	}
+
+	// copy elements we need
+	zi.zone.Lock()
+	zi.zone.Apex = newZ.Apex
+	zi.zone.Tree = newZ.Tree
+	zi.zone.Unlock()
 }
 
 // KubeController stores the current runtime configuration and cache
 type KubeController struct {
-	client              dnsop.Interface
-	dnsRecordController cache.SharedIndexInformer
-	hasSynced           bool
-	labelFilter         string
+	client      dnsop.Interface
+	controllers []zoneInformer
+	hasSynced   bool
+	labelFilter string
 }
 
-func newKubeController(ctx context.Context, c *dnsop.DNSRecordClient) *KubeController {
-	log.Infof("Building kube controller")
-
+func newKubeController(ctx context.Context, c *dnsop.DNSRecordClient, zones map[string]*file.Zone) *KubeController {
 	ctrl := &KubeController{
 		client: c,
 	}
 
 	if existDNSRecordCRDs(ctx, c) {
-		dnsRecordController := cache.NewSharedIndexInformer(
-			&cache.ListWatch{
-				ListFunc:  dnsRecordLister(ctx, ctrl.client, core.NamespaceAll, ctrl.labelFilter),
-				WatchFunc: dnsRecordWatcher(ctx, ctrl.client, core.NamespaceAll, ctrl.labelFilter),
-			},
-			&v1alpha1.DNSRecord{},
-			defaultResyncPeriod,
-			cache.Indexers{dnsRecordUniqueIndex: endpointHostnameIndexFunc},
-		)
-		Resources.DNSRecord.Lookup = ctrl.getEndpointByDNSName
-		ctrl.dnsRecordController = dnsRecordController
+		for origin, zone := range zones {
+
+			labelSelector := labels.SelectorFromSet(map[string]string{
+				ZoneNameLabel: stripClosingDot(origin),
+			})
+
+			log.Infof("creating zone informer for %s with label selector %s", origin, labelSelector.String())
+
+			zi := zoneInformer{
+				SharedInformer: cache.NewSharedInformer(
+					&cache.ListWatch{
+						ListFunc: func(opts metav1.ListOptions) (runtime.Object, error) {
+							opts.LabelSelector = labelSelector.String()
+							return c.DNSRecords(core.NamespaceAll).List(ctx, opts)
+						},
+						WatchFunc: func(opts metav1.ListOptions) (watch.Interface, error) {
+							opts.LabelSelector = labelSelector.String()
+							return c.DNSRecords(core.NamespaceAll).Watch(ctx, opts)
+						},
+					},
+					&v1alpha1.DNSRecord{},
+					defaultResyncPeriod,
+				),
+				zone:       zone,
+				zoneOrigin: origin,
+			}
+			_, _ = zi.AddEventHandler(cache.ResourceEventHandlerFuncs{
+				AddFunc: func(obj interface{}) {
+					zi.refreshZone()
+				},
+				UpdateFunc: func(old, new interface{}) {
+					zi.refreshZone()
+				},
+				DeleteFunc: func(obj interface{}) {
+					zi.refreshZone()
+				},
+			})
+			ctrl.controllers = append(ctrl.controllers, zi)
+		}
 	}
 	return ctrl
 }
@@ -78,10 +161,12 @@ func (ctrl *KubeController) run() {
 
 	var synced []cache.InformerSynced
 
-	log.Infof("Starting kube controller")
-	ctrl.dnsRecordController.Run(stopCh)
-	synced = append(synced, ctrl.dnsRecordController.HasSynced)
-
+	log.Infof("Starting kube controllers")
+	for _, ctrlZone := range ctrl.controllers {
+		log.Infof("Starting controller for zone %s", ctrlZone.zoneOrigin)
+		go ctrlZone.Run(stopCh)
+		synced = append(synced, ctrlZone.HasSynced)
+	}
 	log.Infof("Waiting for controllers to sync")
 	if !cache.WaitForCacheSync(stopCh, synced...) {
 		ctrl.hasSynced = false
@@ -114,7 +199,7 @@ func (k *Kuadrant) RunKubeController(ctx context.Context) error {
 		return err
 	}
 
-	k.Controller = newKubeController(ctx, dnsOpKubeClient)
+	k.Controller = newKubeController(ctx, dnsOpKubeClient, k.Z)
 	go k.Controller.run()
 
 	return nil
@@ -137,20 +222,6 @@ func (k *Kuadrant) getClientConfig() (*rest.Config, error) {
 	return rest.InClusterConfig()
 }
 
-func dnsRecordLister(ctx context.Context, c dnsop.Interface, ns, label string) func(metav1.ListOptions) (runtime.Object, error) {
-	return func(opts metav1.ListOptions) (runtime.Object, error) {
-		opts.LabelSelector = label
-		return c.DNSRecords(ns).List(ctx, opts)
-	}
-}
-
-func dnsRecordWatcher(ctx context.Context, c dnsop.Interface, ns, label string) func(metav1.ListOptions) (watch.Interface, error) {
-	return func(opts metav1.ListOptions) (watch.Interface, error) {
-		opts.LabelSelector = label
-		return c.DNSRecords(ns).Watch(ctx, opts)
-	}
-}
-
 func existDNSRecordCRDs(ctx context.Context, c *dnsop.DNSRecordClient) bool {
 	_, err := c.DNSRecords("").List(ctx, metav1.ListOptions{})
 	return handleCRDCheckError(err, "DNSRecord", "kuadrant.io")
@@ -169,36 +240,4 @@ func handleCRDCheckError(err error, resourceName string, apiGroup string) bool {
 		panic(err)
 	}
 	return true
-}
-
-func endpointHostnameIndexFunc(obj interface{}) ([]string, error) {
-	record, ok := obj.(*v1alpha1.DNSRecord)
-	if !ok {
-		return []string{}, nil
-	}
-
-	var hostnames []string
-	for _, ep := range record.Spec.Endpoints {
-		log.Infof("adding index %s for endpoints %s", ep.DNSName, record.Name)
-		hostnames = append(hostnames, ep.DNSName)
-	}
-	return hostnames, nil
-}
-
-func (ctrl *KubeController) getEndpointByDNSName(host string) (record *v1alpha1.DNSRecord, endpoint *externaldns.Endpoint) {
-	log.Debugf("Index key %+v", host)
-
-	recordList := ctrl.dnsRecordController.GetIndexer().List()
-
-	for _, obj := range recordList {
-		rec := obj.(*v1alpha1.DNSRecord)
-		for _, ep := range rec.Spec.Endpoints {
-			if strings.EqualFold(ep.DNSName, host) {
-				log.Debugf("found matching DNSRecord with Endpoint for host: %s:%s, %s", rec.Name, ep.DNSName, host)
-				return rec, ep
-			}
-		}
-	}
-	log.Debugf("no matching endpoint found for host: %s", host)
-	return nil, nil
 }
