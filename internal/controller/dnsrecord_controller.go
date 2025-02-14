@@ -478,6 +478,10 @@ func recordReceivedPrematurely(record *v1alpha1.DNSRecord, probes *v1alpha1.DNSH
 	if record.Status.ValidFor != "" {
 		requeueIn, _ = time.ParseDuration(record.Status.ValidFor)
 	}
+	if record.Status.ZoneID == "coredns" {
+		//hack change. No need to requeue this so just return false
+		return false, requeueIn
+	}
 	expiryTime := metav1.NewTime(record.Status.QueuedAt.Add(requeueIn))
 	prematurely = !generationChanged(record) && reconcileStart.Before(&expiryTime)
 
@@ -546,7 +550,7 @@ func setStatusConditions(record *v1alpha1.DNSRecord, hadChanges bool, notHealthy
 	}
 
 	// if we haven't published because of the health failure, we won't have changes but the spec endpoints will be empty
-	if record.Status.Endpoints == nil || len(record.Status.Endpoints) == 0 {
+	if len(record.Status.Endpoints) == 0 {
 		setDNSRecordCondition(record, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Not publishing unhealthy records")
 	}
 
@@ -607,9 +611,104 @@ func (r *DNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord *v1a
 	return r.ProviderFactory.ProviderFor(ctx, dnsRecord, providerConfig)
 }
 
-// applyChanges creates the Plan and applies it to the registry. Returns true only if the Plan had no errors and there were changes to apply.
-// The error is nil only if the changes were successfully applied or there were no changes to be made.
 func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
+	logger := log.FromContext(ctx)
+	if dnsProvider.Name() == "coredns" {
+		logger.Info("core dns provider. Applying local changes")
+		return r.applyLocalChanges(ctx, dnsRecord, probes, dnsProvider, isDelete)
+	}
+	return r.applyExternalDNSChanges(ctx, dnsRecord, probes, dnsProvider, isDelete)
+}
+
+// applyLocalChanges is used to apply a set of "discovered" changes locally so that the full record set can be served by a local dns server (IE core dns)
+func (r *DNSRecordReconciler) applyLocalChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, _ *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
+	rootDomainName := dnsRecord.Spec.RootHost
+	hadChanges := false
+	logger := log.FromContext(ctx)
+	if isDelete {
+		logger.Info(" delete of " + dnsRecord.Name)
+		//If we are deleting set the expected endpoints to an empty array
+		// notthing reallt to do here as the records will be removed when the resource is removed.
+		return hadChanges, []string{}, nil
+	}
+	// when the merged record is reconciled, trigger the lookups and set all the endpoints
+	if strings.HasPrefix(dnsRecord.Name, dnsProvider.Name()) {
+		// need to preserve the root host endpoint
+		var rootHostEp *externaldnsendpoint.Endpoint
+		for _, ep := range dnsRecord.Spec.Endpoints {
+			if ep.DNSName == rootDomainName {
+				rootHostEp = ep
+				break
+			}
+		}
+		if rootHostEp == nil {
+			return hadChanges, []string{}, fmt.Errorf("failed to find root host endpoint")
+		}
+		// 	// merged record update
+		logger.Info("core dns: merged core dns record discovered" + dnsRecord.Name + ", triggering dns look up of other nameservers")
+		// only thing to do here is ensure endpoints are up to date
+		mergedEndpoints, err := dnsProvider.RecordsForHost(ctx, rootDomainName)
+		if err != nil {
+			logger.Error(err, " failed to get endponts from nameservers")
+			return hadChanges, []string{}, err
+		}
+		// re add our root endpoint as the look up on uses the subdomains
+		mergedEndpoints = append(mergedEndpoints, rootHostEp)
+		if !equality.Semantic.DeepEqual(dnsRecord.Spec.Endpoints, mergedEndpoints) {
+			dnsRecord.Spec.Endpoints = mergedEndpoints
+			logger.Info("core dns: updating merged record")
+			if err := r.Client.Update(ctx, dnsRecord, &client.UpdateOptions{}); err != nil {
+				return hadChanges, []string{}, err
+			}
+		}
+		return hadChanges, []string{}, nil
+
+	}
+	// create of "merged" record. First thing is to copy over existing endpoints. Updates to the endpoints are handled above we just want to create
+	logger.Info("core dns: kuadrant record creating merged record as it doesn't exist " + dnsRecord.Name)
+	// kuadrant dns record create a new core dns one if needed
+	mergedRecordName := fmt.Sprintf("%s-%s", dnsProvider.Name(), dnsRecord.Name)
+	mergedRecord := &v1alpha1.DNSRecord{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mergedRecordName,
+			Namespace: dnsRecord.Namespace,
+			Labels:    map[string]string{"provider": "coredns"},
+		},
+		Spec: v1alpha1.DNSRecordSpec{
+			RootHost:    rootDomainName,
+			ProviderRef: dnsRecord.Spec.ProviderRef,
+		},
+	}
+	logger.Info("core dns: kuadrant owned record discovered" + dnsRecord.Name + ", creating merged record")
+
+	var secondRootHost = fmt.Sprintf("%s.%s", "m", dnsRecord.Spec.RootHost)
+	for _, ep := range dnsRecord.Spec.Endpoints {
+		//	found := false
+		if ep.DNSName == dnsRecord.Spec.RootHost {
+			logger.Info("core dns: adding second root host " + secondRootHost)
+			cep := ep.DeepCopy()
+			cep.DNSName = secondRootHost
+			mergedRecord.Spec.Endpoints = append(dnsRecord.Spec.Endpoints, cep)
+			// data, _ := json.MarshalIndent(mergedRecord.Spec.Endpoints, "", " ")
+			// fmt.Println("endpoints ", string(data))
+		}
+	}
+	mergedRecord.Status.ZoneDomainName = dnsRecord.Status.ZoneDomainName
+	mergedRecord.Status.ZoneID = dnsRecord.Status.ZoneID
+	if err := controllerutil.SetOwnerReference(dnsRecord, mergedRecord, r.Scheme); err != nil {
+		return hadChanges, []string{}, err
+	}
+
+	if err := r.Client.Create(ctx, mergedRecord, &client.CreateOptions{}); client.IgnoreAlreadyExists(err) != nil {
+		return hadChanges, []string{}, err
+	}
+
+	return hadChanges, []string{}, nil
+}
+
+// applyExternalDNSChanges creates the Plan and applies it to the registry. This is used only for external cloud provider DNS. Returns true only if the Plan had no errors and there were changes to apply.
+// The error is nil only if the changes were successfully applied or there were no changes to be made.
+func (r *DNSRecordReconciler) applyExternalDNSChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
 	logger := log.FromContext(ctx)
 	rootDomainName := dnsRecord.Spec.RootHost
 	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName})
