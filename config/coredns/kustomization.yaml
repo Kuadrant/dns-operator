@@ -43,6 +43,17 @@ helmCharts:
             - name: prometheus
               parameters: 0.0.0.0:9153
         - zones:
+            - zone: example.com
+          port: 53
+          plugins:
+            - name: file
+              parameters: /etc/coredns/example.com.db
+            - name: cache
+              parameters: 10
+            - name: prometheus
+              parameters: 0.0.0.0:9153
+            - name: log
+        - zones:
             - zone: .
           port: 53
           plugins:
@@ -54,6 +65,8 @@ helmCharts:
                 lameduck 5s
             # Serves a /ready endpoint on :8181, required for readinessProbe
             - name: ready
+            # Required to query kubernetes API for data
+            # Serves a /metrics endpoint on :9153, required for serviceMonitor
             - name: prometheus
               parameters: 0.0.0.0:9153
             - name: forward
@@ -63,6 +76,8 @@ helmCharts:
             - name: loop
             - name: reload
             - name: log
+        - zones:
+          namespace: kuadrant-dns
       zoneFiles:
         - filename: f.example.com.db
           domain: f.example.com
@@ -77,7 +92,17 @@ helmCharts:
             lb.api.f.example.com.   IN CNAME  rec2.api.f.example.com.
             api.f.example.com.   IN CNAME  lb.api.f.example.com.
             *.api.f.example.com. IN A   9.9.9.9
-
+        - filename: example.com.db
+          domain: example.com
+          contents: |
+            api.example.com. IN SOA ns1.example.com. hostmaster.example.com. 1 7200 900 1209600 86400
+            w.api.example.com. IN TXT 100,cluster1.klb.api.example.com
+            d.api.example.com. IN TXT us
+            api.example.com. IN CNAME klb.api.example.com.
+            m.api.example.com. IN CNAME klb.api.example.com.
+            klb.api.example.com. in CNAME geo-us.klb.api.example.com.
+            geo-us.klb.api.example.com. IN CNAME cluster1.klb.api.example.com.
+            cluster1.klb.api.example.com. IN CNAME 81.17.23.10
 patches:
   - path: k8s_prometheus_patch.yaml
   - target:
