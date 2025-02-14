@@ -34,6 +34,10 @@ type Provider interface {
 	DNSZoneForHost(ctx context.Context, host string) (*DNSZone, error)
 
 	ProviderSpecific() ProviderSpecificLabels
+
+	Name() string
+
+	RecordsForHost(ctx context.Context, host string) ([]*externaldnsendpoint.Endpoint, error)
 }
 
 type Config struct {

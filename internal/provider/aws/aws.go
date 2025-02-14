@@ -61,6 +61,14 @@ type Route53DNSProvider struct {
 
 var _ provider.Provider = &Route53DNSProvider{}
 
+func (*Route53DNSProvider) Name() string {
+	return "aws"
+}
+
+func (*Route53DNSProvider) RecordsForHost(ctx context.Context, host string) ([]*externaldnsendpoint.Endpoint, error) {
+	return []*externaldnsendpoint.Endpoint{}, fmt.Errorf("not impl")
+}
+
 func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	config := aws.NewConfig()
 

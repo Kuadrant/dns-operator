@@ -114,6 +114,8 @@ func NameForProviderSecret(secret *v1.Secret) (string, error) {
 		return "google", nil
 	case v1alpha1.SecretTypeKuadrantInmemory:
 		return "inmemory", nil
+	case v1alpha1.SecretTypeKuadrantCoreDNS:
+		return "coredns", nil
 	}
 	return "", errUnsupportedProvider
 }

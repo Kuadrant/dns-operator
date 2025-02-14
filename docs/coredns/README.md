@@ -25,8 +25,34 @@ Access dashboards http://127.0.0.1:3000
 
 Configure CoreDNS
 ```shell
-(cd ../.. && make install-coredns)
+(cd ../.. && make install-coredns-multi)
 ```
+
+Set up the provider and dns records and handle via dns operator
+
+```
+k get services -A 
+# get the external IPs from the c1 and c2 services
+
+kubectl create secret generic core-dns --namespace=kuadrant-dns-c1 --type=kuadrant.io/coredns --from-literal=NAMESERVERS="10.89.0.18:53,10.89.0.16:53" --from-literal=ZONES="k.example.com"
+kubectl create secret generic core-dns --namespace=kuadrant-dns-c2 --type=kuadrant.io/coredns --from-literal=NAMESERVERS="10.89.0.18:53,10.89.0.16:53" --from-literal=ZONES="k.example.com"
+
+kubectl apply -f coredns/examples/dnsrecord-c1.yaml
+kubectl apply -f coredns/examples/dnsrecord-c2.yaml
+
+make run
+
+dig @10.89.0.18 k.example.com
+dig @10.89.0.16 k.example.com
+
+
+Clean up
+
+kubectl delete -f coredns/examples/dnsrecord-c1.yaml
+kubectl delete -f coredns/examples/dnsrecord-c2.yaml
+
+```
+
 
 View Corefile configmap data
 ```shell

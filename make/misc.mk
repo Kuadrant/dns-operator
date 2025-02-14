@@ -26,3 +26,8 @@ install-coredns: kustomize ## Install CoreDNS
 .PHONY: install-coredns-unmonitored
 install-coredns-unmonitored: kustomize ## Install CoreDNS without ServiceMonitor
 	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-unmonitored
+
+.PHONY: install-coredns-multi
+install-coredns-multi: kustomize ## Install CoreDNS without ServiceMonitor
+	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-c1
+	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-c2
