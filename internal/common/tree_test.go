@@ -784,6 +784,553 @@ func Test_ToEndpoints(t *testing.T) {
 	}
 }
 
+func Test_PropagateStoppableLabel(t *testing.T) {
+	RegisterTestingT(t)
+	/*
+		legend:
+			R: root node
+			X: node with stop label
+			D: node with delete label
+			L: leaf node
+			O: other node
+	*/
+	PropagateFlag := "propagate_flag"
+	StopPropagateFlag := "stop_propagate_flag"
+	scenarios := []struct {
+		Name   string
+		Tree   func() *DNSTreeNode
+		Verify func(tree *DNSTreeNode)
+	}{
+		/*
+
+			## Test no delete labels = no changes
+			in:
+			R:
+				O1:
+					L
+				O2:
+					L
+			out:
+			R:
+				O1:
+					L
+				O2:
+					L
+		*/
+		{
+			Name: "Test no delete labels = no changes",
+			Tree: func() *DNSTreeNode {
+				return &DNSTreeNode{
+					Name: "root",
+					Children: []*DNSTreeNode{
+						{
+							Name: "other1",
+							Children: []*DNSTreeNode{
+								{
+									Name: "leaf1",
+								},
+							},
+						},
+						{
+							Name: "other2",
+							Children: []*DNSTreeNode{
+								{
+									Name: "leaf2",
+								},
+							},
+						},
+					},
+				}
+			},
+			Verify: func(tree *DNSTreeNode) {
+				Expect(tree.Name).To(Equal("root"))
+				Expect(len(tree.Children)).To(Equal(2))
+
+				Expect(tree.Children[0].Name).To(Equal("other1"))
+				Expect(len(tree.Children[0].Children)).To(Equal(1))
+
+				Expect(tree.Children[1].Name).To(Equal("other2"))
+				Expect(len(tree.Children[1].Children)).To(Equal(1))
+
+				Expect(tree.Children[0].Children[0].Name).To(Equal("leaf1"))
+				Expect(len(tree.Children[0].Children[0].Children)).To(Equal(0))
+
+				Expect(tree.Children[1].Children[0].Name).To(Equal("leaf2"))
+				Expect(len(tree.Children[1].Children[0].Children)).To(Equal(0))
+			},
+		},
+
+		/*
+			## Test Delete label persists
+			in:
+			R:
+				O1:
+					L
+					D
+				O2:
+					L
+			out:
+			R:
+				O1:
+					L
+					D
+				O2:
+					L
+		*/
+		{
+			Name: "Test delete label persists",
+			Tree: func() *DNSTreeNode {
+				root := &DNSTreeNode{Name: "root"}
+				other1 := &DNSTreeNode{
+					Name: "other1",
+					DataSets: []DNSTreeNodeData{
+						{
+							Labels: endpoint.Labels{
+								PropagateFlag: "true",
+							},
+							Targets: endpoint.Targets{
+								"leaf2",
+							},
+						},
+					},
+				}
+				AddChild(other1, &DNSTreeNode{
+					Name: "leaf1",
+				})
+				AddChild(other1, &DNSTreeNode{
+					Name: "leaf2",
+				})
+				AddChild(root, other1)
+
+				other2 := &DNSTreeNode{
+					Name: "other2",
+				}
+				AddChild(other2, &DNSTreeNode{
+					Name: "leaf1",
+				})
+				AddChild(root, other2)
+				return root
+			},
+			Verify: func(tree *DNSTreeNode) {
+				Expect(tree.Name).To(Equal("root"))
+				Expect(len(tree.Children)).To(Equal(2))
+				Expect(HasLabelForBranch(tree, "other1", PropagateFlag, "true")).To(BeFalse())
+
+				Expect(tree.Children[0].Name).To(Equal("other1"))
+
+				Expect(HasLabelForBranch(tree.Children[0], "leaf1", PropagateFlag, "true")).To(BeFalse())
+				Expect(HasLabelForBranch(tree.Children[0], "leaf2", PropagateFlag, "true")).To(BeTrue())
+
+				Expect(tree.Children[1].Name).To(Equal("other2"))
+			},
+		},
+
+		/*
+			## Test Delete label propagates upwards
+			in:
+			R:
+				O1:
+					D
+					D
+				O2:
+					L
+			out:
+			R:
+				D(O1):
+					D
+					D
+				O2:
+					L
+		*/
+		{
+			Name: "Test delete label propagates upwards",
+			Tree: func() *DNSTreeNode {
+				root := &DNSTreeNode{Name: "root"}
+				other1 := &DNSTreeNode{
+					Name: "other1",
+					DataSets: []DNSTreeNodeData{
+						{
+							Labels: endpoint.Labels{
+								PropagateFlag: "true",
+							},
+							Targets: endpoint.Targets{
+								"leaf1",
+								"leaf2",
+							},
+						},
+					},
+				}
+				AddChild(other1, &DNSTreeNode{
+					Name: "leaf1",
+				})
+				AddChild(other1, &DNSTreeNode{
+					Name: "leaf2",
+				})
+				AddChild(root, other1)
+
+				other2 := &DNSTreeNode{
+					Name: "other2",
+				}
+				AddChild(other2, &DNSTreeNode{
+					Name: "leaf1",
+				})
+				AddChild(root, other2)
+				return root
+			},
+			Verify: func(tree *DNSTreeNode) {
+				Expect(tree.Name).To(Equal("root"))
+				Expect(len(tree.Children)).To(Equal(2))
+
+				Expect(tree.Children[0].Name).To(Equal("other1"))
+				Expect(HasLabelForBranch(tree, "other1", PropagateFlag, "true")).To(BeTrue())
+				Expect(HasLabelForBranch(tree.Children[0], "leaf1", PropagateFlag, "true")).To(BeTrue())
+				Expect(HasLabelForBranch(tree.Children[0], "leaf2", PropagateFlag, "true")).To(BeTrue())
+
+				Expect(tree.Children[1].Name).To(Equal("other2"))
+				Expect(HasLabelForBranch(tree, "other2", PropagateFlag, "true")).To(BeFalse())
+			},
+		},
+		/*
+			## Test stop label (X1) below root = no deletes
+			in:
+			R:
+				X1:
+					O1:
+						D1
+						D2
+					O2:
+						D3
+				X2:
+					O3:
+						L4
+			out:
+			R:
+				X1:
+					O1:
+						L1
+						L2
+					O2:
+						L3
+				X2:
+					O3:
+						L4
+		*/
+
+		{
+			Name: "Test labelling stop label below root = no deletes",
+			Tree: func() *DNSTreeNode {
+				root := &DNSTreeNode{
+					Name: "root",
+					DataSets: []DNSTreeNodeData{
+						{
+							Labels: endpoint.Labels{
+								StopPropagateFlag: "true",
+							},
+							Targets: endpoint.Targets{
+								"stop1",
+								"stop2",
+							},
+						},
+					},
+				}
+				stop1 := &DNSTreeNode{
+					Name: "stop1",
+				}
+				other1 := &DNSTreeNode{
+					Name: "other1",
+					DataSets: []DNSTreeNodeData{
+						{
+							Labels: endpoint.Labels{
+								PropagateFlag: "true",
+							},
+							Targets: endpoint.Targets{
+								"leaf1",
+								"leaf2",
+							},
+						},
+					},
+				}
+
+				AddChild(other1, &DNSTreeNode{Name: "leaf1"})
+				AddChild(other1, &DNSTreeNode{Name: "leaf2"})
+				AddChild(stop1, other1)
+
+				other2 := &DNSTreeNode{
+					Name: "other2",
+					DataSets: []DNSTreeNodeData{
+						{
+							Labels: endpoint.Labels{
+								PropagateFlag: "true",
+							},
+							Targets: endpoint.Targets{
+								"leaf3",
+							},
+						},
+					},
+				}
+
+				AddChild(other2, &DNSTreeNode{Name: "leaf3"})
+				AddChild(stop1, other2)
+				AddChild(root, stop1)
+
+				stop2 := &DNSTreeNode{
+					Name: "stop2",
+				}
+				other3 := &DNSTreeNode{
+					Name: "other3",
+				}
+				AddChild(other3, &DNSTreeNode{Name: "leaf4"})
+				AddChild(stop2, other3)
+				AddChild(root, stop2)
+				return root
+			},
+			Verify: func(root *DNSTreeNode) {
+				Expect(root.Name).To(Equal("root"))
+				Expect(len(root.Children)).To(Equal(2))
+				Expect(HasLabelForBranch(root, "stop1", PropagateFlag, "true")).To(BeFalse())
+				Expect(root.Children[0].Name).To(Equal("stop1"))
+
+				stop1 := root.Children[0]
+				Expect(HasLabelForBranch(stop1, "other1", PropagateFlag, "true")).To(BeFalse())
+
+				other1 := stop1.Children[0]
+				Expect(other1.Name).To(Equal("other1"))
+				Expect(HasLabelForBranch(other1, "leaf1", PropagateFlag, "true")).To(BeFalse())
+				Expect(HasLabelForBranch(other1, "leaf2", PropagateFlag, "true")).To(BeFalse())
+			},
+		},
+		/*
+			## Test Delete label propagates downwards
+			in:
+			R:
+				X:
+					D(O1):
+						L
+						L
+					O2:
+						L
+			out:
+			R:
+				X:
+					D:
+						D
+						D
+					O2:
+						L
+		*/
+
+		{
+			Name: "Test Delete label propagates downwards",
+			Tree: func() *DNSTreeNode {
+				root := &DNSTreeNode{
+					Name: "root",
+					DataSets: []DNSTreeNodeData{
+						{
+							Labels: endpoint.Labels{
+								StopPropagateFlag: "true",
+							},
+							Targets: endpoint.Targets{
+								"stop1",
+							},
+						},
+					},
+				}
+				stop1 := &DNSTreeNode{
+					Name: "stop1",
+					DataSets: []DNSTreeNodeData{
+						{
+							Labels: endpoint.Labels{
+								PropagateFlag: "true",
+							},
+							Targets: endpoint.Targets{
+								"other1",
+							},
+						},
+					},
+				}
+				other1 := &DNSTreeNode{Name: "other1"}
+
+				AddChild(other1, &DNSTreeNode{Name: "leaf1"})
+				AddChild(other1, &DNSTreeNode{Name: "leaf2"})
+				AddChild(stop1, other1)
+
+				other2 := &DNSTreeNode{Name: "other2"}
+
+				AddChild(other2, &DNSTreeNode{Name: "leaf3"})
+				AddChild(stop1, other2)
+				AddChild(root, stop1)
+				return root
+			},
+			Verify: func(root *DNSTreeNode) {
+				Expect(root.Name).To(Equal("root"))
+				Expect(len(root.Children)).To(Equal(1))
+				Expect(HasLabelForBranch(root, "stop1", PropagateFlag, "true")).To(BeFalse())
+
+				Expect(root.Children[0].Name).To(Equal("stop1"))
+				stop1 := root.Children[0]
+				Expect(HasLabelForBranch(stop1, "other1", PropagateFlag, "true")).To(BeTrue())
+
+				other1 := stop1.Children[0]
+				Expect(other1.Name).To(Equal("other1"))
+				Expect(HasLabelForBranch(other1, "leaf1", PropagateFlag, "true")).To(BeTrue())
+				Expect(HasLabelForBranch(other1, "leaf2", PropagateFlag, "true")).To(BeTrue())
+
+				other2 := stop1.Children[1]
+				Expect(other2.Name).To(Equal("other2"))
+				Expect(HasLabelForBranch(stop1, "other2", PropagateFlag, "true")).To(BeFalse())
+				Expect(HasLabelForBranch(other2, "leaf3", PropagateFlag, "true")).To(BeFalse())
+			},
+		},
+		/*
+
+			## Test unstopped root acts as stop
+			in:
+			R:
+				O:
+					D
+			out:
+			R:
+				O:
+					L
+		*/
+
+		{
+			Name: "Test unstopped root acts as stop",
+			Tree: func() *DNSTreeNode {
+				root := &DNSTreeNode{
+					Name: "root",
+				}
+
+				other := &DNSTreeNode{
+					Name: "other",
+					DataSets: []DNSTreeNodeData{
+						{
+							Targets: []string{"leaf"},
+							Labels: endpoint.Labels{
+								PropagateFlag: "true",
+							},
+						},
+					},
+				}
+
+				AddChild(other, &DNSTreeNode{Name: "leaf"})
+				AddChild(root, other)
+				return root
+			},
+			Verify: func(root *DNSTreeNode) {
+				Expect(HasLabelForBranch(root, "other", PropagateFlag, "true")).To(BeFalse())
+				Expect(HasLabelForBranch(root.Children[0], "leaf", PropagateFlag, "true")).To(BeFalse())
+			},
+		},
+		/*
+			## Test unrelated trees do not impact each other
+			in:
+			R:
+				X1:
+					D
+				X2:
+					O1:
+						D
+					O2:
+						L
+			out:
+			R:
+				X1:
+					L
+				X2:
+					D(O1):
+						D
+					O2:
+						L
+		*/
+
+		{
+			Name: "Test unrelated trees do not impact each other",
+			Tree: func() *DNSTreeNode {
+				root := &DNSTreeNode{
+					Name: "root",
+					DataSets: []DNSTreeNodeData{
+						{
+							Labels: endpoint.Labels{
+								StopPropagateFlag: "true",
+							},
+							Targets: []string{
+								"stop1",
+								"stop2",
+							},
+						},
+					},
+				}
+				stop1 := &DNSTreeNode{
+					Name: "stop1",
+					DataSets: []DNSTreeNodeData{
+						{
+							Labels: endpoint.Labels{
+								PropagateFlag: "true",
+							},
+							Targets: endpoint.Targets{
+								"leaf1",
+							},
+						},
+					},
+				}
+				AddChild(stop1, &DNSTreeNode{Name: "leaf1"})
+				AddChild(root, stop1)
+
+				stop2 := &DNSTreeNode{Name: "stop2"}
+				other1 := &DNSTreeNode{
+					Name: "other1",
+					DataSets: []DNSTreeNodeData{
+						{
+							Labels: endpoint.Labels{
+								PropagateFlag: "true",
+							},
+							Targets: endpoint.Targets{
+								"leaf2",
+							},
+						},
+					},
+				}
+				other2 := &DNSTreeNode{
+					Name: "other2",
+				}
+
+				AddChild(other1, &DNSTreeNode{Name: "leaf2"})
+				AddChild(other2, &DNSTreeNode{Name: "leaf3"})
+				AddChild(stop2, other1)
+				AddChild(stop2, other2)
+				AddChild(root, stop2)
+				return root
+			},
+			Verify: func(root *DNSTreeNode) {
+				Expect(len(root.Children)).To(Equal(2))
+				Expect(HasLabelForBranch(root, "stop1", PropagateFlag, "true")).To(BeFalse())
+				Expect(HasLabelForBranch(root, "stop2", PropagateFlag, "true")).To(BeFalse())
+
+				Expect(root.Children[0].Name).To(Equal("stop1"))
+				Expect(HasLabelForBranch(root.Children[0], "leaf1", PropagateFlag, "true")).To(BeFalse())
+
+				Expect(root.Children[1].Name).To(Equal("stop2"))
+				Expect(HasLabelForBranch(root.Children[1], "other1", PropagateFlag, "true")).To(BeTrue())
+				Expect(root.Children[1].Children[0].Name).To(Equal("other1"))
+				Expect(HasLabelForBranch(root.Children[1].Children[0], "leaf2", PropagateFlag, "true")).To(BeTrue())
+
+				Expect(HasLabelForBranch(root.Children[1], "other2", PropagateFlag, "true")).To(BeFalse())
+				Expect(root.Children[1].Children[1].Name).To(Equal("other2"))
+				Expect(HasLabelForBranch(root.Children[1].Children[1], "leaf3", PropagateFlag, "true")).To(BeFalse())
+			},
+		},
+	}
+
+	for _, scenario := range scenarios {
+		t.Run(scenario.Name, func(t *testing.T) {
+			tree := scenario.Tree()
+			PropagateStoppableLabel(tree, PropagateFlag, "true", StopPropagateFlag)
+			scenario.Verify(tree)
+		})
+	}
+}
+
 func getTestTree() *DNSTreeNode {
 	return &DNSTreeNode{
 		Name: "app.testdomain.com",
