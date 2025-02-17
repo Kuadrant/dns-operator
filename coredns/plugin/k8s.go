@@ -2,11 +2,6 @@ package kuadrant
 
 import (
 	"context"
-	"net"
-
-	"github.com/coredns/coredns/plugin/file"
-	"github.com/coredns/coredns/plugin/pkg/dnsutil"
-	"github.com/miekg/dns"
 
 	core "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -19,7 +14,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-	"sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/coredns-kuadrant/dnsop"
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -32,70 +26,26 @@ const (
 
 type zoneInformer struct {
 	cache.SharedInformer
-	zone       *file.Zone
+	zone       *Zone
 	zoneOrigin string
 }
 
 func (zi *zoneInformer) refreshZone() {
 	log.Infof("updating zone %s", zi.zoneOrigin)
-	newZ := file.NewZone(zi.zoneOrigin, "")
-
-	ns := &dns.NS{Hdr: dns.RR_Header{Name: dns.Fqdn(zi.zoneOrigin), Rrtype: dns.TypeNS, Ttl: ttlSOA, Class: dns.ClassINET},
-		Ns: dnsutil.Join("ns1", zi.zoneOrigin),
-	}
-	newZ.Insert(ns)
-
-	soa := &dns.SOA{Hdr: dns.RR_Header{Name: dns.Fqdn(zi.zoneOrigin), Rrtype: dns.TypeSOA, Ttl: ttlSOA, Class: dns.ClassINET},
-		Mbox:    dnsutil.Join("hostmaster", zi.zoneOrigin),
-		Ns:      dnsutil.Join("ns1", zi.zoneOrigin),
-		Serial:  12345,
-		Refresh: 7200,
-		Retry:   1800,
-		Expire:  86400,
-		Minttl:  ttlSOA,
-	}
-	newZ.Insert(soa)
+	newZ := NewZone(zi.zoneOrigin)
 
 	for _, obj := range zi.GetStore().List() {
 		rec := obj.(*v1alpha1.DNSRecord)
 		for _, ep := range rec.Spec.Endpoints {
-			log.Debugf("adding %s record for %s to zone %s", ep.RecordType, ep.DNSName, zi.zoneOrigin)
-
-			if ep.RecordType == endpoint.RecordTypeA {
-				for _, t := range ep.Targets {
-					a := &dns.A{Hdr: dns.RR_Header{Name: dns.Fqdn(ep.DNSName), Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: uint32(ep.RecordTTL)},
-						A: net.ParseIP(t)}
-					newZ.Insert(a)
-				}
-			}
-
-			if ep.RecordType == endpoint.RecordTypeAAAA {
-				for _, t := range ep.Targets {
-					aaaa := &dns.AAAA{Hdr: dns.RR_Header{Name: dns.Fqdn(ep.DNSName), Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: uint32(ep.RecordTTL)},
-						AAAA: net.ParseIP(t)}
-					newZ.Insert(aaaa)
-				}
-			}
-
-			if ep.RecordType == endpoint.RecordTypeTXT {
-				txt := &dns.TXT{Hdr: dns.RR_Header{Name: dns.Fqdn(ep.DNSName), Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: uint32(ep.RecordTTL)},
-					Txt: ep.Targets}
-				newZ.Insert(txt)
-			}
-
-			if ep.RecordType == endpoint.RecordTypeCNAME {
-				cname := &dns.CNAME{Hdr: dns.RR_Header{Name: dns.Fqdn(ep.DNSName), Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: uint32(ep.RecordTTL)},
-					Target: dns.Fqdn(ep.Targets[0])}
-				newZ.Insert(cname)
+			log.Debugf("adding %s record endpoints %s to zone %s", ep.RecordType, ep.DNSName, zi.zoneOrigin)
+			err := newZ.InsertEndpoint(ep)
+			if err != nil {
+				log.Error(err)
 			}
 		}
 	}
 
-	// copy elements we need
-	zi.zone.Lock()
-	zi.zone.Apex = newZ.Apex
-	zi.zone.Tree = newZ.Tree
-	zi.zone.Unlock()
+	zi.zone.RefreshFrom(newZ)
 }
 
 // KubeController stores the current runtime configuration and cache
@@ -106,14 +56,13 @@ type KubeController struct {
 	labelFilter string
 }
 
-func newKubeController(ctx context.Context, c *dnsop.DNSRecordClient, zones map[string]*file.Zone) *KubeController {
+func newKubeController(ctx context.Context, c *dnsop.DNSRecordClient, zones map[string]*Zone) *KubeController {
 	ctrl := &KubeController{
 		client: c,
 	}
 
 	if existDNSRecordCRDs(ctx, c) {
 		for origin, zone := range zones {
-
 			labelSelector := labels.SelectorFromSet(map[string]string{
 				ZoneNameLabel: stripClosingDot(origin),
 			})

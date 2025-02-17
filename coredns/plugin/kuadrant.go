@@ -19,8 +19,8 @@ var (
 )
 
 type Zones struct {
-	Z     map[string]*file.Zone // A map mapping zone (origin) to the Zone's data
-	Names []string              // All the keys from the map Z as a string slice.
+	Z     map[string]*Zone // A map mapping zone (origin) to the Zone's data
+	Names []string         // All the keys from the map Z as a string slice.
 }
 
 type Kuadrant struct {
@@ -68,9 +68,9 @@ func (k *Kuadrant) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 		return dns.RcodeRefused, nil
 	}
 
-	z.RLock()
-	exp := z.Expired
-	z.RUnlock()
+	z.file.RLock()
+	exp := z.file.Expired
+	z.file.RUnlock()
 	if exp {
 		log.Errorf("Zone %s is expired", zone)
 		return dns.RcodeServerFailure, nil
