@@ -41,6 +41,20 @@ func NewZone(name string) *Zone {
 		map[dns.RR]rrData{},
 	}
 
+	z.file.RRResolver = func(state request.Request, rrs []dns.RR) dns.RR {
+		log.Debugf("resolving %s in zone %s", rrs[0].Header().Name, name)
+		rrMeta := z.rrData[rrs[0]]
+		if rrMeta.geo != nil {
+			rrs = append(rrs, z.parseGeoAnswers(state, rrs)...)
+		} else if rrMeta.weight != nil {
+			rrs = append(rrs, z.parseWeightedAnswers(state, rrs)...)
+		} else {
+			//Take the first answer in the default case, not geo or weighted
+			rrs = append(rrs, rrs[0])
+		}
+		return rrs[0]
+	}
+
 	ns := &dns.NS{Hdr: dns.RR_Header{Name: dns.Fqdn(name), Rrtype: dns.TypeNS, Ttl: ttlSOA, Class: dns.ClassINET},
 		Ns: dnsutil.Join("ns1", name),
 	}
@@ -110,8 +124,7 @@ func (z *Zone) InsertEndpoint(ep *endpoint.Endpoint) error {
 }
 
 func (z *Zone) Lookup(ctx context.Context, state request.Request, qname string) ([]dns.RR, []dns.RR, []dns.RR, file.Result) {
-	answer, ns, extra, result := z.file.Lookup(ctx, state, qname)
-	return z.parseAnswers(ctx, state, qname, answer), ns, extra, result
+	return z.file.Lookup(ctx, state, qname)
 }
 
 func (z *Zone) RefreshFrom(newZ *Zone) {
@@ -123,46 +136,13 @@ func (z *Zone) RefreshFrom(newZ *Zone) {
 	z.file.Unlock()
 }
 
-// parseAnswers takes a slice of answers(RRs), groups them by name and reduces each group down to a single answer.
-func (z *Zone) parseAnswers(_ context.Context, state request.Request, _ string, answers []dns.RR) []dns.RR {
-	var dnsNames []string
-	rrSets := map[string][]dns.RR{}
-
-	for _, rr := range answers {
-		//Group rrs with the same name but maintain the order of the  answers
-		dnsName := rr.Header().Name
-		if _, ok := rrSets[dnsName]; !ok {
-			dnsNames = append(dnsNames, dnsName)
-		}
-		rrSets[dnsName] = append(rrSets[dnsName], rr)
-	}
-
-	var rrs []dns.RR
-	for _, dnsName := range dnsNames {
-		if len(rrSets[dnsName]) == 1 {
-			// If there is only one answer for the dnsName just return it
-			rrs = append(rrs, rrSets[dnsName]...)
-			continue
-		}
-		rrMeta := z.rrData[rrSets[dnsName][0]]
-		if rrMeta.geo != nil {
-			rrs = append(rrs, z.parseGeoAnswers(state, rrSets[dnsName])...)
-		} else if rrMeta.weight != nil {
-			rrs = append(rrs, z.parseWeightedAnswers(state, rrSets[dnsName])...)
-		} else {
-			//Take the first answer in the default case, not geo or weighted
-			rrs = append(rrs, rrSets[dnsName][0])
-		}
-	}
-
-	return rrs
-}
-
 // parseWeightedAnswers takes a slice of answers for a dns name and reduces it down to a single answer based on weight.
 func (z *Zone) parseWeightedAnswers(state request.Request, wrrs []dns.RR) []dns.RR {
-	log.Debugf("parsing weighted answers for %s", state.QName())
+	log.Debugf("parsing weighted answers for %s", wrrs[0].Header().Name)
 	var answer *dns.RR
 	var weightedRRs []weightedRR
+
+	roundRobinShuffle(wrrs)
 
 	for _, r := range wrrs {
 		if w := z.rrData[r].weight; w != nil {
@@ -184,9 +164,11 @@ func (z *Zone) parseWeightedAnswers(state request.Request, wrrs []dns.RR) []dns.
 
 // parseGeoAnswers takes a slice of answers for a dns name and reduces it down to a single answer based on geo.
 func (z *Zone) parseGeoAnswers(state request.Request, grrs []dns.RR) []dns.RR {
-	log.Debugf("parsing geo answers for %s", state.QName())
+	log.Debugf("parsing geo answers for %s", grrs[0].Header().Name)
 	var answer *dns.RR
 	var geoRRs []geodRR
+
+	roundRobinShuffle(grrs)
 
 	for _, r := range grrs {
 		if geo := z.rrData[r].geo; geo != nil {
@@ -204,4 +186,24 @@ func (z *Zone) parseGeoAnswers(state request.Request, grrs []dns.RR) []dns.RR {
 	}
 
 	return []dns.RR{*answer}
+}
+
+// Taken from https://github.com/coredns/coredns/blob/master/plugin/loadbalance/loadbalance.go
+func roundRobinShuffle(records []dns.RR) {
+	switch l := len(records); l {
+	case 0, 1:
+		break
+	case 2:
+		if dns.Id()%2 == 0 {
+			records[0], records[1] = records[1], records[0]
+		}
+	default:
+		for j := 0; j < l; j++ {
+			p := j + (int(dns.Id()) % (l - j))
+			if j == p {
+				continue
+			}
+			records[j], records[p] = records[p], records[j]
+		}
+	}
 }

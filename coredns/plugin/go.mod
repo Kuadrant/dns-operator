@@ -169,4 +169,4 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/coredns/coredns => github.com/mikenairn/coredns v0.0.0-20250217115236-a2349ce15966
+replace github.com/coredns/coredns => github.com/mikenairn/coredns v0.0.0-20250218172828-888ed3ccb776

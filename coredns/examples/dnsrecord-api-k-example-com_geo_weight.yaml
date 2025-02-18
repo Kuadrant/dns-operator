@@ -67,16 +67,11 @@ spec:
       recordType: A
       targets:
         - 127.0.0.2
-    - dnsName: cluster2.klb.api.k.example.com
+    - dnsName: cluster1.klb.api.k.example.com
       recordTTL: 60
       recordType: A
       targets:
-        - 127.0.0.3
-    - dnsName: cluster1.klb.api.k.example.com
-      recordTTL: 60
-      recordType: CNAME
-      targets:
-        - some.external.loadbalancer
+        - 127.0.0.1
     - dnsName: "*.api.k.example.com"
       recordTTL: 60
       recordType: A
