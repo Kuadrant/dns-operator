@@ -36,13 +36,13 @@ func NewZone(name string) *Zone {
 		map[dns.RR]rrData{},
 	}
 
-	z.file.RRResolver = func(state request.Request, rrs []dns.RR) dns.RR {
+	z.file.RRResolver = func(ctx context.Context, state request.Request, rrs []dns.RR) dns.RR {
 		log.Debugf("resolving %s in zone %s", rrs[0].Header().Name, name)
 		rrMeta := z.rrData[rrs[0]]
 		if rrMeta.geo != nil {
-			rrs = z.parseGeoAnswers(state, rrs)
+			rrs = z.parseGeoAnswers(ctx, state, rrs)
 		} else if rrMeta.weight != nil {
-			rrs = z.parseWeightedAnswers(state, rrs)
+			rrs = z.parseWeightedAnswers(ctx, state, rrs)
 		} else {
 			//Take the first answer in the default case, not geo or weighted
 			rrs = []dns.RR{rrs[0]}
@@ -132,7 +132,7 @@ func (z *Zone) RefreshFrom(newZ *Zone) {
 }
 
 // parseWeightedAnswers takes a slice of answers for a dns name and reduces it down to a single answer based on weight.
-func (z *Zone) parseWeightedAnswers(state request.Request, wrrs []dns.RR) []dns.RR {
+func (z *Zone) parseWeightedAnswers(_ context.Context, _ request.Request, wrrs []dns.RR) []dns.RR {
 	log.Debugf("parsing weighted answers for %s", wrrs[0].Header().Name)
 	var answer *dns.RR
 	var weightedRRs []weightedRR
@@ -156,7 +156,7 @@ func (z *Zone) parseWeightedAnswers(state request.Request, wrrs []dns.RR) []dns.
 }
 
 // parseGeoAnswers takes a slice of answers for a dns name and reduces it down to a single answer based on geo.
-func (z *Zone) parseGeoAnswers(state request.Request, grrs []dns.RR) []dns.RR {
+func (z *Zone) parseGeoAnswers(_ context.Context, _ request.Request, grrs []dns.RR) []dns.RR {
 	log.Debugf("parsing geo answers for %s", grrs[0].Header().Name)
 	var answer *dns.RR
 	var geoRRs []geodRR
