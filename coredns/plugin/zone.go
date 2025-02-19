@@ -15,11 +15,6 @@ import (
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
-type weightedRR struct {
-	dns.RR
-	weight int64
-}
-
 type geodRR struct {
 	dns.RR
 	geo string
@@ -45,12 +40,12 @@ func NewZone(name string) *Zone {
 		log.Debugf("resolving %s in zone %s", rrs[0].Header().Name, name)
 		rrMeta := z.rrData[rrs[0]]
 		if rrMeta.geo != nil {
-			rrs = append(rrs, z.parseGeoAnswers(state, rrs)...)
+			rrs = z.parseGeoAnswers(state, rrs)
 		} else if rrMeta.weight != nil {
-			rrs = append(rrs, z.parseWeightedAnswers(state, rrs)...)
+			rrs = z.parseWeightedAnswers(state, rrs)
 		} else {
 			//Take the first answer in the default case, not geo or weighted
-			rrs = append(rrs, rrs[0])
+			rrs = []dns.RR{rrs[0]}
 		}
 		return rrs[0]
 	}
@@ -142,8 +137,6 @@ func (z *Zone) parseWeightedAnswers(state request.Request, wrrs []dns.RR) []dns.
 	var answer *dns.RR
 	var weightedRRs []weightedRR
 
-	roundRobinShuffle(wrrs)
-
 	for _, r := range wrrs {
 		if w := z.rrData[r].weight; w != nil {
 			weightedRRs = append(weightedRRs, weightedRR{r, *w})
@@ -151,8 +144,8 @@ func (z *Zone) parseWeightedAnswers(state request.Request, wrrs []dns.RR) []dns.
 	}
 
 	if weightedRRs != nil {
-		// ToDo calculate answer here!!
-		answer = &weightedRRs[0].RR
+		wRRSet := newWeightedRRSet(weightedRRs)
+		answer = wRRSet.getTopRR()
 	}
 
 	if answer == nil {
