@@ -77,8 +77,7 @@ generate-operator-deployment-overlay: ## Generate a DNS Operator deployment over
 	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator && \
 	touch kustomization.yaml && \
-	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/local-setup/dns-operator",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator) && \
-	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/prometheus",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator)
+	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/local-setup/dns-operator",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator)
 
 	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/dns-operator
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/dns-operator && \
@@ -98,4 +97,5 @@ generate-operator-deployment-overlay: ## Generate a DNS Operator deployment over
 	$(KUSTOMIZE) edit set namespace $(DEPLOYMENT_NAMESPACE)  && \
 	$(KUSTOMIZE) edit add resource "./dns-operator" && \
 	$(KUSTOMIZE) edit add resource "./dns-providers" && \
-	$(KUSTOMIZE) edit add label -f app.kubernetes.io/part-of:kuadrant
+	$(KUSTOMIZE) edit add label -f app.kubernetes.io/part-of:dns-operator && \
+	$(KUSTOMIZE) edit fix
