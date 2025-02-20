@@ -2,6 +2,8 @@ package kuadrant
 
 import (
 	"context"
+	"os"
+	"strings"
 
 	core "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -20,27 +22,30 @@ import (
 )
 
 const (
-	ZoneNameLabel       = "kuadrant.io/zone-name"
-	defaultResyncPeriod = 0
+	defaultResyncPeriod   = 0
+	watchNamespacesEnvVar = "WATCH_NAMESPACES"
+	zoneNameLabel         = "kuadrant.io/zone-name"
 )
 
-type zoneInformer struct {
-	cache.SharedInformer
+type zoneInformers struct {
+	informers  []cache.SharedInformer
 	zone       *Zone
 	zoneOrigin string
 }
 
-func (zi *zoneInformer) refreshZone() {
+func (zi *zoneInformers) refreshZone() {
 	log.Infof("updating zone %s", zi.zoneOrigin)
 	newZ := NewZone(zi.zoneOrigin)
 
-	for _, obj := range zi.GetStore().List() {
-		rec := obj.(*v1alpha1.DNSRecord)
-		for _, ep := range rec.Spec.Endpoints {
-			log.Debugf("adding %s record endpoints %s to zone %s", ep.RecordType, ep.DNSName, zi.zoneOrigin)
-			err := newZ.InsertEndpoint(ep)
-			if err != nil {
-				log.Error(err)
+	for _, informer := range zi.informers {
+		for _, obj := range informer.GetStore().List() {
+			rec := obj.(*v1alpha1.DNSRecord)
+			for _, ep := range rec.Spec.Endpoints {
+				log.Debugf("adding %s record endpoints %s to zone %s", ep.RecordType, ep.DNSName, zi.zoneOrigin)
+				err := newZ.InsertEndpoint(ep)
+				if err != nil {
+					log.Error(err)
+				}
 			}
 		}
 	}
@@ -51,7 +56,7 @@ func (zi *zoneInformer) refreshZone() {
 // KubeController stores the current runtime configuration and cache
 type KubeController struct {
 	client      dnsop.Interface
-	controllers []zoneInformer
+	controllers []zoneInformers
 	hasSynced   bool
 	labelFilter string
 }
@@ -64,40 +69,53 @@ func newKubeController(ctx context.Context, c *dnsop.DNSRecordClient, zones map[
 	if existDNSRecordCRDs(ctx, c) {
 		for origin, zone := range zones {
 			labelSelector := labels.SelectorFromSet(map[string]string{
-				ZoneNameLabel: stripClosingDot(origin),
+				zoneNameLabel: stripClosingDot(origin),
 			})
 
-			log.Infof("creating zone informer for %s with label selector %s", origin, labelSelector.String())
+			var namespaces []string
+			if w := os.Getenv(watchNamespacesEnvVar); w != "" {
+				namespaces = strings.Split(w, ",")
+			} else {
+				namespaces = []string{core.NamespaceAll}
+			}
 
-			zi := zoneInformer{
-				SharedInformer: cache.NewSharedInformer(
+			log.Infof("creating zone informer for %s with label selector %s and namespaces %s", origin, labelSelector.String(), namespaces)
+
+			zi := zoneInformers{
+				informers:  make([]cache.SharedInformer, 0, len(namespaces)),
+				zone:       zone,
+				zoneOrigin: origin,
+			}
+
+			for _, ns := range namespaces {
+				informer := cache.NewSharedInformer(
 					&cache.ListWatch{
 						ListFunc: func(opts metav1.ListOptions) (runtime.Object, error) {
 							opts.LabelSelector = labelSelector.String()
-							return c.DNSRecords(core.NamespaceAll).List(ctx, opts)
+							return c.DNSRecords(ns).List(ctx, opts)
 						},
 						WatchFunc: func(opts metav1.ListOptions) (watch.Interface, error) {
 							opts.LabelSelector = labelSelector.String()
-							return c.DNSRecords(core.NamespaceAll).Watch(ctx, opts)
+							return c.DNSRecords(ns).Watch(ctx, opts)
 						},
 					},
 					&v1alpha1.DNSRecord{},
 					defaultResyncPeriod,
-				),
-				zone:       zone,
-				zoneOrigin: origin,
+				)
+				_, _ = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+					AddFunc: func(obj interface{}) {
+						zi.refreshZone()
+					},
+					UpdateFunc: func(old, new interface{}) {
+						zi.refreshZone()
+					},
+					DeleteFunc: func(obj interface{}) {
+						zi.refreshZone()
+					},
+				})
+				zi.informers = append(zi.informers, informer)
 			}
-			_, _ = zi.AddEventHandler(cache.ResourceEventHandlerFuncs{
-				AddFunc: func(obj interface{}) {
-					zi.refreshZone()
-				},
-				UpdateFunc: func(old, new interface{}) {
-					zi.refreshZone()
-				},
-				DeleteFunc: func(obj interface{}) {
-					zi.refreshZone()
-				},
-			})
+
 			ctrl.controllers = append(ctrl.controllers, zi)
 		}
 	}
@@ -112,9 +130,11 @@ func (ctrl *KubeController) run() {
 
 	log.Infof("Starting kube controllers")
 	for _, ctrlZone := range ctrl.controllers {
-		log.Infof("Starting controller for zone %s", ctrlZone.zoneOrigin)
-		go ctrlZone.Run(stopCh)
-		synced = append(synced, ctrlZone.HasSynced)
+		for i, informer := range ctrlZone.informers {
+			log.Infof("Starting informer %v for zone %s", i, ctrlZone.zoneOrigin)
+			go informer.Run(stopCh)
+			synced = append(synced, informer.HasSynced)
+		}
 	}
 	log.Infof("Waiting for controllers to sync")
 	if !cache.WaitForCacheSync(stopCh, synced...) {
