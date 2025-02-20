@@ -18,16 +18,16 @@ install-observability: ## Install the kuadrant observability stack
 	kubectl -n monitoring wait --timeout=60s --for=condition=Available=True deployments --all
 
 .PHONY: install-coredns
-install-coredns: COREDNS_KUSTOMIZATION=config/coredns
+install-coredns: COREDNS_KUSTOMIZATION=config/coredns NS=kuadrant-dns
 install-coredns: kustomize ## Install CoreDNS
 	${KUSTOMIZE} build --enable-helm ${COREDNS_KUSTOMIZATION} | kubectl apply -f -
-	kubectl -n kuadrant-dns wait --timeout=60s --for=condition=Available=True deployments --all
+	kubectl -n ${NS} wait --timeout=60s --for=condition=Available=True deployments --all
 
 .PHONY: install-coredns-unmonitored
 install-coredns-unmonitored: kustomize ## Install CoreDNS without ServiceMonitor
-	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-unmonitored
+	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-unmonitored 
 
 .PHONY: install-coredns-multi
 install-coredns-multi: kustomize ## Install CoreDNS without ServiceMonitor
-	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-c1
-	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-c2
+	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-c1 NS=kuadrant-dns-c1
+	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-c2 NS=kuadrant-dns-c2
