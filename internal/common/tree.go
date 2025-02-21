@@ -36,6 +36,14 @@ func (d DNSTreeNodeData) String() string {
 	return fmt.Sprintf("targets: %+v, labels: %+v", d.Targets, d.Labels)
 }
 
+func WriteTree(s io.Writer, node *DNSTreeNode, title string) {
+	fmt.Fprintf(s, "\n====== START TREE: %s ======\n", title)
+	for _, ep := range *ToEndpoints(node, &[]*endpoint.Endpoint{}) {
+		fmt.Fprintf(s, "	endpoint: %v > %+v with labels: %+v\n", ep.DNSName, ep.Targets, ep.Labels)
+	}
+	fmt.Fprintf(s, "====== END TREE: %s ======\n\n", title)
+}
+
 // PropagateStoppableLabel takes a propLabel (and value) to propagate throughout a tree, and a stopLabel
 // whenever the label is propagated to a dataset in a node which also has the stopLabel, this node and
 // all of the children of this node and any parents will have the propLabel removed.
@@ -52,15 +60,6 @@ func (d DNSTreeNodeData) String() string {
 //   - Any node with the stopLabel and the propLabel:
 //   - Has the propLabel removed from itself and all it's children
 //   - Has the propLabel removed from any parent (or parent's parent) that has the label
-
-func WriteTree(s io.Writer, node *DNSTreeNode, title string) {
-	fmt.Fprintf(s, "\n====== START TREE: %s ======\n", title)
-	for _, ep := range *ToEndpoints(node, &[]*endpoint.Endpoint{}) {
-		fmt.Fprintf(s, "	endpoint: %v > %+v with labels: %+v\n", ep.DNSName, ep.Targets, ep.Labels)
-	}
-	fmt.Fprintf(s, "====== END TREE: %s ======\n\n", title)
-}
-
 func PropagateStoppableLabel(node *DNSTreeNode, propLabel, value, stopLabel string) {
 	//propagate labels regardless of stop labels
 	PropagateLabel(node, propLabel, value)
@@ -386,6 +385,9 @@ func ToEndpoints(node *DNSTreeNode, endpoints *[]*endpoint.Endpoint) *[]*endpoin
 	}
 
 	for _, data := range node.DataSets {
+		if len(data.Labels) == 0 {
+			data.Labels = nil
+		}
 		*endpoints = append(*endpoints, &endpoint.Endpoint{
 			DNSName:          node.Name,
 			Targets:          data.Targets,
