@@ -38,8 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	"sigs.k8s.io/external-dns/endpoint"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 
@@ -241,7 +239,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, err
 		}
 	}
-
 	// Publish the record
 	hadChanges, notHealthyProbes, err := r.publishRecord(ctx, dnsRecord, probes, dnsProvider)
 	if err != nil {
@@ -549,7 +546,7 @@ func setStatusConditions(record *v1alpha1.DNSRecord, hadChanges bool, notHealthy
 	}
 
 	// if we haven't published because of the health failure, we won't have changes but the spec endpoints will be empty
-	if len(record.Status.Endpoints) == 0 {
+	if record.Status.Endpoints == nil || len(record.Status.Endpoints) == 0 {
 		setDNSRecordCondition(record, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Not publishing unhealthy records")
 	}
 
@@ -661,6 +658,11 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return false, []string{}, fmt.Errorf("adjusting statusEndpoints: %w", err)
 	}
 
+	// add related endpoints to the record
+	dnsRecord.Status.ZoneEndpoints = mergeZoneEndpoints(
+		dnsRecord.Status.ZoneEndpoints,
+		filterEndpoints(rootDomainName, zoneEndpoints))
+
 	//Note: All endpoint lists should be in the same provider specific format at this point
 	logger.V(1).Info("applyChanges", "zoneEndpoints", zoneEndpoints,
 		"specEndpoints", healthySpecEndpoints, "statusEndpoints", statusEndpoints)
@@ -674,32 +676,35 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	if err = plan.Error(); err != nil {
 		return false, notHealthyProbes, err
 	}
-
 	dnsRecord.Status.DomainOwners = plan.Owners
 	dnsRecord.Status.Endpoints = healthySpecEndpoints
 	if plan.Changes.HasChanges() {
 		logger.Info("Applying changes")
 		err = registry.ApplyChanges(ctx, plan.Changes)
+		return true, notHealthyProbes, err
 	}
-
-	// add related endpoints to the record
-	dnsRecord.Status.ZoneEndpoints = mergeZoneEndpoints(
-		filterEndpointsExcludeLabel(externaldnsplan.SoftDeleteLabel, plan.Current),
-		filterEndpointsExcludeLabel(externaldnsplan.SoftDeleteLabel, plan.Desired),
-	)
-
-	return plan.Changes.HasChanges(), notHealthyProbes, err
+	return false, notHealthyProbes, nil
 }
 
-func filterEndpointsExcludeLabel(label string, endpoints []*endpoint.Endpoint) []*endpoint.Endpoint {
-	ret := []*endpoint.Endpoint{}
+// filterEndpoints takes a list of zoneEndpoints and removes from it all endpoints
+// that do not belong to the rootDomainName (some.example.com does belong to the example.com domain).
+// it is not using ownerID of this record as well as domainOwners from the status for filtering
+func filterEndpoints(rootDomainName string, zoneEndpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
+	// these are records that share domain but are not defined in the spec of DNSRecord
+	var filteredEndpoints []*externaldnsendpoint.Endpoint
 
-	for _, ep := range endpoints {
-		if _, ok := ep.Labels[label]; !ok {
-			ret = append(ret, ep)
+	// setup domain filter since we can't be sure that zone records are sharing domain with DNSRecord
+	rootDomain, _ := strings.CutPrefix(rootDomainName, v1alpha1.WildcardPrefix)
+	rootDomainFilter := externaldnsendpoint.NewDomainFilter([]string{rootDomain})
+
+	// go through all EPs in the zone
+	for _, zoneEndpoint := range zoneEndpoints {
+		// if zoneEndpoint matches domain filter, it must be added to related EPs
+		if rootDomainFilter.Match(zoneEndpoint.DNSName) {
+			filteredEndpoints = append(filteredEndpoints, zoneEndpoint)
 		}
 	}
-	return ret
+	return filteredEndpoints
 }
 
 // mergeZoneEndpoints merges existing endpoints with new and ensures there are no duplicates
@@ -719,7 +724,7 @@ func mergeZoneEndpoints(currentEndpoints, newEndpoints []*externaldnsendpoint.En
 
 	// Convert a map into an array
 	for _, endpoint := range combinedMap {
-		combinedEndpoints = append(combinedEndpoints, endpoint.DeepCopy())
+		combinedEndpoints = append(combinedEndpoints, endpoint)
 	}
 	return combinedEndpoints
 }

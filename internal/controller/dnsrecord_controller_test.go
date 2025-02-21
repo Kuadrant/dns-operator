@@ -450,27 +450,28 @@ var _ = Describe("DNSRecordReconciler", func() {
 			// endpoints from the record2 should be present in zone EPs as record2 in subdomain of record 1 rootDomain
 			// record must have it's own endpoints (that are identical to the record3 endpoints)
 			g.Expect(dnsRecord1.Status.ZoneEndpoints).To(And(
-				ContainElements(dnsRecord2.Status.Endpoints),
-				ContainElements(dnsRecord1.Status.Endpoints)))
+				ContainElements(dnsRecord2.Status.ZoneEndpoints),
+				ContainElements(dnsRecord1.Status.ZoneEndpoints),
+			))
 			// record1 and 3 share root domain - all of the above should also apply to this record
 			g.Expect(dnsRecord3.Status.ZoneEndpoints).To(And(
-				ContainElements(dnsRecord2.Status.Endpoints),
-				ContainElements(dnsRecord3.Status.Endpoints)))
+				ContainElements(dnsRecord2.Status.ZoneEndpoints),
+				ContainElements(dnsRecord3.Status.ZoneEndpoints),
+			))
 
 			// Scenario 2
 			// endpoints from the third record should be present in ZoneEndpoints as it is in the same rootDomain
-			g.Expect(dnsRecord1.Status.ZoneEndpoints).To(ContainElements(dnsRecord3.Status.Endpoints))
+			g.Expect(dnsRecord1.Status.ZoneEndpoints).To(ContainElements(dnsRecord3.Status.ZoneEndpoints))
 			// the same true to record 3 as well
-			g.Expect(dnsRecord3.Status.ZoneEndpoints).To(ContainElements(dnsRecord1.Status.Endpoints))
+			g.Expect(dnsRecord3.Status.ZoneEndpoints).To(ContainElements(dnsRecord1.Status.ZoneEndpoints))
 			// also check equality of status.Endpoints
-			g.Expect(dnsRecord1.Status.Endpoints).To(ConsistOf(dnsRecord3.Status.Endpoints))
+			g.Expect(dnsRecord1.Status.ZoneEndpoints).To(ConsistOf(dnsRecord3.Status.ZoneEndpoints))
 
 			// Scenario 3
 			// endpoints from the forth record should not be present as record 4 have unique rootHosts
-			g.Expect(dnsRecord1.Status.ZoneEndpoints).ToNot(ContainElements(dnsRecord4.Status.Endpoints))
-			g.Expect(dnsRecord2.Status.ZoneEndpoints).ToNot(ContainElements(dnsRecord4.Status.Endpoints))
-			g.Expect(dnsRecord3.Status.ZoneEndpoints).ToNot(ContainElements(dnsRecord4.Status.Endpoints))
-
+			g.Expect(dnsRecord1.Status.ZoneEndpoints).ToNot(ContainElements(dnsRecord4.Status.ZoneEndpoints))
+			g.Expect(dnsRecord2.Status.ZoneEndpoints).ToNot(ContainElements(dnsRecord4.Status.ZoneEndpoints))
+			g.Expect(dnsRecord3.Status.ZoneEndpoints).ToNot(ContainElements(dnsRecord4.Status.ZoneEndpoints))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 

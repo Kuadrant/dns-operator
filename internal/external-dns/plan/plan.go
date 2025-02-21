@@ -165,24 +165,21 @@ func (t planTableRow) String() string {
 }
 
 func (t planTable) addCurrent(e *endpoint.Endpoint) {
-	ep := e.DeepCopy()
-	key := t.newPlanKey(ep)
-	t.rows[key].current = append(t.rows[key].current, ep)
-	t.rows[key].records[ep.RecordType].current = ep
+	key := t.newPlanKey(e)
+	t.rows[key].current = append(t.rows[key].current, e)
+	t.rows[key].records[e.RecordType].current = e
 }
 
 func (t planTable) addPrevious(e *endpoint.Endpoint) {
-	ep := e.DeepCopy()
-	key := t.newPlanKey(ep)
-	t.rows[key].previous = append(t.rows[key].previous, ep)
-	t.rows[key].records[ep.RecordType].previous = ep
+	key := t.newPlanKey(e)
+	t.rows[key].previous = append(t.rows[key].previous, e)
+	t.rows[key].records[e.RecordType].previous = e
 }
 
 func (t planTable) addCandidate(e *endpoint.Endpoint) {
-	ep := e.DeepCopy()
-	key := t.newPlanKey(ep)
-	t.rows[key].candidates = append(t.rows[key].candidates, ep)
-	t.rows[key].records[ep.RecordType].candidates = append(t.rows[key].records[ep.RecordType].candidates, ep)
+	key := t.newPlanKey(e)
+	t.rows[key].candidates = append(t.rows[key].candidates, e)
+	t.rows[key].records[e.RecordType].candidates = append(t.rows[key].records[e.RecordType].candidates, e)
 }
 
 func (t *planTable) newPlanKey(e *endpoint.Endpoint) planKey {
@@ -233,8 +230,16 @@ func CleanLabelsFromEndpoints(labels []string, endpoints []*endpoint.Endpoint) [
 }
 
 func (p *Plan) processStopLabel() {
+	if p.RootHost == nil {
+		return
+	}
 	desiredTree := common.MakeTreeFromEndpoints(*p.RootHost, p.Desired)
 	currentTree := common.MakeTreeFromEndpoints(*p.RootHost, p.Current)
+
+	// bad trees, return
+	if len(desiredTree.Children) == 0 || len(currentTree.Children) == 0 {
+		return
+	}
 
 	// copy soft_delete and stop_soft_delete labels from desired to current tree for propagation
 	common.CopyLabel(SoftDeleteLabel, desiredTree, currentTree)
@@ -243,10 +248,10 @@ func (p *Plan) processStopLabel() {
 	// propagate label in desired tree ignoring stop labels
 	common.PropagateLabel(desiredTree, SoftDeleteLabel, "true")
 
-	// propagate the stop label
+	// propagate the stop label in the current tree
 	common.PropagateStoppableLabel(currentTree, SoftDeleteLabel, "true", StopSoftDeleteLabel)
 
-	// write everything back to plan endpoints
+	// write everything back to the plan
 	p.Desired = []*endpoint.Endpoint{}
 	p.Current = []*endpoint.Endpoint{}
 	common.ToEndpoints(desiredTree, &p.Desired)
@@ -331,9 +336,8 @@ func (p *Plan) Calculate() *Plan {
 			var rTypeUpdate endpointUpdate
 			recordsByType := t.resolver.ResolveRecordTypes(key, row)
 			for _, records := range recordsByType {
-
 				// handle soft_delete
-				if records.current.Labels[SoftDeleteLabel] == "true" {
+				if records.current != nil && records.current.Labels != nil && records.current.Labels[SoftDeleteLabel] == "true" {
 					p.processDelete(records, key, &managedChanges)
 					continue
 				}
@@ -351,9 +355,6 @@ func (p *Plan) Calculate() *Plan {
 				if records.current != nil && len(records.candidates) > 0 {
 					candidate := t.resolver.ResolveUpdate(records.current, records.candidates)
 					current := records.current.DeepCopy()
-					if current.Labels == nil {
-						current.Labels = endpoint.NewLabels()
-					}
 					owners := []string{}
 					if endpointOwner, hasOwner := current.Labels[endpoint.OwnerLabelKey]; hasOwner && endpointOwner != "" {
 						if p.OwnerID == "" {
@@ -427,7 +428,7 @@ func (p *Plan) processDelete(records *domainEndpoints, key planKey, managedChang
 	if records.current != nil {
 		candidate := records.current.DeepCopy()
 		owners := []string{}
-		if endpointOwner, hasOwner := records.current.Labels[endpoint.OwnerLabelKey]; hasOwner && p.OwnerID != "" {
+		if endpointOwner, hasOwner := candidate.Labels[endpoint.OwnerLabelKey]; hasOwner && p.OwnerID != "" {
 			owners = strings.Split(endpointOwner, OwnerLabelDeliminator)
 			for i, v := range owners {
 				if v == p.OwnerID {
@@ -465,12 +466,9 @@ func (p *Plan) filterRecordsForPlan(records []*endpoint.Endpoint) []*endpoint.En
 			p.logger.V(1).Info(fmt.Sprintf("ignoring record %s that does not match domain filter", record.DNSName))
 			continue
 		}
-
-		if !IsManagedRecord(record.RecordType, p.ManagedRecords, p.ExcludeRecords) {
-			continue
+		if IsManagedRecord(record.RecordType, p.ManagedRecords, p.ExcludeRecords) {
+			filtered = append(filtered, record)
 		}
-
-		filtered = append(filtered, record)
 	}
 
 	return filtered
@@ -518,6 +516,7 @@ func (e *managedRecordSetChanges) Calculate() *externaldnsplan.Changes {
 
 	CleanLabelFromEndpoints(SoftDeleteLabel, e.creates)
 	CleanLabelFromEndpoints(StopSoftDeleteLabel, e.creates)
+
 	changes := &externaldnsplan.Changes{
 		Delete: e.deletes,
 	}

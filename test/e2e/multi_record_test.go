@@ -17,9 +17,11 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/external-dns/endpoint"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/external-dns/plan"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
@@ -389,6 +391,9 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 									Targets: []string{
 										geoKlbHostName,
 									},
+									Labels: map[string]string{
+										plan.StopSoftDeleteLabel: "true",
+									},
 									RecordType:    "CNAME",
 									RecordTTL:     300,
 									SetIdentifier: config.testGeoCode,
@@ -403,6 +408,9 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 									DNSName: klbHostName,
 									Targets: []string{
 										defaultGeoKlbHostName,
+									},
+									Labels: map[string]string{
+										plan.StopSoftDeleteLabel: "true",
 									},
 									RecordType:    "CNAME",
 									RecordTTL:     300,
@@ -808,6 +816,102 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			By("checking all endpoints were validated")
 			Expect(totalEndpointsChecked).To(Equal(expectedEndpointsLen))
 
+			if len(testGeoRecords[geoCode1]) > 1 {
+				By("testing soft delete flag in geo: " + geoCode1)
+				// loop through clusters counting down - so we know clusterID 0 is the last one to leave the GEO
+				for clusterID := len(testGeoRecords[geoCode1]) - 1; clusterID >= 0; clusterID-- {
+					By("testing endpoint currently exists in zone")
+					patchFrom := client.MergeFrom(testGeoRecords[geoCode1][clusterID].record.DeepCopy())
+					var removeEndpoint *endpoint.Endpoint
+					for i, ep := range testGeoRecords[geoCode1][clusterID].record.Spec.Endpoints {
+						if ep.RecordType == "A" {
+							removeEndpoint = ep.DeepCopy()
+							if testGeoRecords[geoCode1][clusterID].record.Spec.Endpoints[i].Labels == nil {
+								testGeoRecords[geoCode1][clusterID].record.Spec.Endpoints[i].Labels = endpoint.NewLabels()
+							}
+							testGeoRecords[geoCode1][clusterID].record.Spec.Endpoints[i].Labels[plan.SoftDeleteLabel] = "true"
+							break
+						}
+					}
+
+					zoneEndpoints, err = EndpointsForHost(ctx, testProvider, testHostname)
+					Expect(err).To(BeNil())
+
+					removeEndpoint.Labels = endpoint.NewLabels()
+					Expect(zoneEndpoints).To(ContainElement(removeEndpoint))
+
+					By("add soft delete label to the endpoint in dns record")
+					if removeEndpoint.Labels == nil {
+						removeEndpoint.Labels = endpoint.NewLabels()
+					}
+					removeEndpoint.Labels[plan.SoftDeleteLabel] = "true"
+					Eventually(func(g Gomega, ctx context.Context) {
+						g.Expect(testGeoRecords[geoCode1][clusterID].cluster.k8sClient.Patch(
+							ctx,
+							testGeoRecords[geoCode1][clusterID].record,
+							patchFrom,
+							&client.PatchOptions{},
+						)).To(BeNil())
+					}, 10*time.Second, 5*time.Second, ctx).Should(Succeed())
+
+					if clusterID != 0 {
+						By("confirming soft delete record is removed from zone")
+						removeEndpoint.Labels = endpoint.NewLabels()
+						Eventually(func(g Gomega, ctx context.Context) {
+							zoneEndpoints, err = EndpointsForHost(ctx, testProvider, testHostname)
+							g.Expect(err).To(BeNil())
+							g.Expect(zoneEndpoints).NotTo(ContainElement(removeEndpoint))
+						}, defaultRecordsDeletedTimeout, 5*time.Second, ctx).Should(Succeed())
+					} else {
+						By("confirming final soft delete record is not removed from zone")
+						removeEndpoint.Labels = endpoint.NewLabels()
+						Consistently(func(g Gomega, ctx context.Context) {
+							zoneEndpoints, err = EndpointsForHost(ctx, testProvider, testHostname)
+							g.Expect(err).To(BeNil())
+							g.Expect(zoneEndpoints).To(ContainElement(removeEndpoint))
+						}, defaultRecordsDeletedTimeout, 1*time.Second, ctx).Should(Succeed())
+					}
+				}
+				By("removing soft_delete labels")
+				for clusterID := 0; clusterID < len(testGeoRecords[geoCode1]); clusterID++ {
+					patchFrom := client.MergeFrom(testGeoRecords[geoCode1][clusterID].record.DeepCopy())
+					var removeEndpoint *endpoint.Endpoint
+					for i, ep := range testGeoRecords[geoCode1][clusterID].record.Spec.Endpoints {
+						if ep.RecordType == "A" {
+							removeEndpoint = ep.DeepCopy()
+							if testGeoRecords[geoCode1][clusterID].record.Spec.Endpoints[i].Labels == nil {
+								testGeoRecords[geoCode1][clusterID].record.Spec.Endpoints[i].Labels = endpoint.NewLabels()
+							}
+							delete(testGeoRecords[geoCode1][clusterID].record.Spec.Endpoints[i].Labels, plan.SoftDeleteLabel)
+							break
+						}
+					}
+					// doesn't match if they're nil
+					if removeEndpoint.Labels == nil {
+						removeEndpoint.Labels = endpoint.NewLabels()
+					}
+
+					By("remove soft delete label for endpoint in dns record")
+					delete(removeEndpoint.Labels, plan.SoftDeleteLabel)
+					Eventually(func(g Gomega, ctx context.Context) {
+						g.Expect(testGeoRecords[geoCode1][clusterID].cluster.k8sClient.Patch(
+							ctx,
+							testGeoRecords[geoCode1][clusterID].record,
+							patchFrom,
+							&client.PatchOptions{},
+						)).To(BeNil())
+					}, 10*time.Second, 5*time.Second, ctx).Should(Succeed())
+
+					By("confirming record is replaced in zone")
+					removeEndpoint.Labels = endpoint.NewLabels()
+					Eventually(func(g Gomega, ctx context.Context) {
+						zoneEndpoints, err = EndpointsForHost(ctx, testProvider, testHostname)
+						g.Expect(err).To(BeNil())
+						g.Expect(zoneEndpoints).To(ContainElement(removeEndpoint))
+					}, defaultRecordsDeletedTimeout, 5*time.Second, ctx).Should(Succeed())
+				}
+			}
+
 			By("deleting all remaining dns records")
 			for _, tr := range testRecords {
 				err := tr.cluster.k8sClient.Delete(ctx, tr.record,
@@ -831,7 +935,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(zoneEndpoints).To(HaveLen(0))
 			}, 5*time.Second, 1*time.Second, ctx).Should(Succeed())
-
 		})
 	})
 
