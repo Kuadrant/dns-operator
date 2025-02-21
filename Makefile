@@ -173,7 +173,7 @@ test-e2e: ginkgo
 
 .PHONY: test-e2e-multi
 test-e2e-multi: ginkgo
-	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=multi_record ./test/e2e
+	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter="multi_record&&loadbalanced" ./test/e2e
 
 .PHONY: test-scale
 test-scale: export JOB_ITERATIONS := 1
@@ -250,8 +250,10 @@ build: manifests generate fmt vet ## Build manager binary.
 .PHONY: run
 run: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 run: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
+run: MPORT=:8080
+run: PPORT=:8081
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure
+	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure --metrics-bind-address ${MPORT} --health-probe-bind-address ${PPORT}
 
 .PHONY: run-with-probes
 run-with-probes: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
