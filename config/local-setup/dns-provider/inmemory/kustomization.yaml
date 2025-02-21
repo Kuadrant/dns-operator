@@ -9,5 +9,3 @@ generatorOptions:
 secretGenerator:
   - name: dns-provider-credentials
     type: "kuadrant.io/inmemory"
-    literals:
-      - INMEM_INIT_ZONES=kuadrant.local

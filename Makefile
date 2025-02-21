@@ -173,7 +173,7 @@ test-e2e: ginkgo
 
 .PHONY: test-e2e-multi
 test-e2e-multi: ginkgo
-	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=multi_record ./test/e2e
+	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter="multi_record&&loadbalanced" ./test/e2e
 
 .PHONY: test-scale
 test-scale: export JOB_ITERATIONS := 1

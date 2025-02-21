@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -265,6 +266,7 @@ func loadClusters(ctx context.Context) {
 // If the provider secret has a different dns provider name from any previously loaded provider secret, an error is thrown.
 func loadProviderSecrets(ctx context.Context, tc *testCluster) {
 	for _, n := range testNamespaces {
+		log.Printf("loading secrets in namespace: %v", n)
 		// Ensure provider secret exists
 		s := &v1.Secret{}
 		err := tc.k8sClient.Get(ctx, client.ObjectKey{Namespace: n, Name: testProviderSecretName}, s)
