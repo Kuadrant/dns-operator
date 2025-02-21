@@ -119,13 +119,14 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 				Expect(len(tree.Children)).To(Equal(1))
 				Expect(tree.Parent).To(BeNil())
 
-				child := tree.Children[0]
-				Expect(child.Name).To(Equal("klb.testdomain.com"))
-				Expect(len(child.Children)).To(Equal(2))
-				Expect(child.Parent).To(Equal(tree))
+				klbHost := tree.Children[0]
+				Expect(klbHost.Name).To(Equal("klb.testdomain.com"))
+				Expect(len(klbHost.Children)).To(Equal(2))
+				Expect(klbHost.Parent).To(Equal(tree))
 
-				Expect(len(child.DataSets)).To(Equal(3))
-				Expect(child.DataSets[0]).To(Equal(&DNSTreeNodeData{
+				Expect(len(klbHost.Endpoints)).To(Equal(3))
+				Expect(klbHost.Endpoints[0]).To(Equal(&endpoint.Endpoint{
+					DNSName:       "klb.testdomain.com",
 					RecordType:    endpoint.RecordTypeCNAME,
 					SetIdentifier: "",
 					RecordTTL:     300,
@@ -139,7 +140,8 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 						"eu.klb.testdomain.com",
 					},
 				}))
-				Expect(child.DataSets[1]).To(Equal(&DNSTreeNodeData{
+				Expect(klbHost.Endpoints[1]).To(Equal(&endpoint.Endpoint{
+					DNSName:       "klb.testdomain.com",
 					RecordType:    endpoint.RecordTypeCNAME,
 					SetIdentifier: "",
 					RecordTTL:     300,
@@ -153,7 +155,8 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 						"us.klb.testdomain.com",
 					},
 				}))
-				Expect(child.DataSets[2]).To(Equal(&DNSTreeNodeData{
+				Expect(klbHost.Endpoints[2]).To(Equal(&endpoint.Endpoint{
+					DNSName:       "klb.testdomain.com",
 					RecordType:    endpoint.RecordTypeCNAME,
 					SetIdentifier: "",
 					RecordTTL:     300,
@@ -168,8 +171,8 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 					},
 				}))
 
-				for _, c := range child.Children {
-					Expect(c.Parent).To(Equal(child))
+				for _, c := range klbHost.Children {
+					Expect(c.Parent).To(Equal(klbHost))
 					Expect([]string{"eu.klb.testdomain.com", "us.klb.testdomain.com"}).To(ContainElement(c.Name))
 					Expect(len(c.Children)).To(Equal(1))
 
@@ -194,10 +197,10 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 			Name: "zone endpoints to tree",
 			DNSRecord: &v1alpha1.DNSRecord{
 				Spec: v1alpha1.DNSRecordSpec{
-					RootHost: "loadbalanced.pb.hcpapps.net",
+					RootHost: "test.domain.com",
 					Endpoints: []*endpoint.Endpoint{
 						{
-							DNSName: "pb.hcpapps.net",
+							DNSName: "domain.com",
 							Targets: []string{
 								"ns-332.awsdns-41.com",
 								"ns-1602.awsdns-08.co.uk",
@@ -208,9 +211,9 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 							RecordTTL:  172800,
 						},
 						{
-							DNSName: "loadbalanced.pb.hcpapps.net",
+							DNSName: "test.domain.com",
 							Targets: []string{
-								"klb.loadbalanced.pb.hcpapps.net",
+								"klb.test.domain.com",
 							},
 							RecordType: "CNAME",
 							RecordTTL:  300,
@@ -226,9 +229,9 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 						},
 
 						{
-							DNSName: "klb.loadbalanced.pb.hcpapps.net",
+							DNSName: "klb.test.domain.com",
 							Targets: []string{
-								"ie.klb.loadbalanced.pb.hcpapps.net",
+								"ie.klb.test.domain.com",
 							},
 							RecordType:    "CNAME",
 							SetIdentifier: "IE",
@@ -248,9 +251,9 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 							},
 						},
 						{
-							DNSName: "klb.loadbalanced.pb.hcpapps.net",
+							DNSName: "klb.test.domain.com",
 							Targets: []string{
-								"us.klb.loadbalanced.pb.hcpapps.net",
+								"us.klb.test.domain.com",
 							},
 							RecordType:    "CNAME",
 							SetIdentifier: "US",
@@ -270,9 +273,9 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 							},
 						},
 						{
-							DNSName: "klb.loadbalanced.pb.hcpapps.net",
+							DNSName: "klb.test.domain.com",
 							Targets: []string{
-								"ie.klb.loadbalanced.pb.hcpapps.net",
+								"ie.klb.test.domain.com",
 							},
 							RecordType:    "CNAME",
 							SetIdentifier: "default",
@@ -292,7 +295,7 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 							},
 						},
 						{
-							DNSName: "cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
+							DNSName: "cluster1-gw1-ns1.klb.test.domain.com",
 							Targets: []string{
 								"172.18.200.1",
 							},
@@ -303,7 +306,7 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 							},
 						},
 						{
-							DNSName: "cluster2-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
+							DNSName: "cluster2-gw1-ns1.klb.test.domain.com",
 							Targets: []string{
 								"172.18.200.2",
 							},
@@ -314,7 +317,7 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 							},
 						},
 						{
-							DNSName: "cluster3-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
+							DNSName: "cluster3-gw1-ns1.klb.test.domain.com",
 							Targets: []string{
 								"172.18.200.3",
 							},
@@ -325,12 +328,12 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 							},
 						},
 						{
-							DNSName: "ie.klb.loadbalanced.pb.hcpapps.net",
+							DNSName: "ie.klb.test.domain.com",
 							Targets: []string{
-								"cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
+								"cluster1-gw1-ns1.klb.test.domain.com",
 							},
 							RecordType:    "CNAME",
-							SetIdentifier: "cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
+							SetIdentifier: "cluster1-gw1-ns1.klb.test.domain.com",
 							RecordTTL:     60,
 							Labels: endpoint.Labels{
 								"owner": "6rvin4zy",
@@ -347,12 +350,12 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 							},
 						},
 						{
-							DNSName: "ie.klb.loadbalanced.pb.hcpapps.net",
+							DNSName: "ie.klb.test.domain.com",
 							Targets: []string{
-								"cluster2-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
+								"cluster2-gw1-ns1.klb.test.domain.com",
 							},
 							RecordType:    "CNAME",
-							SetIdentifier: "cluster2-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
+							SetIdentifier: "cluster2-gw1-ns1.klb.test.domain.com",
 							RecordTTL:     60,
 							Labels: endpoint.Labels{
 								"owner": "2d357tbm",
@@ -369,12 +372,12 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 							},
 						},
 						{
-							DNSName: "us.klb.loadbalanced.pb.hcpapps.net",
+							DNSName: "us.klb.test.domain.com",
 							Targets: []string{
-								"cluster3-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
+								"cluster3-gw1-ns1.klb.test.domain.com",
 							},
 							RecordType:    "CNAME",
-							SetIdentifier: "cluster3-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
+							SetIdentifier: "cluster3-gw1-ns1.klb.test.domain.com",
 							RecordTTL:     60,
 							Labels: endpoint.Labels{
 								"owner": "roql6iqy",
@@ -394,30 +397,37 @@ func Test_MakeTreeFromDNSRecord(t *testing.T) {
 				},
 			},
 			Verify: func(tree *DNSTreeNode) {
-				Expect(tree.Name).To(Equal("loadbalanced.pb.hcpapps.net"))
+				Expect(tree.Name).To(Equal("test.domain.com"))
 				Expect(len(tree.Children)).To(Equal(1))
 
-				Expect(tree.Children[0].Name).To(Equal("klb.loadbalanced.pb.hcpapps.net"))
+				Expect(tree.Children[0].Name).To(Equal("klb.test.domain.com"))
 				Expect(len(tree.Children[0].Children)).To(Equal(2))
 
-				ieNode := tree.Children[0].Children[0]
-				Expect(ieNode.Name).To(Equal("ie.klb.loadbalanced.pb.hcpapps.net"))
+				var ieNode, usNode *DNSTreeNode
+
+				if tree.Children[0].Children[0].Name == "ie.klb.test.domain.com" {
+					ieNode = tree.Children[0].Children[0]
+					usNode = tree.Children[0].Children[1]
+				} else {
+					ieNode = tree.Children[0].Children[1]
+					usNode = tree.Children[0].Children[0]
+				}
+				Expect(ieNode.Name).To(Equal("ie.klb.test.domain.com"))
 				Expect(len(ieNode.Children)).To(Equal(2))
 
-				Expect(ieNode.Children[0].Name).To(Equal("cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net"))
+				Expect([]string{"cluster1-gw1-ns1.klb.test.domain.com", "cluster2-gw1-ns1.klb.test.domain.com"}).To(ContainElement(ieNode.Children[0].Name))
 				Expect(len(ieNode.Children[0].Children)).To(Equal(1))
-				Expect(ieNode.Children[0].Children[0].Name).To(Equal("172.18.200.1"))
+				Expect([]string{"172.18.200.1", "172.18.200.2"}).To(ContainElement(ieNode.Children[0].Children[0].Name))
 
-				Expect(ieNode.Children[1].Name).To(Equal("cluster2-gw1-ns1.klb.loadbalanced.pb.hcpapps.net"))
+				Expect([]string{"cluster1-gw1-ns1.klb.test.domain.com", "cluster2-gw1-ns1.klb.test.domain.com"}).To(ContainElement(ieNode.Children[1].Name))
 				Expect(len(ieNode.Children[1].Children)).To(Equal(1))
-				Expect(ieNode.Children[1].Children[0].Name).To(Equal("172.18.200.2"))
+				Expect([]string{"172.18.200.1", "172.18.200.2"}).To(ContainElement(ieNode.Children[1].Children[0].Name))
 
-				usNode := tree.Children[0].Children[1]
-				Expect(usNode.Name).To(Equal("us.klb.loadbalanced.pb.hcpapps.net"))
+				Expect(usNode.Name).To(Equal("us.klb.test.domain.com"))
 				Expect(len(usNode.Children[0].Children)).To(Equal(1))
 				Expect(len(usNode.Children)).To(Equal(1))
 
-				Expect(usNode.Children[0].Name).To(Equal("cluster3-gw1-ns1.klb.loadbalanced.pb.hcpapps.net"))
+				Expect(usNode.Children[0].Name).To(Equal("cluster3-gw1-ns1.klb.test.domain.com"))
 				Expect(usNode.Children[0].Children[0].Name).To(Equal("172.18.200.3"))
 			},
 		},
@@ -563,14 +573,14 @@ func Test_RemoveNode(t *testing.T) {
 
 	scenarios := []struct {
 		Name            string
-		Tree            *DNSTreeNode
+		Tree            func() *DNSTreeNode
 		RemoveNodes     []*DNSTreeNode
 		VerifyTree      func(tree *DNSTreeNode)
 		VerifyEndpoints func(endpoints *[]*endpoint.Endpoint)
 	}{
 		{
 			Name: "remove eu / prune dead branch front",
-			Tree: getTestTree(),
+			Tree: getTestTree,
 			RemoveNodes: []*DNSTreeNode{
 				{
 					Name: "172.32.200.1",
@@ -624,7 +634,7 @@ func Test_RemoveNode(t *testing.T) {
 		},
 		{
 			Name: "remove us / prune dead branch back",
-			Tree: getTestTree(),
+			Tree: getTestTree,
 			RemoveNodes: []*DNSTreeNode{
 				{
 					Name: "172.32.200.2",
@@ -679,7 +689,7 @@ func Test_RemoveNode(t *testing.T) {
 		},
 		{
 			Name: "remove eu and us / prune multiple dead branches",
-			Tree: getTestTree(),
+			Tree: getTestTree,
 			RemoveNodes: []*DNSTreeNode{
 				{
 					Name: "172.32.200.1",
@@ -698,64 +708,64 @@ func Test_RemoveNode(t *testing.T) {
 		},
 		{
 			Name: "remove IP from a leaf",
-			Tree: &DNSTreeNode{
-				Name: "app.testdomain.com",
-				Children: []*DNSTreeNode{
-					{
-						Name: "klb.testdomain.com",
-						Children: []*DNSTreeNode{
-							{
-								Name: "eu.klb.testdomain.com",
-								Children: []*DNSTreeNode{
-									{
-										Name: "ip1.testdomain.com",
-										Children: []*DNSTreeNode{
-											{
-												Name: "172.32.200.1",
-											},
-											{
-												Name: "172.32.200.2",
-											},
-										},
-										DataSets: []*DNSTreeNodeData{
-											{
-												RecordType: "A",
-												Targets: []string{
-													"172.32.200.1",
-													"172.32.200.2",
-												},
-											},
-										},
-									},
-								},
-								DataSets: []*DNSTreeNodeData{
-									{
-										RecordType: "CNAME",
-										Targets: []string{
-											"ip1.testdomain.com",
-										},
-									},
-								},
-							},
-						},
-						DataSets: []*DNSTreeNodeData{
-							{
-								RecordType: "CNAME",
-								Targets: []string{
-									"eu.klb.testdomain.com",
-								},
+			Tree: func() *DNSTreeNode {
+				ip1Node := &DNSTreeNode{
+					Name: "ip1.testdomain.com",
+					Endpoints: []*endpoint.Endpoint{
+						{
+							DNSName:    "ip1.testdomain.com",
+							RecordType: "A",
+							Targets: []string{
+								"172.32.200.1",
+								"172.32.200.2",
 							},
 						},
 					},
-				},
-				DataSets: []*DNSTreeNodeData{
-					{
-						RecordType: "CNAME",
-						Targets: []string{
-							"klb.testdomain.com",
+				}
+				euNode := &DNSTreeNode{
+					Name: "eu.klb.testdomain.com",
+					Endpoints: []*endpoint.Endpoint{
+						{
+							DNSName:    "eu.klb.testdomain.com",
+							RecordType: "CNAME",
+							Targets: []string{
+								"ip1.testdomain.com",
+							},
 						},
 					},
-				},
+				}
+				klbNode := &DNSTreeNode{
+					Name: "klb.testdomain.com",
+					Endpoints: []*endpoint.Endpoint{
+						{
+							DNSName:    "klb.testdomain.com",
+							RecordType: "CNAME",
+							Targets: []string{
+								"eu.klb.testdomain.com",
+							},
+						},
+					},
+				}
+
+				appNode := &DNSTreeNode{
+					Name: "app.testdomain.com",
+					Endpoints: []*endpoint.Endpoint{
+						{
+							DNSName:    "app.testdomain.com",
+							RecordType: "CNAME",
+							Targets: []string{
+								"klb.testdomain.com",
+							},
+						},
+					},
+				}
+				AddChild(ip1Node, &DNSTreeNode{Name: "172.32.200.1"})
+				AddChild(ip1Node, &DNSTreeNode{Name: "172.32.200.2"})
+				AddChild(euNode, ip1Node)
+				AddChild(klbNode, euNode)
+				AddChild(appNode, klbNode)
+
+				return appNode
 			},
 			RemoveNodes: []*DNSTreeNode{
 				{
@@ -776,9 +786,9 @@ func Test_RemoveNode(t *testing.T) {
 				Expect(ipNode.Name).To(Equal("ip1.testdomain.com"))
 				Expect(len(ipNode.Children)).To(Equal(1))
 				Expect(ipNode.Children[0].Name).To(Equal("172.32.200.1"))
-				Expect(len(ipNode.DataSets)).To(Equal(1))
-				Expect(len(ipNode.DataSets[0].Targets)).To(Equal(1))
-				Expect(ipNode.DataSets[0].Targets[0]).To(Equal("172.32.200.1"))
+				Expect(len(ipNode.Endpoints)).To(Equal(1))
+				Expect(len(ipNode.Endpoints[0].Targets)).To(Equal(1))
+				Expect(ipNode.Endpoints[0].Targets[0]).To(Equal("172.32.200.1"))
 			},
 			VerifyEndpoints: func(endpoints *[]*endpoint.Endpoint) {
 				Expect(*endpoints).To(HaveLen(4))
@@ -806,11 +816,12 @@ func Test_RemoveNode(t *testing.T) {
 
 	for _, scenario := range scenarios {
 		t.Run(scenario.Name, func(t *testing.T) {
+			tree := scenario.Tree()
 			for _, rn := range scenario.RemoveNodes {
-				scenario.Tree.RemoveNode(rn)
+				RemoveNode(tree, rn)
 			}
-			scenario.VerifyTree(scenario.Tree)
-			scenario.VerifyEndpoints(ToEndpoints(scenario.Tree, ptr.To([]*endpoint.Endpoint{})))
+			scenario.VerifyTree(tree)
+			scenario.VerifyEndpoints(ToEndpoints(tree, ptr.To([]*endpoint.Endpoint{})))
 		})
 	}
 }
@@ -827,39 +838,39 @@ func Test_CopyLabels(t *testing.T) {
 			Name: "Copy soft label",
 			From: func() *DNSTreeNode {
 				root := &DNSTreeNode{
-					Name: "loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Targets: []string{
-								"klb.loadbalanced.pb.hcpapps.net",
+								"klb.test.domain.com",
 							},
 						},
 					},
 				}
 				klbHost := &DNSTreeNode{
-					Name: "klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
-							Targets: []string{"ie.klb.loadbalanced.pb.hcpapps.net"},
+							Targets: []string{"ie.klb.test.domain.com"},
 							Labels:  map[string]string{"stop_soft_delete": "true"},
 						},
 						{
-							Targets: []string{"ie.klb.loadbalanced.pb.hcpapps.net"},
+							Targets: []string{"ie.klb.test.domain.com"},
 							Labels:  map[string]string{"stop_soft_delete": "true"},
 						},
 					},
 				}
 				ieHost := &DNSTreeNode{
-					Name: "ie.klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "ie.klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
-							Targets: []string{"luster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net"},
+							Targets: []string{"luster1-gw1-ns1.klb.test.domain.com"},
 						},
 					},
 				}
 				cluster1Host := &DNSTreeNode{
-					Name: "cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "cluster1-gw1-ns1.klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Targets: []string{"172.18.200.1"},
 							Labels: map[string]string{
@@ -877,11 +888,11 @@ func Test_CopyLabels(t *testing.T) {
 			To: func() *DNSTreeNode {
 
 				root := &DNSTreeNode{
-					Name: "loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Targets: []string{
-								"klb.loadbalanced.pb.hcpapps.net",
+								"klb.test.domain.com",
 							},
 							Labels: map[string]string{
 								"owner": "10ancflq&&1lsnsc8i&&365k1r5i",
@@ -891,11 +902,11 @@ func Test_CopyLabels(t *testing.T) {
 				}
 
 				klbHost := &DNSTreeNode{
-					Name: "klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Targets: []string{
-								"ie.klb.loadbalanced.pb.hcpapps.net",
+								"ie.klb.test.domain.com",
 							},
 							Labels: map[string]string{
 								"owner":            "10ancflq&&1lsnsc8i",
@@ -904,7 +915,7 @@ func Test_CopyLabels(t *testing.T) {
 						},
 						{
 							Targets: []string{
-								"us.klb.loadbalanced.pb.hcpapps.net",
+								"us.klb.test.domain.com",
 							},
 							Labels: map[string]string{
 								"owner":            "365k1r5i",
@@ -913,7 +924,7 @@ func Test_CopyLabels(t *testing.T) {
 						},
 						{
 							Targets: []string{
-								"ie.klb.loadbalanced.pb.hcpapps.net",
+								"ie.klb.test.domain.com",
 							},
 							Labels: map[string]string{
 								"owner":            "10ancflq&&1lsnsc8i",
@@ -923,16 +934,16 @@ func Test_CopyLabels(t *testing.T) {
 					},
 				}
 				ieHost := &DNSTreeNode{
-					Name: "ie.klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "ie.klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
-							Targets: []string{"cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net"},
+							Targets: []string{"cluster1-gw1-ns1.klb.test.domain.com"},
 							Labels: map[string]string{
 								"owner": "10ancflq",
 							},
 						},
 						{
-							Targets: []string{"cluster2-gw1-ns1.klb.loadbalanced.pb.hcpapps.net"},
+							Targets: []string{"cluster2-gw1-ns1.klb.test.domain.com"},
 							Labels: map[string]string{
 								"owner": "1lsnsc8i",
 							},
@@ -940,8 +951,8 @@ func Test_CopyLabels(t *testing.T) {
 					},
 				}
 				cluster1Host := &DNSTreeNode{
-					Name: "cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "cluster1-gw1-ns1.klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Targets: []string{"172.18.200.1"},
 							Labels: map[string]string{
@@ -951,8 +962,8 @@ func Test_CopyLabels(t *testing.T) {
 					},
 				}
 				cluster2Host := &DNSTreeNode{
-					Name: "cluster2-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "cluster2-gw1-ns1.klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Targets: []string{"172.18.200.2"},
 							Labels: map[string]string{
@@ -962,10 +973,10 @@ func Test_CopyLabels(t *testing.T) {
 					},
 				}
 				usHost := &DNSTreeNode{
-					Name: "us.klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "us.klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
-							Targets: []string{"cluster3-gw1-ns1.klb.loadbalanced.pb.hcpapps.net"},
+							Targets: []string{"cluster3-gw1-ns1.klb.test.domain.com"},
 							Labels: map[string]string{
 								"owner": "365k1r5i",
 							},
@@ -973,8 +984,8 @@ func Test_CopyLabels(t *testing.T) {
 					},
 				}
 				cluster3Host := &DNSTreeNode{
-					Name: "cluster3-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "cluster3-gw1-ns1.klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Targets: []string{"172.18.200.3"},
 							Labels: map[string]string{
@@ -1003,17 +1014,17 @@ func Test_CopyLabels(t *testing.T) {
 				return root
 			},
 			Verify: func(to *DNSTreeNode) {
-				cluster1 := FindNode(to, "cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net")
-				cluster2 := FindNode(to, "cluster2-gw1-ns1.klb.loadbalanced.pb.hcpapps.net")
-				cluster3 := FindNode(to, "cluster3-gw1-ns1.klb.loadbalanced.pb.hcpapps.net")
+				cluster1 := FindNode(to, "cluster1-gw1-ns1.klb.test.domain.com")
+				cluster2 := FindNode(to, "cluster2-gw1-ns1.klb.test.domain.com")
+				cluster3 := FindNode(to, "cluster3-gw1-ns1.klb.test.domain.com")
 
-				Expect(len(cluster1.DataSets)).To(Equal(1))
-				Expect(len(cluster2.DataSets)).To(Equal(1))
-				Expect(len(cluster3.DataSets)).To(Equal(1))
+				Expect(len(cluster1.Endpoints)).To(Equal(1))
+				Expect(len(cluster2.Endpoints)).To(Equal(1))
+				Expect(len(cluster3.Endpoints)).To(Equal(1))
 
-				Expect(cluster1.DataSets[0].Labels).To(HaveKey("soft_delete"))
-				Expect(cluster2.DataSets[0].Labels).NotTo(HaveKey("soft_delete"))
-				Expect(cluster3.DataSets[0].Labels).NotTo(HaveKey("soft_delete"))
+				Expect(cluster1.Endpoints[0].Labels).To(HaveKey("soft_delete"))
+				Expect(cluster2.Endpoints[0].Labels).NotTo(HaveKey("soft_delete"))
+				Expect(cluster3.Endpoints[0].Labels).NotTo(HaveKey("soft_delete"))
 			},
 		},
 	}
@@ -1250,16 +1261,17 @@ func Test_AddLabelToBranch(t *testing.T) {
 			Value:  "true",
 			Node: &DNSTreeNode{
 				Name: "node",
-				DataSets: []*DNSTreeNodeData{
+				Endpoints: []*endpoint.Endpoint{
 					{
+						DNSName: "node",
 						Targets: []string{"branch"},
 					},
 				},
 			},
 			Verify: func(node *DNSTreeNode) {
-				Expect(len(node.DataSets)).To(Equal(1))
-				Expect(node.DataSets[0].Labels).NotTo(BeNil())
-				Expect(node.DataSets[0].Labels).To(HaveKey(PropagateFlag))
+				Expect(len(node.Endpoints)).To(Equal(1))
+				Expect(node.Endpoints[0].Labels).NotTo(BeNil())
+				Expect(node.Endpoints[0].Labels).To(HaveKey(PropagateFlag))
 			},
 		},
 	}
@@ -1285,39 +1297,44 @@ func Test_PropagateLabel(t *testing.T) {
 			Name: "leaf propagates through multiple matching datasets",
 			Tree: func() *DNSTreeNode {
 				root := &DNSTreeNode{
-					Name: "loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
-							Targets: []string{"klb.loadbalanced.pb.hcpapps.net"},
+							DNSName: "test.domain.com",
+							Targets: []string{"klb.test.domain.com"},
 						},
 					},
 				}
 
 				klbHost := &DNSTreeNode{
-					Name: "klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
-							Targets: []string{"ie.klb.loadbalanced.pb.hcpapps.net"},
+							DNSName: "klb.test.domain.com",
+							Targets: []string{"ie.klb.test.domain.com"},
 							Labels:  map[string]string{StopPropagateFlag: "true"},
 						},
 						{
-							Targets: []string{"ie.klb.loadbalanced.pb.hcpapps.net"},
+							DNSName: "klb.test.domain.com",
+							Targets: []string{"ie.klb.test.domain.com"},
 							Labels:  map[string]string{StopPropagateFlag: "true"},
 						},
 					},
 				}
 				ieHost := &DNSTreeNode{
-					Name: "ie.klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "ie.klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
-							Targets: []string{"cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net"},
+							DNSName: "ie.klb.test.domain.com",
+							Targets: []string{"cluster1-gw1-ns1.klb.test.domain.com"},
 						},
 					},
 				}
 				clusterHost := &DNSTreeNode{
-					Name: "cluster1-gw1-ns1.klb.loadbalanced.pb.hcpapps.net",
-					DataSets: []*DNSTreeNodeData{
+					Name: "cluster1-gw1-ns1.klb.test.domain.com",
+					Endpoints: []*endpoint.Endpoint{
 						{
+							DNSName: "cluster1-gw1-ns1.klb.test.domain.com",
 							Targets: []string{"172.18.200.1"},
 							Labels:  map[string]string{PropagateFlag: "true"},
 						},
@@ -1332,31 +1349,31 @@ func Test_PropagateLabel(t *testing.T) {
 			Verify: func(root *DNSTreeNode) {
 				Expect(len(root.Children)).To(Equal(1))
 
-				Expect(len(root.DataSets)).To(Equal(1))
-				Expect(root.DataSets[0].Labels).To(HaveKey(PropagateFlag))
+				Expect(len(root.Endpoints)).To(Equal(1))
+				Expect(root.Endpoints[0].Labels).To(HaveKey(PropagateFlag))
 
 				klbHost := root.Children[0]
-				Expect(len(klbHost.DataSets)).To(Equal(2))
+				Expect(len(klbHost.Endpoints)).To(Equal(2))
 
-				Expect(klbHost.DataSets[0].Labels).To(HaveKey(PropagateFlag))
-				Expect(klbHost.DataSets[1].Labels).To(HaveKey(PropagateFlag))
+				Expect(klbHost.Endpoints[0].Labels).To(HaveKey(PropagateFlag))
+				Expect(klbHost.Endpoints[1].Labels).To(HaveKey(PropagateFlag))
 
 				Expect(len(klbHost.Children)).To(Equal(1))
 
 				ieHost := klbHost.Children[0]
 				Expect(len(ieHost.Children)).To(Equal(1))
-				Expect(len(ieHost.DataSets)).To(Equal(1))
-				Expect(ieHost.DataSets[0].Labels).To(HaveKey(PropagateFlag))
+				Expect(len(ieHost.Endpoints)).To(Equal(1))
+				Expect(ieHost.Endpoints[0].Labels).To(HaveKey(PropagateFlag))
 
 				clusterHost := ieHost.Children[0]
-				Expect(len(clusterHost.DataSets)).To(Equal(1))
-				Expect(clusterHost.DataSets[0].Labels).To(HaveKey(PropagateFlag))
+				Expect(len(clusterHost.Endpoints)).To(Equal(1))
+				Expect(clusterHost.Endpoints[0].Labels).To(HaveKey(PropagateFlag))
 
 				Expect(len(clusterHost.Children)).To(Equal(1))
 
 				leafHost := clusterHost.Children[0]
-				Expect(len(leafHost.DataSets)).To(Equal(1))
-				Expect(leafHost.DataSets[0].Labels).To(HaveKey(PropagateFlag))
+				Expect(len(leafHost.Endpoints)).To(Equal(1))
+				Expect(leafHost.Endpoints[0].Labels).To(HaveKey(PropagateFlag))
 			},
 		},
 	}
@@ -1469,7 +1486,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 				root := &DNSTreeNode{Name: "root"}
 				other1 := &DNSTreeNode{
 					Name: "other1",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Labels: endpoint.Labels{
 								PropagateFlag: "true",
@@ -1534,7 +1551,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 				root := &DNSTreeNode{Name: "root"}
 				other1 := &DNSTreeNode{
 					Name: "other1",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Labels: endpoint.Labels{
 								PropagateFlag: "true",
@@ -1608,7 +1625,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 			Tree: func() *DNSTreeNode {
 				root := &DNSTreeNode{
 					Name: "root",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Labels: endpoint.Labels{
 								StopPropagateFlag: "true",
@@ -1625,7 +1642,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 				}
 				other1 := &DNSTreeNode{
 					Name: "other1",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Labels: endpoint.Labels{
 								PropagateFlag: "true",
@@ -1644,7 +1661,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 
 				other2 := &DNSTreeNode{
 					Name: "other2",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Labels: endpoint.Labels{
 								PropagateFlag: "true",
@@ -1711,7 +1728,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 			Tree: func() *DNSTreeNode {
 				root := &DNSTreeNode{
 					Name: "root",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Labels: endpoint.Labels{
 								StopPropagateFlag: "true",
@@ -1724,7 +1741,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 				}
 				stop1 := &DNSTreeNode{
 					Name: "stop1",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Labels: endpoint.Labels{
 								PropagateFlag: "true",
@@ -1790,7 +1807,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 
 				other := &DNSTreeNode{
 					Name: "other",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Targets: []string{"leaf"},
 							Labels: endpoint.Labels{
@@ -1836,7 +1853,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 			Tree: func() *DNSTreeNode {
 				root := &DNSTreeNode{
 					Name: "root",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Labels: endpoint.Labels{
 								StopPropagateFlag: "true",
@@ -1850,7 +1867,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 				}
 				stop1 := &DNSTreeNode{
 					Name: "stop1",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Labels: endpoint.Labels{
 								PropagateFlag: "true",
@@ -1867,7 +1884,7 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 				stop2 := &DNSTreeNode{Name: "stop2"}
 				other1 := &DNSTreeNode{
 					Name: "other1",
-					DataSets: []*DNSTreeNodeData{
+					Endpoints: []*endpoint.Endpoint{
 						{
 							Labels: endpoint.Labels{
 								PropagateFlag: "true",
@@ -1919,113 +1936,113 @@ func Test_PropagateStoppableLabel(t *testing.T) {
 }
 
 func getTestTree() *DNSTreeNode {
-	return &DNSTreeNode{
-		Name: "app.testdomain.com",
+	ip1Node := &DNSTreeNode{
+		Name: "ip1.testdomain.com",
 		Children: []*DNSTreeNode{
 			{
-				Name: "klb.testdomain.com",
-				Children: []*DNSTreeNode{
-					{
-						Name: "eu.klb.testdomain.com",
-						Children: []*DNSTreeNode{
-							{
-								Name: "ip1.testdomain.com",
-								Children: []*DNSTreeNode{
-									{
-										Name: "172.32.200.1",
-									},
-								},
-								DataSets: []*DNSTreeNodeData{
-									{
-										RecordType: "A",
-										Targets: []string{
-											"172.32.200.1",
-										},
-									},
-								},
-							},
-						},
-						DataSets: []*DNSTreeNodeData{
-							{
-								RecordType: "CNAME",
-								Targets: []string{
-									"ip1.testdomain.com",
-								},
-							},
-						},
-					},
-					{
-						Name: "us.klb.testdomain.com",
-						Children: []*DNSTreeNode{
-							{
-								Name: "ip2.testdomain.com",
-								Children: []*DNSTreeNode{
-									{
-										Name: "172.32.200.2",
-									},
-								},
-								DataSets: []*DNSTreeNodeData{
-									{
-										RecordType: "A",
-										Targets: []string{
-											"172.32.200.2",
-										},
-									},
-								},
-							},
-						},
-						DataSets: []*DNSTreeNodeData{
-							{
-								RecordType: "CNAME",
-								Targets: []string{
-									"ip2.testdomain.com",
-								},
-							},
-						},
-					},
-				},
-				DataSets: []*DNSTreeNodeData{
-					{
-						RecordType: "CNAME",
-						ProviderSpecific: endpoint.ProviderSpecific{
-							{
-								Name:  "geo-code",
-								Value: "*",
-							},
-						},
-						Targets: []string{
-							"eu.klb.testdomain.com",
-						},
-					},
-					{
-						RecordType: "CNAME",
-						ProviderSpecific: endpoint.ProviderSpecific{
-							{
-								Name:  "geo-code",
-								Value: "GEO-NA",
-							},
-						},
-						Targets: []string{
-							"us.klb.testdomain.com",
-						},
-					},
-					{
-						RecordType: "CNAME",
-						ProviderSpecific: endpoint.ProviderSpecific{
-							{
-								Name:  "geo-code",
-								Value: "GEO-EU",
-							},
-						},
-						Targets: []string{
-							"eu.klb.testdomain.com",
-						},
-					},
+				Name: "172.32.200.1",
+			},
+		},
+		Endpoints: []*endpoint.Endpoint{
+			{
+				DNSName:    "ip1.testdomain.com",
+				RecordType: "A",
+				Targets: []string{
+					"172.32.200.1",
 				},
 			},
 		},
-		DataSets: []*DNSTreeNodeData{
+	}
+	ip2Node := &DNSTreeNode{
+		Name: "ip2.testdomain.com",
+		Children: []*DNSTreeNode{
 			{
+				Name: "172.32.200.2",
+			},
+		},
+		Endpoints: []*endpoint.Endpoint{
+			{
+				DNSName:    "ip2.testdomain.com",
+				RecordType: "A",
+				Targets: []string{
+					"172.32.200.2",
+				},
+			},
+		},
+	}
+	euNode := &DNSTreeNode{
+		Name: "eu.klb.testdomain.com",
+		Endpoints: []*endpoint.Endpoint{
+			{
+				DNSName:    "eu.klb.testdomain.com",
+				RecordType: "CNAME",
+				Targets: []string{
+					"ip1.testdomain.com",
+				},
+			},
+		},
+	}
+	usNode := &DNSTreeNode{
+		Name: "us.klb.testdomain.com",
+		Endpoints: []*endpoint.Endpoint{
+			{
+				DNSName:    "us.klb.testdomain.com",
+				RecordType: "CNAME",
+				Targets: []string{
+					"ip2.testdomain.com",
+				},
+			},
+		},
+	}
+	klbNode := &DNSTreeNode{
+		Name: "klb.testdomain.com",
+		Endpoints: []*endpoint.Endpoint{
+			{
+				DNSName:    "klb.testdomain.com",
+				RecordType: "CNAME",
+				ProviderSpecific: endpoint.ProviderSpecific{
+					{
+						Name:  "geo-code",
+						Value: "*",
+					},
+				},
+				Targets: []string{
+					"eu.klb.testdomain.com",
+				},
+			},
+			{
+				DNSName:    "klb.testdomain.com",
+				RecordType: "CNAME",
+				ProviderSpecific: endpoint.ProviderSpecific{
+					{
+						Name:  "geo-code",
+						Value: "GEO-NA",
+					},
+				},
+				Targets: []string{
+					"us.klb.testdomain.com",
+				},
+			},
+			{
+				DNSName:    "klb.testdomain.com",
+				RecordType: "CNAME",
+				ProviderSpecific: endpoint.ProviderSpecific{
+					{
+						Name:  "geo-code",
+						Value: "GEO-EU",
+					},
+				},
+				Targets: []string{
+					"eu.klb.testdomain.com",
+				},
+			},
+		},
+	}
+	appNode := &DNSTreeNode{
+		Name: "app.testdomain.com",
+		Endpoints: []*endpoint.Endpoint{
+			{
+				DNSName:    "app.testdomain.com",
 				RecordType: "CNAME",
 				Targets: []string{
 					"klb.testdomain.com",
@@ -2033,4 +2050,10 @@ func getTestTree() *DNSTreeNode {
 			},
 		},
 	}
+	AddChild(euNode, ip1Node)
+	AddChild(usNode, ip2Node)
+	AddChild(klbNode, euNode)
+	AddChild(klbNode, usNode)
+	AddChild(appNode, klbNode)
+	return appNode
 }

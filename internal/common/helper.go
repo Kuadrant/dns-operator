@@ -1,9 +1,11 @@
 package common
 
 import (
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
+	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 )
 
 // RandomizeValidationDuration randomizes duration for a given variance with a min value of 1 sec
@@ -26,4 +28,49 @@ func RandomizeDuration(variance, duration float64) time.Duration {
 	return time.Millisecond * time.Duration(rand.Int63nRange(
 		int64(lowerLimit),
 		int64(upperLimit)))
+}
+
+// MergeEndpoints merges existing endpoints with new and ensures there are no duplicates
+func MergeEndpoints(currentEndpoints, newEndpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
+	// map to use as filter
+	combinedMap := make(map[string]*externaldnsendpoint.Endpoint)
+	// return struct
+	var combinedEndpoints []*externaldnsendpoint.Endpoint
+
+	// Use DNSName of EP as unique key. Ensures no duplicates
+	for _, endpoint := range currentEndpoints {
+		combinedMap[endpoint.DNSName+endpoint.RecordType+strings.Join(endpoint.Targets, "::")] = endpoint
+	}
+	for _, endpoint := range newEndpoints {
+		combinedMap[endpoint.DNSName+endpoint.RecordType+strings.Join(endpoint.Targets, "::")] = endpoint
+	}
+
+	// Convert a map into an array
+	for _, endpoint := range combinedMap {
+		combinedEndpoints = append(combinedEndpoints, endpoint)
+	}
+	return combinedEndpoints
+}
+
+func RemoveLabelFromEndpoint(label string, endpoint *externaldnsendpoint.Endpoint) *externaldnsendpoint.Endpoint {
+	if endpoint.Labels == nil {
+		return endpoint
+	}
+
+	delete(endpoint.Labels, label)
+	return endpoint
+}
+
+func RemoveLabelFromEndpoints(label string, endpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
+	for _, e := range endpoints {
+		RemoveLabelFromEndpoint(label, e)
+	}
+	return endpoints
+}
+func RemoveLabelsFromEndpoints(labels []string, endpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
+	for _, l := range labels {
+		RemoveLabelFromEndpoints(l, endpoints)
+	}
+
+	return endpoints
 }
