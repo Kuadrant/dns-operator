@@ -23,6 +23,11 @@ install-coredns: kustomize ## Install CoreDNS
 	${KUSTOMIZE} build --enable-helm ${COREDNS_KUSTOMIZATION} | kubectl apply -f -
 	kubectl wait --timeout=60s --for=condition=Ready=True pods -A -l app.kubernetes.io/name=coredns
 
+.PHONY: display-coredns
+display-coredns: COREDNS_KUSTOMIZATION=config/coredns
+display-coredns: kustomize ## Display yaml from helm chart CoreDNS
+	${KUSTOMIZE} build --enable-helm ${COREDNS_KUSTOMIZATION} | yq
+
 .PHONY: install-coredns-unmonitored
 install-coredns-unmonitored: kustomize ## Install CoreDNS without ServiceMonitor
 	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-unmonitored

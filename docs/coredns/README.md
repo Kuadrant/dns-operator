@@ -66,7 +66,7 @@ kubectl logs -f deployments/kuadrant-coredns -n kuadrant-coredns
 
 Use DNS Server:
 ```shell
-DNS_SRV=`kubectl get service/kuadrant-coredns -n kuadrant-coredns -o yaml | yq .status.loadBalancer.ingress[0].ip`
+DNS_SRV=`kubectl get service/kuadrant-coredns -n kuadrant-coredns -o yaml | yq '.status.loadBalancer.ingress[0].ip'`
 echo $DNS_SRV
 echo "Dig command: dig @$DNS_SRV google.com"
 dig @$DNS_SRV google.com

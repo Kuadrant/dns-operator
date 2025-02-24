@@ -24,10 +24,10 @@ spec:
     - dnsName: klb.api.k.example.com
       providerSpecific:
         - name: geo-code
-          value: GEO-US
+          value: GEO-NA
       recordTTL: 300
       recordType: CNAME
-      setIdentifier: GEO-US
+      setIdentifier: GEO-NA
       targets:
         - geo-us.klb.api.k.example.com
     - dnsName: geo-us.klb.api.k.example.com
