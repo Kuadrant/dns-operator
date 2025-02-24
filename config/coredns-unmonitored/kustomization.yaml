@@ -10,4 +10,4 @@ patches:
       kind: ServiceMonitor
       metadata:
         name: kuadrant-coredns
-        namespace: kuadrant-dns
+        namespace: kuadrant-coredns

@@ -1,9 +1,0 @@
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: kuadrant-coredns
-  namespace: kuadrant-dns-c1
-spec:
-  namespaceSelector:
-    matchNames:
-      - kuadrant-dns-c1

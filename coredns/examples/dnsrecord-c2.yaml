@@ -2,7 +2,7 @@ apiVersion: kuadrant.io/v1alpha1
 kind: DNSRecord
 metadata:
   name: c1-loadbalanced-dns
-  namespace: kuadrant-dns-c2
+  namespace: kuadrant-coredns-2
   labels:
     'provider': 'kuadrant'
 spec:
