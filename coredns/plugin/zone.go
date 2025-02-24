@@ -4,16 +4,20 @@ import (
 	"context"
 	"net"
 	"strconv"
+	"strings"
 
 	"sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/coredns/coredns/plugin/file"
+	"github.com/coredns/coredns/plugin/metadata"
 	"github.com/coredns/coredns/plugin/pkg/dnsutil"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
+
+const continentGEOPrefix = "GEO-"
 
 type geodRR struct {
 	dns.RR
@@ -164,8 +168,9 @@ func (z *Zone) parseWeightedAnswers(_ context.Context, _ request.Request, wrrs [
 }
 
 // parseGeoAnswers takes a slice of answers for a dns name and reduces it down to a single answer based on geo.
-func (z *Zone) parseGeoAnswers(_ context.Context, _ request.Request, grrs []dns.RR) []dns.RR {
+func (z *Zone) parseGeoAnswers(ctx context.Context, request request.Request, grrs []dns.RR) []dns.RR {
 	log.Debugf("parsing geo answers for %s", grrs[0].Header().Name)
+	log.Debugf("source ip is %s", request.IP())
 	var answer *dns.RR
 	var geoRRs []geodRR
 
@@ -178,11 +183,29 @@ func (z *Zone) parseGeoAnswers(_ context.Context, _ request.Request, grrs []dns.
 	}
 
 	if geoRRs != nil {
-		// ToDo calculate answer here!!
-		answer = &geoRRs[0].RR
+		geoCountryCode := metadata.ValueFunc(ctx, "geoip/country/code")
+		geoContinetCode := metadata.ValueFunc(ctx, "geoip/continent/code")
+		if geoCountryCode != nil && geoContinetCode != nil {
+			for _, geoRR := range geoRRs {
+				recordGeoCode := geoRR.geo
+				sourceGeoCode := geoCountryCode()
+				if strings.HasPrefix(recordGeoCode, continentGEOPrefix) {
+					recordGeoCode = strings.TrimPrefix(recordGeoCode, continentGEOPrefix)
+					sourceGeoCode = geoContinetCode()
+				}
+				if recordGeoCode == sourceGeoCode {
+					answer = &geoRR.RR
+				}
+			}
+		} else {
+			log.Debugf("no geo metadata available for %s", request.IP())
+		}
 	}
 
 	if answer == nil {
+		if geoRRs != nil {
+			answer = &geoRRs[0].RR
+		}
 		answer = &grrs[0]
 	}
 
