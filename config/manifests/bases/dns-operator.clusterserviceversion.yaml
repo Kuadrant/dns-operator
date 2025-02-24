@@ -5,7 +5,7 @@ metadata:
     alm-examples: '[]'
     capabilities: Basic Install
     categories: Integration & Delivery
-    containerImage: quay.io/kuadrant/dns-operator:latest
+    containerImage: quay.io/kuadrant/dns-operator:coredns
     description: A Kubernetes Operator to manage the lifecycle of DNS resources
     repository: https://github.com/kuadrant/dns-operator
     support: kuadrant
