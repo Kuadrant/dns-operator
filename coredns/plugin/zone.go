@@ -72,6 +72,14 @@ func NewZone(name string) *Zone {
 func (z *Zone) InsertEndpoint(ep *endpoint.Endpoint) error {
 	rrs := []dns.RR{}
 
+	if ep.RecordType == endpoint.RecordTypeNS {
+		for _, t := range ep.Targets {
+			ns := &dns.NS{Hdr: dns.RR_Header{Name: dns.Fqdn(ep.DNSName), Rrtype: dns.TypeNS, Class: dns.ClassINET, Ttl: uint32(ep.RecordTTL)},
+				Ns: dns.Fqdn(t)}
+			rrs = append(rrs, ns)
+		}
+	}
+
 	if ep.RecordType == endpoint.RecordTypeA {
 		for _, t := range ep.Targets {
 			a := &dns.A{Hdr: dns.RR_Header{Name: dns.Fqdn(ep.DNSName), Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: uint32(ep.RecordTTL)},
