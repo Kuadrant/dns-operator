@@ -182,19 +182,22 @@ func (z *Zone) parseGeoAnswers(ctx context.Context, request request.Request, grr
 	}
 
 	if geoRRs != nil {
-		// ToDo calculate answer here!!
 		geoCountryCode := metadata.ValueFunc(ctx, "geoip/country/code")
 		geoContinetCode := metadata.ValueFunc(ctx, "geoip/continent/code")
-		for _, geoRR := range geoRRs {
-			recordGeoCode := geoRR.geo
-			sourceGeoCode := geoCountryCode()
-			if strings.HasPrefix(recordGeoCode, continentGEOPrefix) {
-				recordGeoCode = strings.TrimPrefix(recordGeoCode, continentGEOPrefix)
-				sourceGeoCode = geoContinetCode()
+		if geoCountryCode != nil && geoContinetCode != nil {
+			for _, geoRR := range geoRRs {
+				recordGeoCode := geoRR.geo
+				sourceGeoCode := geoCountryCode()
+				if strings.HasPrefix(recordGeoCode, continentGEOPrefix) {
+					recordGeoCode = strings.TrimPrefix(recordGeoCode, continentGEOPrefix)
+					sourceGeoCode = geoContinetCode()
+				}
+				if recordGeoCode == sourceGeoCode {
+					answer = &geoRR.RR
+				}
 			}
-			if recordGeoCode == sourceGeoCode {
-				answer = &geoRR.RR
-			}
+		} else {
+			log.Debugf("no geo metadata available for %s", request.IP())
 		}
 	}
 
