@@ -9,6 +9,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/external-dns/endpoint"
+
+	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
 )
 
 const (
@@ -164,6 +166,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"SetIdentifier":    Equal(geo),
 							"RecordTTL":        Equal(endpoint.TTL(300)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: geo}}),
+							"Labels":           HaveKeyWithValue(externaldnsplan.StopSoftDeleteLabel, "true"),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":          Equal("klb.test." + domain),
@@ -172,6 +175,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"SetIdentifier":    Equal("default"),
 							"RecordTTL":        Equal(endpoint.TTL(300)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: "*"}}),
+							"Labels":           HaveKeyWithValue(externaldnsplan.StopSoftDeleteLabel, "true"),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":       Equal(HostOne(domain)),
@@ -213,6 +217,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"SetIdentifier":    Equal("default"),
 							"RecordTTL":        Equal(endpoint.TTL(300)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: "*"}}),
+							"Labels":           HaveKeyWithValue(externaldnsplan.StopSoftDeleteLabel, "true"),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":          Equal("klb." + domain),
@@ -221,6 +226,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"SetIdentifier":    Equal(geo),
 							"RecordTTL":        Equal(endpoint.TTL(300)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: geo}}),
+							"Labels":           HaveKeyWithValue(externaldnsplan.StopSoftDeleteLabel, "true"),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":       Equal(HostWildcard(domain)),
@@ -268,6 +274,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"SetIdentifier":    Equal("CAD"),
 							"RecordTTL":        Equal(endpoint.TTL(300)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: "CAD"}}),
+							"Labels":           HaveKeyWithValue(externaldnsplan.StopSoftDeleteLabel, "true"),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":       Equal(HostOne(domain)),
@@ -309,6 +316,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"SetIdentifier":    Equal("CAD"),
 							"RecordTTL":        Equal(endpoint.TTL(300)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: "CAD"}}),
+							"Labels":           HaveKeyWithValue(externaldnsplan.StopSoftDeleteLabel, "true"),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":       Equal(HostWildcard(domain)),

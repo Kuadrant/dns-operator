@@ -29,12 +29,18 @@ import (
 	externaldnsplan "sigs.k8s.io/external-dns/plan"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 )
 
 var (
 	ErrInvalidTarget      = errors.New("invalid target")
 	ErrOwnerConflict      = errors.New("owner conflict")
 	ErrRecordTypeConflict = errors.New("record type conflict")
+)
+
+const (
+	SoftDeleteLabel     = "soft_delete"
+	StopSoftDeleteLabel = "stop_soft_delete"
 )
 
 // PropertyComparator is used in Plan for comparing the previous and current custom annotations.
@@ -200,6 +206,58 @@ func (p *Plan) Error() error {
 	return errors.Join(p.Errors...)
 }
 
+func CleanLabelFromEndpoint(label string, endpoint *endpoint.Endpoint) *endpoint.Endpoint {
+	if endpoint.Labels == nil {
+		return endpoint
+	}
+
+	delete(endpoint.Labels, label)
+	return endpoint
+}
+
+func CleanLabelFromEndpoints(label string, endpoints []*endpoint.Endpoint) []*endpoint.Endpoint {
+	for _, e := range endpoints {
+		CleanLabelFromEndpoint(label, e)
+	}
+	return endpoints
+}
+func CleanLabelsFromEndpoints(labels []string, endpoints []*endpoint.Endpoint) []*endpoint.Endpoint {
+	for _, l := range labels {
+		CleanLabelFromEndpoints(l, endpoints)
+	}
+
+	return endpoints
+}
+
+func (p *Plan) processStopLabel() {
+	if p.RootHost == nil {
+		return
+	}
+	desiredTree := common.MakeTreeFromEndpoints(*p.RootHost, p.Desired)
+	currentTree := common.MakeTreeFromEndpoints(*p.RootHost, p.Current)
+
+	// bad trees, return
+	if len(desiredTree.Children) == 0 || len(currentTree.Children) == 0 {
+		return
+	}
+
+	// copy soft_delete and stop_soft_delete labels from desired to current tree for propagation
+	common.CopyLabel(SoftDeleteLabel, desiredTree, currentTree)
+	common.CopyLabel(StopSoftDeleteLabel, desiredTree, currentTree)
+
+	// propagate label in desired tree ignoring stop labels
+	common.PropagateLabel(desiredTree, SoftDeleteLabel, "true")
+
+	// propagate the stop label in the current tree
+	common.PropagateStoppableLabel(currentTree, SoftDeleteLabel, "true", StopSoftDeleteLabel)
+
+	// write everything back to the plan
+	p.Desired = []*endpoint.Endpoint{}
+	p.Current = []*endpoint.Endpoint{}
+	common.ToEndpoints(desiredTree, &p.Desired)
+	common.ToEndpoints(currentTree, &p.Current)
+}
+
 // Calculate computes the actions needed to move current state towards desired
 // state. It then passes those changes to the current policy for further
 // processing. It returns a copy of Plan with the changes populated.
@@ -218,6 +276,8 @@ func (p *Plan) Calculate() *Plan {
 		rootDomainFilter = endpoint.NewDomainFilter([]string{rootDomainName})
 		p.DomainFilter = append(p.DomainFilter, &rootDomainFilter)
 	}
+
+	p.processStopLabel()
 
 	for _, current := range p.filterRecordsForPlan(p.Current) {
 		t.addCurrent(current)
@@ -249,8 +309,14 @@ func (p *Plan) Calculate() *Plan {
 		if len(row.current) == 0 {
 			recordsByType := t.resolver.ResolveRecordTypes(key, row)
 			for _, records := range recordsByType {
-				if len(records.candidates) > 0 {
-					managedChanges.creates = append(managedChanges.creates, t.resolver.ResolveCreate(records.candidates))
+				candidates := []*endpoint.Endpoint{}
+				for _, c := range records.candidates {
+					if _, ok := c.Labels[SoftDeleteLabel]; !ok {
+						candidates = append(candidates, c)
+					}
+				}
+				if len(candidates) > 0 {
+					managedChanges.creates = append(managedChanges.creates, t.resolver.ResolveCreate(candidates))
 					managedChanges.dnsNameOwners[key.dnsName] = []string{p.OwnerID}
 				}
 			}
@@ -260,29 +326,7 @@ func (p *Plan) Calculate() *Plan {
 		if len(row.current) > 0 && len(row.candidates) == 0 {
 			recordsByType := t.resolver.ResolveRecordTypes(key, row)
 			for _, records := range recordsByType {
-				if records.current != nil {
-					candidate := records.current.DeepCopy()
-					owners := []string{}
-					if endpointOwner, hasOwner := records.current.Labels[endpoint.OwnerLabelKey]; hasOwner && p.OwnerID != "" {
-						owners = strings.Split(endpointOwner, OwnerLabelDeliminator)
-						for i, v := range owners {
-							if v == p.OwnerID {
-								owners = append(owners[:i], owners[i+1:]...)
-								break
-							}
-						}
-						slices.Sort(owners)
-						owners = slices.Compact[[]string, string](owners)
-						candidate.Labels[endpoint.OwnerLabelKey] = strings.Join(owners, OwnerLabelDeliminator)
-					}
-
-					if len(owners) == 0 {
-						managedChanges.deletes = append(managedChanges.deletes, records.current)
-					} else {
-						managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous, isDelete: true})
-						managedChanges.dnsNameOwners[key.dnsName] = append(managedChanges.dnsNameOwners[key.dnsName], owners...)
-					}
-				}
+				p.processDelete(records, key, &managedChanges)
 			}
 		}
 
@@ -292,6 +336,11 @@ func (p *Plan) Calculate() *Plan {
 			var rTypeUpdate endpointUpdate
 			recordsByType := t.resolver.ResolveRecordTypes(key, row)
 			for _, records := range recordsByType {
+				// handle soft_delete
+				if records.current != nil && records.current.Labels != nil && records.current.Labels[SoftDeleteLabel] == "true" {
+					p.processDelete(records, key, &managedChanges)
+					continue
+				}
 
 				// record type not desired
 				if records.current != nil && len(records.candidates) == 0 {
@@ -375,6 +424,32 @@ func (p *Plan) Calculate() *Plan {
 	return plan
 }
 
+func (p *Plan) processDelete(records *domainEndpoints, key planKey, managedChanges *managedRecordSetChanges) {
+	if records.current != nil {
+		candidate := records.current.DeepCopy()
+		owners := []string{}
+		if endpointOwner, hasOwner := candidate.Labels[endpoint.OwnerLabelKey]; hasOwner && p.OwnerID != "" {
+			owners = strings.Split(endpointOwner, OwnerLabelDeliminator)
+			for i, v := range owners {
+				if v == p.OwnerID {
+					owners = append(owners[:i], owners[i+1:]...)
+					break
+				}
+			}
+			slices.Sort(owners)
+			owners = slices.Compact[[]string, string](owners)
+			candidate.Labels[endpoint.OwnerLabelKey] = strings.Join(owners, OwnerLabelDeliminator)
+		}
+
+		if len(owners) == 0 {
+			managedChanges.deletes = append(managedChanges.deletes, records.current)
+		} else {
+			managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous, isDelete: true})
+			managedChanges.dnsNameOwners[key.dnsName] = append(managedChanges.dnsNameOwners[key.dnsName], owners...)
+		}
+	}
+}
+
 // filterRecordsForPlan removes records that are not relevant to the planner.
 // Currently, this just removes TXT records to prevent them from being
 // deleted erroneously by the planner (only the TXT registry should do this.)
@@ -436,6 +511,12 @@ type managedRecordSetChanges struct {
 }
 
 func (e *managedRecordSetChanges) Calculate() *externaldnsplan.Changes {
+	CleanLabelFromEndpoints(SoftDeleteLabel, e.deletes)
+	CleanLabelFromEndpoints(StopSoftDeleteLabel, e.deletes)
+
+	CleanLabelFromEndpoints(SoftDeleteLabel, e.creates)
+	CleanLabelFromEndpoints(StopSoftDeleteLabel, e.creates)
+
 	changes := &externaldnsplan.Changes{
 		Delete: e.deletes,
 	}
@@ -449,6 +530,10 @@ func (e *managedRecordSetChanges) Calculate() *externaldnsplan.Changes {
 	}
 
 	for _, update := range e.updates {
+		CleanLabelFromEndpoint(SoftDeleteLabel, update.current)
+		CleanLabelFromEndpoint(StopSoftDeleteLabel, update.current)
+		CleanLabelFromEndpoint(SoftDeleteLabel, update.desired)
+		CleanLabelFromEndpoint(StopSoftDeleteLabel, update.desired)
 		e.calculateDesired(update)
 		if update.ShouldUpdate() {
 			if !update.IsDeleting() {
