@@ -9,7 +9,9 @@ k.example.com {
     debug
     errors
     log
-    geoip GeoLite2-City-demo.mmdb
+    geoip GeoLite2-City-demo.mmdb {
+        edns-subnet
+    }
     metadata
     kuadrant
     prometheus 0.0.0.0:9153

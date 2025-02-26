@@ -93,3 +93,10 @@ patches:
             value: ""
     target:
       kind: Deployment
+  - target:
+      kind: Service
+      name: kuadrant-coredns
+    patch: |
+      - op: add
+        path: /spec/externalTrafficPolicy
+        value: Local
