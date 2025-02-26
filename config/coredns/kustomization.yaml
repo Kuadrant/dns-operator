@@ -31,6 +31,9 @@ helmCharts:
             - name: debug
             - name: errors
             - name: log
+            - name: geoip
+              parameters: GeoLite2-City-demo.mmdb
+            - name: metadata
             - name: kuadrant
             - name: prometheus
               parameters: 0.0.0.0:9153

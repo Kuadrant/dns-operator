@@ -9,6 +9,8 @@ k.example.com {
     debug
     errors
     log
+    geoip GeoLite2-City-demo.mmdb
+    metadata
     kuadrant
     prometheus 0.0.0.0:9153
 }
