@@ -12,8 +12,11 @@ import (
 )
 
 const (
-	cdirIE = "127.0.100.100/24"
-	cidrUS = "127.0.200.200/24"
+	cdirIE127 = "127.0.100.100/24"
+	cidrIE10  = "10.89.100.100/24"
+
+	cidrUS127 = "127.0.200.200/24"
+	cidrUS10  = "10.89.200.200/24"
 )
 
 // Create new mmdb database fixtures in this directory.
@@ -32,13 +35,20 @@ func createCityDB(dbName, dbType string) {
 	}
 
 	// Define and insert the new data.
-	_, ipIE, err := net.ParseCIDR(cdirIE)
+	_, ipIE127, err := net.ParseCIDR(cdirIE127)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, ipIE10, err := net.ParseCIDR(cidrIE10)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Define and insert the new data.
-	_, ipUS, err := net.ParseCIDR(cidrUS)
+	_, ipUS124, err := net.ParseCIDR(cidrUS127)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, ipUS10, err := net.ParseCIDR(cidrUS10)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -77,10 +87,16 @@ func createCityDB(dbName, dbType string) {
 		},
 	}
 
-	if err := writer.InsertFunc(ipIE, inserter.TopLevelMergeWith(recordIE)); err != nil {
+	if err := writer.InsertFunc(ipIE127, inserter.TopLevelMergeWith(recordIE)); err != nil {
 		log.Fatal(err)
 	}
-	if err := writer.InsertFunc(ipUS, inserter.TopLevelMergeWith(recordUS)); err != nil {
+	if err := writer.InsertFunc(ipIE10, inserter.TopLevelMergeWith(recordIE)); err != nil {
+		log.Fatal(err)
+	}
+	if err := writer.InsertFunc(ipUS124, inserter.TopLevelMergeWith(recordUS)); err != nil {
+		log.Fatal(err)
+	}
+	if err := writer.InsertFunc(ipUS10, inserter.TopLevelMergeWith(recordUS)); err != nil {
 		log.Fatal(err)
 	}
 
@@ -93,4 +109,5 @@ func createCityDB(dbName, dbType string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-}*/
+}
+*/

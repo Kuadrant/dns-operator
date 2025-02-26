@@ -170,6 +170,7 @@ func (z *Zone) parseWeightedAnswers(_ context.Context, _ request.Request, wrrs [
 // parseGeoAnswers takes a slice of answers for a dns name and reduces it down to a single answer based on geo.
 func (z *Zone) parseGeoAnswers(ctx context.Context, request request.Request, grrs []dns.RR) []dns.RR {
 	log.Debugf("parsing geo answers for %s", grrs[0].Header().Name)
+	log.Debugf("source ip is %s", request.IP())
 	var answer *dns.RR
 	var geoRRs []geodRR
 
