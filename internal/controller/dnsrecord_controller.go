@@ -661,7 +661,7 @@ func computeFullEndpointSet(ctx context.Context, from *v1alpha1.DNSRecord, dnsPr
 		return remoteEndpoints, err
 	}
 	out, _ := json.MarshalIndent(remoteEndpoints, "", " ")
-	fmt.Println("remote end points ", string(out))
+	fmt.Println("full endpoints ", string(out))
 	return remoteEndpoints, err
 }
 
@@ -693,6 +693,7 @@ func (r *DNSRecordReconciler) applyLocalChanges(ctx context.Context, dnsRecord *
 
 		if err := r.Client.Get(ctx, client.ObjectKeyFromObject(mergeCopy), mergeCopy); err != nil {
 			if apierrors.IsNotFound(err) {
+				fmt.Println("creating merged copy ", mergeCopy.Name)
 				mergeCopy.Spec = original.Spec
 				mergeCopy.Spec.Endpoints = endpointSet
 				mergeCopy.Labels = map[string]string{"kuadrant.io/type": "merged", "kuadrant.io/zone-name": original.Status.ZoneDomainName}
@@ -708,7 +709,8 @@ func (r *DNSRecordReconciler) applyLocalChanges(ctx context.Context, dnsRecord *
 
 		}
 		mergeCopy.Spec.Endpoints = endpointSet
-		if r.Client.Update(ctx, mergeCopy, &client.UpdateOptions{}); err != nil {
+		fmt.Println("Updating merged copy ", mergeCopy.Name)
+		if err := r.Client.Update(ctx, mergeCopy, &client.UpdateOptions{}); err != nil {
 			return fmt.Errorf("failed to update core dns merged copy %w", err)
 		}
 		return nil

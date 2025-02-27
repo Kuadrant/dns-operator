@@ -2,6 +2,7 @@ package coredns
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -123,9 +124,9 @@ func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*e
 			addWeight(rr, endpoints)
 		}
 	}
-
-	// json, _ := json.MarshalIndent(endpoints, "", " ")
-	// fmt.Println("merged endpoints", string(json))
+	populateGEO(endpoints)
+	json, _ := json.MarshalIndent(endpoints, "", " ")
+	fmt.Println("merged endpoints", string(json))
 	// TODO validate that the endpoints are coherent and all logically end without going to dead ends
 	return endpoints, nil
 }
@@ -135,7 +136,7 @@ func sanitize(host string) string {
 }
 
 func (p *CoreDNSProvider) mergeDNSEndpoints(rr dns.RR, endpoints []*endpoint.Endpoint) []*endpoint.Endpoint {
-
+	fmt.Println("merging endpoints ")
 	ep := &endpoint.Endpoint{
 		DNSName:   sanitize(rr.Header().Name),
 		Targets:   []string{},
@@ -165,9 +166,29 @@ func (p *CoreDNSProvider) mergeDNSEndpoints(rr dns.RR, endpoints []*endpoint.End
 		}
 	}
 	if !alreadyExists {
+		fmt.Println("adding ep ", ep)
 		endpoints = append(endpoints, ep)
+	} else {
+		fmt.Println("not adding ep as it exists ", ep)
 	}
+
 	return endpoints
+}
+
+func populateGEO(endpoints []*endpoint.Endpoint) {
+	// very basic look for endpoints targeting endpoints starting with geo- add add provider specific data to those
+	for _, ep := range endpoints {
+		for _, target := range ep.Targets {
+			if strings.HasPrefix(target, "geo-") {
+				fmt.Println("found geo target adding geo provider specific data")
+				parts := strings.Split(target, ".")
+				ep.ProviderSpecific = append(ep.ProviderSpecific, endpoint.ProviderSpecificProperty{
+					Name:  "geo-code",
+					Value: strings.ToUpper(parts[0]),
+				})
+			}
+		}
+	}
 }
 
 func addWeight(rr dns.RR, endpoints []*endpoint.Endpoint) {
@@ -199,7 +220,7 @@ func dnsQuery(hosts []string, nameserver string) (map[string]*dns.Msg, error) {
 	answers := map[string]*dns.Msg{}
 	key := "dns"
 	for _, host := range hosts {
-		fmt.Println("querying host ", host)
+		fmt.Println("querying host ", host, "@ ns", nameserver)
 		if strings.HasPrefix(host, "w.") {
 			queryType = dns.TypeTXT
 			key = "weight"
