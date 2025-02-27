@@ -659,7 +659,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	}
 
 	// add related endpoints to the record
-	dnsRecord.Status.ZoneEndpoints = mergeZoneEndpoints(
+	dnsRecord.Status.ZoneEndpoints = common.MergeEndpoints(
 		dnsRecord.Status.ZoneEndpoints,
 		filterEndpoints(rootDomainName, zoneEndpoints))
 
@@ -705,26 +705,4 @@ func filterEndpoints(rootDomainName string, zoneEndpoints []*externaldnsendpoint
 		}
 	}
 	return filteredEndpoints
-}
-
-// mergeZoneEndpoints merges existing endpoints with new and ensures there are no duplicates
-func mergeZoneEndpoints(currentEndpoints, newEndpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
-	// map to use as filter
-	combinedMap := make(map[string]*externaldnsendpoint.Endpoint)
-	// return struct
-	var combinedEndpoints []*externaldnsendpoint.Endpoint
-
-	// Use DNSName of EP as unique key. Ensures no duplicates
-	for _, endpoint := range currentEndpoints {
-		combinedMap[endpoint.DNSName] = endpoint
-	}
-	for _, endpoint := range newEndpoints {
-		combinedMap[endpoint.DNSName] = endpoint
-	}
-
-	// Convert a map into an array
-	for _, endpoint := range combinedMap {
-		combinedEndpoints = append(combinedEndpoints, endpoint)
-	}
-	return combinedEndpoints
 }
