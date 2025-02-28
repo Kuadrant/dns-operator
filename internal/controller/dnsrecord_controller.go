@@ -618,21 +618,17 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 	return r.applyExternalDNSChanges(ctx, dnsRecord, probes, dnsProvider, isDelete)
 }
 
-// core dns stuff
-// centeralise
-const localZoneDomain = "kdrnt"
-
 func computeLocalEndpointSet(original *v1alpha1.DNSRecord) []*externaldnsendpoint.Endpoint {
 	var localEndpoints []*externaldnsendpoint.Endpoint
 	rootDomainName := original.Spec.RootHost
 	for _, originalEP := range original.Spec.Endpoints {
 		localEP := originalEP.DeepCopy()
-		localEP.DNSName = fmt.Sprintf("%s.%s", localEP.DNSName, localZoneDomain)
+		localEP.DNSName = fmt.Sprintf("%s.%s", localEP.DNSName, provider.KuadrantTLD)
 		if len(localEP.ProviderSpecific) > 0 {
 			for _, ps := range localEP.ProviderSpecific {
 				if ps.Name == "weight" {
 					weightEP := externaldnsendpoint.Endpoint{
-						DNSName:    "w." + fmt.Sprintf("%s.%s", rootDomainName, localZoneDomain),
+						DNSName:    "w." + fmt.Sprintf("%s.%s", rootDomainName, provider.KuadrantTLD),
 						Targets:    []string{fmt.Sprintf("%s,%s", ps.Value, localEP.DNSName)},
 						RecordType: "TXT",
 					}
@@ -641,10 +637,10 @@ func computeLocalEndpointSet(original *v1alpha1.DNSRecord) []*externaldnsendpoin
 			}
 		}
 		for i, target := range localEP.Targets {
-			if !strings.HasSuffix(target, localZoneDomain) {
+			if !strings.HasSuffix(target, provider.KuadrantTLD) {
 				// ignore IPs
 				if net.ParseIP(target) == nil {
-					localEP.Targets[i] = fmt.Sprintf("%s.%s", target, localZoneDomain)
+					localEP.Targets[i] = fmt.Sprintf("%s.%s", target, provider.KuadrantTLD)
 				}
 			}
 		}
@@ -690,7 +686,6 @@ func (r *DNSRecordReconciler) applyLocalChanges(ctx context.Context, dnsRecord *
 
 		if err := r.Client.Get(ctx, client.ObjectKeyFromObject(mergeCopy), mergeCopy); err != nil {
 			if apierrors.IsNotFound(err) {
-				fmt.Println("creating merged copy ", mergeCopy.Name)
 				mergeCopy.Spec = original.Spec
 				mergeCopy.Spec.Endpoints = endpointSet
 				mergeCopy.Labels = map[string]string{"kuadrant.io/type": "merged", "kuadrant.io/zone-name": original.Status.ZoneDomainName}
@@ -706,7 +701,6 @@ func (r *DNSRecordReconciler) applyLocalChanges(ctx context.Context, dnsRecord *
 
 		}
 		mergeCopy.Spec.Endpoints = endpointSet
-		fmt.Println("Updating merged copy ", mergeCopy.Name)
 		if err := r.Client.Update(ctx, mergeCopy, &client.UpdateOptions{}); err != nil {
 			return fmt.Errorf("failed to update core dns merged copy %w", err)
 		}
@@ -728,8 +722,8 @@ func (r *DNSRecordReconciler) applyLocalChanges(ctx context.Context, dnsRecord *
 			if apierrors.IsNotFound(err) {
 				// create
 				kdrntLocalCopy.Spec = original.Spec
-				kdrntLocalCopy.Labels = map[string]string{"kuadrant.io/type": "local", "kuadrant.io/zone-name": localZoneDomain}
-				kdrntLocalCopy.Spec.RootHost = fmt.Sprintf("%s.%s", original.Spec.RootHost, localZoneDomain)
+				kdrntLocalCopy.Labels = map[string]string{"kuadrant.io/type": "local", "kuadrant.io/zone-name": provider.KuadrantTLD}
+				kdrntLocalCopy.Spec.RootHost = fmt.Sprintf("%s.%s", original.Spec.RootHost, provider.KuadrantTLD)
 				kdrntLocalCopy.Spec.Endpoints = computeLocalEndpointSet(original)
 				if err := controllerutil.SetOwnerReference(dnsRecord, kdrntLocalCopy, r.Scheme); err != nil {
 					return err
@@ -777,141 +771,6 @@ func (r *DNSRecordReconciler) applyLocalChanges(ctx context.Context, dnsRecord *
 		}
 	}
 	return hadChanges, []string{}, nil
-
-	// if dnsRecord.Labels != nil {
-	// 	if provider, ok := dnsRecord.Labels["type"]; ok {
-	// 		if provider == "coredns" {
-	// 			beforeMerge := dnsRecord.DeepCopy()
-	// 			// trigger dns look up of host against configured nameservers
-	// 			remoteEndpoints, err := dnsProvider.RecordsForHost(ctx, rootDomainName)
-	// 			if err != nil {
-	// 				logger.Error(err, " failed to get endponts from nameservers")
-	// 				return hadChanges, []string{}, err
-	// 			}
-	// 			// add the remote and local records to the same resource
-	// 			for _, remoteEp := range remoteEndpoints {
-	// 				alreadyExists := false
-	// 				for _, localEP := range dnsRecord.Spec.Endpoints {
-
-	// 					if localEP.DNSName == remoteEp.DNSName && slices.Equal(localEP.Targets, remoteEp.Targets) {
-	// 						alreadyExists = true
-	// 						break
-	// 					}
-	// 				}
-	// 				if !alreadyExists {
-	// 					fmt.Println("endpoint doesn't exist adding it ", remoteEp)
-	// 					dnsRecord.Spec.Endpoints = append(dnsRecord.Spec.Endpoints, remoteEp)
-	// 				}
-
-	// 			}
-	// 			if !slices.Equal(dnsRecord.Spec.Endpoints, beforeMerge.Spec.Endpoints) {
-	// 				fmt.Println("updating core dns records as endpoints have changed")
-	// 				if err := r.Client.Update(ctx, dnsRecord, &client.UpdateOptions{}); err != nil {
-	// 					return hadChanges, []string{}, err
-	// 				}
-	// 			}
-
-	// 			return hadChanges, []string{}, nil
-	// 		}
-	// 	}
-	// }
-	// localZoneDomain := "local.kdrnt"
-	// // if we get to this point we are handling an original copy
-	// localName := fmt.Sprintf("%s-%s", "local", dnsRecord.Name)
-	// kdrntLocalCopy := &v1alpha1.DNSRecord{
-	// 	ObjectMeta: metav1.ObjectMeta{
-	// 		Name:      localName,
-	// 		Namespace: dnsRecord.Namespace,
-	// 		Labels:    map[string]string{" kuadrant.io/zone-name": localZoneDomain},
-	// 	},
-	// }
-
-	// var localEndpoints []*externaldnsendpoint.Endpoint
-
-	// for _, originalEP := range dnsRecord.Spec.Endpoints {
-	// 	localEP := originalEP.DeepCopy()
-	// 	localEP.DNSName = fmt.Sprintf("%s.%s", localEP.DNSName, localZoneDomain)
-	// 	if len(localEP.ProviderSpecific) > 0 {
-	// 		for _, ps := range localEP.ProviderSpecific {
-	// 			if ps.Name == "weight" {
-	// 				weightEP := externaldnsendpoint.Endpoint{
-	// 					DNSName:    "w." + rootDomainName,
-	// 					Targets:    []string{fmt.Sprintf("%s,%s", ps.Value, localEP.DNSName)},
-	// 					RecordType: "TXT",
-	// 				}
-	// 				localEndpoints = append(localEndpoints, &weightEP)
-	// 			}
-	// 		}
-	// 	}
-	// 	for i, target := range localEP.Targets {
-	// 		if !strings.HasSuffix(target, localZoneDomain) {
-	// 			// ignore IPs
-	// 			if net.ParseIP(target) == nil {
-	// 				localEP.Targets[i] = fmt.Sprintf("m.%s", target)
-	// 			}
-	// 		}
-	// 	}
-	// 	localEP.ProviderSpecific = []externaldnsendpoint.ProviderSpecificProperty{}
-	// 	localEndpoints = append(localEndpoints, localEP)
-	// }
-
-	// //update or create
-	// if err := r.Client.Get(ctx, client.ObjectKeyFromObject(kdrntLocalCopy), kdrntLocalCopy); err != nil {
-	// 	if apierrors.IsNotFound(err) {
-	// 		// create
-	// 		kdrntLocalCopy.Spec.Endpoints = localEndpoints
-	// 		if err := r.Client.Create(ctx, kdrntLocalCopy, &client.CreateOptions{}); err != nil {
-	// 			return hadChanges, []string{}, fmt.Errorf("failed to create kuadrant local copy %w", err)
-	// 		}
-	// 	}
-	// 	return hadChanges, []string{}, err
-	// }
-	// // have copy from cluster update endpoints
-	// // todo check if already equal before assinging and updating
-	// kdrntLocalCopy.Spec.Endpoints = localEndpoints
-
-	// if err := r.Client.Update(ctx, kdrntLocalCopy, &client.UpdateOptions{}); err != nil {
-	// 	return hadChanges, []string{}, fmt.Errorf("failed to update kuadrant local copy %w", err)
-	// }
-
-	// // create of "merged" record. First thing is to copy over existing endpoints. Updates to the endpoints are handled above we just want to create
-	// logger.Info("core dns: kuadrant record creating merged record as it doesn't exist " + dnsRecord.Name)
-	// // kuadrant dns record create a new core dns one if needed
-	// mergedRecordName := fmt.Sprintf("%s-%s", dnsProvider.Name(), dnsRecord.Name)
-	// mergedRecord := &v1alpha1.DNSRecord{
-	// 	ObjectMeta: metav1.ObjectMeta{
-	// 		Name:      mergedRecordName,
-	// 		Namespace: dnsRecord.Namespace,
-	// 		Labels:    map[string]string{"provider": "coredns", " kuadrant.io/zone-name": dnsRecord.Status.ZoneDomainName},
-	// 	},
-	// }
-	// doCreate := false
-	// if err := r.Client.Get(ctx, client.ObjectKeyFromObject(mergedRecord), mergedRecord); err != nil {
-	// 	doCreate = apierrors.IsNotFound(err)
-	// }
-	// mergedRecord.Spec = v1alpha1.DNSRecordSpec{
-	// 	RootHost:    rootDomainName,
-	// 	ProviderRef: dnsRecord.Spec.ProviderRef,
-	// 	Endpoints:   dnsRecord.Spec.Endpoints,
-	// }
-
-	// mergedRecord.Status.ZoneDomainName = dnsRecord.Status.ZoneDomainName
-	// mergedRecord.Status.ZoneID = dnsRecord.Status.ZoneID
-	// if err := controllerutil.SetOwnerReference(dnsRecord, mergedRecord, r.Scheme); err != nil {
-	// 	return hadChanges, []string{}, err
-	// }
-	// logger.Info("core dns: creating core dns clone")
-	// if doCreate {
-	// 	if err := r.Client.Create(ctx, mergedRecord, &client.CreateOptions{}); err != nil {
-	// 		return hadChanges, []string{}, err
-	// 	}
-	// } else {
-	// 	if err := r.Client.Update(ctx, mergedRecord, &client.UpdateOptions{}); err != nil {
-	// 		return hadChanges, []string{}, err
-	// 	}
-	// }
-
-	//return hadChanges, []string{}, nil
 }
 
 // applyExternalDNSChanges creates the Plan and applies it to the registry. This is used only for external cloud provider DNS. Returns true only if the Plan had no errors and there were changes to apply.
