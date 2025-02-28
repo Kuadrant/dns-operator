@@ -59,10 +59,10 @@ type Route53DNSProvider struct {
 	route53Client *route53.Route53
 }
 
-var _ provider.Provider = &Route53DNSProvider{}
+var p provider.Provider = &Route53DNSProvider{}
 
-func (*Route53DNSProvider) Name() string {
-	return "aws"
+func (*Route53DNSProvider) Name() provider.DNSProviderName {
+	return provider.DNSProviderAWS
 }
 
 func (*Route53DNSProvider) RecordsForHost(ctx context.Context, host string) ([]*externaldnsendpoint.Endpoint, error) {
@@ -72,7 +72,7 @@ func (*Route53DNSProvider) RecordsForHost(ctx context.Context, host string) ([]*
 func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	config := aws.NewConfig()
 
-	config.WithHTTPClient(metrics.NewInstrumentedClient("aws", config.HTTPClient))
+	config.WithHTTPClient(metrics.NewInstrumentedClient(provider.DNSProviderAWS.String(), config.HTTPClient))
 
 	sessionOpts := session.Options{
 		Config: *config,
@@ -199,5 +199,5 @@ func (*Route53DNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider("aws", NewProviderFromSecret, true)
+	provider.RegisterProvider(p.Name().String(), NewProviderFromSecret, true)
 }

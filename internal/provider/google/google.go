@@ -117,10 +117,10 @@ type GoogleDNSProvider struct {
 	managedZonesClient managedZonesServiceInterface
 }
 
-var _ provider.Provider = &GoogleDNSProvider{}
+var p provider.Provider = &GoogleDNSProvider{}
 
-func (p *GoogleDNSProvider) Name() string {
-	return "google"
+func (p *GoogleDNSProvider) Name() provider.DNSProviderName {
+	return provider.DNSProviderGCP
 }
 
 func (p *GoogleDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*endpoint.Endpoint, error) {
@@ -137,7 +137,7 @@ func NewProviderFromSecret(ctx context.Context, s *corev1.Secret, c provider.Con
 		return nil, err
 	}
 
-	httpClient := metrics.NewInstrumentedClient("google", oauth2.NewClient(ctx, creds.TokenSource))
+	httpClient := metrics.NewInstrumentedClient(provider.DNSProviderGCP.String(), oauth2.NewClient(ctx, creds.TokenSource))
 
 	dnsClient, err := dnsv1.NewService(ctx, option.WithHTTPClient(httpClient))
 	if err != nil {
@@ -337,5 +337,5 @@ func (p *GoogleDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider("google", NewProviderFromSecret, true)
+	provider.RegisterProvider(p.Name().String(), NewProviderFromSecret, true)
 }

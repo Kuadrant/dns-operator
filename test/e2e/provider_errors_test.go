@@ -17,6 +17,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/pkg/builder"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
@@ -64,13 +65,13 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		pBuilder := builder.NewProviderBuilder("invalid-credentials", testDNSProviderSecret.Namespace).
 			For(testDNSProviderSecret.Type)
 
-		if testDNSProvider == "google" {
+		if testDNSProvider == provider.DNSProviderGCP.String() {
 			//Google
 			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantGCP))
 			pBuilder.WithDataItem(v1alpha1.GoogleJsonKey, "{\"client_id\": \"foo.bar.com\",\"client_secret\": \"1234\",\"refresh_token\": \"1234\",\"type\": \"authorized_user\"}")
 			pBuilder.WithDataItem(v1alpha1.GoogleProjectIDKey, "foobar")
 			expectedProviderErr = "oauth2: \"invalid_client\" \"The OAuth client was not found.\""
-		} else if testDNSProvider == "azure" {
+		} else if testDNSProvider == provider.DNSProviderAzure.String() {
 			//Azure
 			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantAzure))
 			pBuilder.WithDataItem(v1alpha1.AzureJsonKey, "{}")
@@ -117,11 +118,11 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 	It("correctly handles invalid geo", func(ctx SpecContext) {
 		var validGeoCode string
 		var expectedProviderErr string
-		if testDNSProvider == "google" {
+		if testDNSProvider == provider.DNSProviderGCP.String() {
 			//Google
 			expectedProviderErr = "location': 'notageocode', invalid"
 			validGeoCode = "us-east1"
-		} else if testDNSProvider == "azure" {
+		} else if testDNSProvider == provider.DNSProviderAzure.String() {
 			//Azure
 			expectedProviderErr = "The following locations specified in the geoMapping property for endpoint ‘foo-example-com’ are not supported: NOTAGEOCODE."
 			validGeoCode = "GEO-NA"
@@ -211,10 +212,10 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 
 	It("correctly handles invalid weight", func(ctx SpecContext) {
 		var expectedProviderErr string
-		if testDNSProvider == "google" {
+		if testDNSProvider == provider.DNSProviderGCP.String() {
 			//Google
 			expectedProviderErr = "weight': '-1.0' Reason: backendError, Message: Invalid Value"
-		} else if testDNSProvider == "azure" {
+		} else if testDNSProvider == provider.DNSProviderAzure.String() {
 			//Azure
 			expectedProviderErr = "Operation input is malformed. Please retry the request."
 		} else {

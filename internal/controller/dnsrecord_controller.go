@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -612,7 +611,7 @@ func (r *DNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord *v1a
 
 func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
 	logger := log.FromContext(ctx)
-	if dnsProvider.Name() == "coredns" {
+	if dnsProvider.Name() == provider.DNSProviderCoreDNS {
 		logger.Info("core dns provider. Applying local changes")
 		return r.applyLocalChanges(ctx, dnsRecord, probes, dnsProvider, isDelete)
 	}
@@ -660,8 +659,6 @@ func computeFullEndpointSet(ctx context.Context, from *v1alpha1.DNSRecord, dnsPr
 	if err != nil {
 		return remoteEndpoints, err
 	}
-	out, _ := json.MarshalIndent(remoteEndpoints, "", " ")
-	fmt.Println("full endpoints ", string(out))
 	return remoteEndpoints, err
 }
 

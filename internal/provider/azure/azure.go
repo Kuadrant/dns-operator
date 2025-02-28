@@ -33,10 +33,10 @@ type AzureProvider struct {
 	logger      logr.Logger
 }
 
-var _ provider.Provider = &AzureProvider{}
+var p provider.Provider = &AzureProvider{}
 
-func (*AzureProvider) Name() string {
-	return "azure"
+func (*AzureProvider) Name() provider.DNSProviderName {
+	return provider.DNSProviderAzure
 }
 
 func (*AzureProvider) RecordsForHost(ctx context.Context, host string) ([]*externaldnsendpoint.Endpoint, error) {
@@ -65,7 +65,7 @@ func NewAzureProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Co
 	azureConfig.IDFilter = c.ZoneIDFilter
 	azureConfig.DryRun = false
 
-	azureConfig.Transporter = metrics.NewInstrumentedClient("azure", nil)
+	azureConfig.Transporter = metrics.NewInstrumentedClient(provider.DNSProviderAzure.String(), nil)
 
 	azureProvider, err := externaldnsproviderazure.NewAzureProviderFromConfig(ctx, azureConfig)
 
@@ -114,7 +114,7 @@ func (p *AzureProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider("azure", NewAzureProviderFromSecret, true)
+	provider.RegisterProvider(p.Name().String(), NewAzureProviderFromSecret, true)
 }
 
 // Records gets the current records.

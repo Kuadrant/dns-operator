@@ -26,17 +26,16 @@ var p provider.Provider = &CoreDNSProvider{}
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider(p.Name(), NewCoreDNSProviderFromSecret, true)
+	provider.RegisterProvider(p.Name().String(), NewCoreDNSProviderFromSecret, true)
 }
 
 func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
-	logger := log.FromContext(ctx).WithName("core-dns")
+	logger := log.FromContext(ctx).WithName(p.Name().String())
 	p := &CoreDNSProvider{
 		logger: logger,
 	}
 	if _, ok := s.Data["NAMESERVERS"]; ok {
 		nameservers := []*string{}
-		// might not be required
 		nservers := strings.Split(strings.TrimSpace(string(s.Data["NAMESERVERS"])), ",")
 		for _, ns := range nservers {
 			nameservers = append(nameservers, &ns)
@@ -46,12 +45,12 @@ func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.
 	if _, ok := s.Data["ZONES"]; ok {
 		p.availableZones = strings.Split(strings.TrimSpace(string(s.Data["ZONES"])), ",")
 	}
-	p.availableZones = append(p.availableZones, "kdrnt")
+	p.availableZones = append(p.availableZones, provider.KuadrantTLD)
 	return p, nil
 }
 
-func (p CoreDNSProvider) Name() string {
-	return "coredns"
+func (p CoreDNSProvider) Name() provider.DNSProviderName {
+	return provider.DNSProviderCoreDNS
 }
 
 // DNSZones returns a list of dns zones accessible for this provider

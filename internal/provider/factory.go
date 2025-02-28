@@ -107,15 +107,15 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 func NameForProviderSecret(secret *v1.Secret) (string, error) {
 	switch secret.Type {
 	case v1alpha1.SecretTypeKuadrantAWS:
-		return "aws", nil
+		return DNSProviderAWS.String(), nil
 	case v1alpha1.SecretTypeKuadrantAzure:
-		return "azure", nil
+		return DNSProviderAzure.String(), nil
 	case v1alpha1.SecretTypeKuadrantGCP:
-		return "google", nil
+		return DNSProviderGCP.String(), nil
 	case v1alpha1.SecretTypeKuadrantInmemory:
-		return "inmemory", nil
+		return DNSProviderInMem.String(), nil
 	case v1alpha1.SecretTypeKuadrantCoreDNS:
-		return "coredns", nil
+		return DNSProviderCoreDNS.String(), nil
 	}
 	return "", errUnsupportedProvider
 }

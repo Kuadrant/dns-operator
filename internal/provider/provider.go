@@ -15,13 +15,27 @@ import (
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 )
 
+type DNSProviderName string
+
 var (
 	statusCodeRegexp        = regexp.MustCompile(`status code: [^\s]+`)
 	requestIDRegexp         = regexp.MustCompile(`request id: [^\s]+`)
 	saxParseExceptionRegexp = regexp.MustCompile(`Invalid XML ; javax.xml.stream.XMLStreamException: org.xml.sax.SAXParseException; lineNumber: [^\s]+; columnNumber: [^\s]+`)
 
 	ErrNoZoneForHost = fmt.Errorf("no zone for host")
+
+	DNSProviderCoreDNS DNSProviderName = "coredns"
+	DNSProviderAWS     DNSProviderName = "aws"
+	DNSProviderAzure   DNSProviderName = "azure"
+	DNSProviderGCP     DNSProviderName = "google"
+	DNSProviderInMem   DNSProviderName = "inmemory"
+
+	KuadrantTLD = "kdrnt"
 )
+
+func (dp DNSProviderName) String() string {
+	return string(dp)
+}
 
 // Provider knows how to manage DNS zones only as pertains to routing.
 type Provider interface {
@@ -35,7 +49,7 @@ type Provider interface {
 
 	ProviderSpecific() ProviderSpecificLabels
 
-	Name() string
+	Name() DNSProviderName
 
 	RecordsForHost(ctx context.Context, host string) ([]*externaldnsendpoint.Endpoint, error)
 }
