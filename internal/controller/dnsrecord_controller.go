@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -700,9 +701,12 @@ func (r *DNSRecordReconciler) applyLocalChanges(ctx context.Context, dnsRecord *
 			// update flow
 
 		}
-		mergeCopy.Spec.Endpoints = endpointSet
-		if err := r.Client.Update(ctx, mergeCopy, &client.UpdateOptions{}); err != nil {
-			return fmt.Errorf("failed to update core dns merged copy %w", err)
+		if !endPointsEqual(mergeCopy.Spec.Endpoints, endpointSet) {
+			logger.Info("updating merged copy with new endpoints" + mergeCopy.Name)
+			mergeCopy.Spec.Endpoints = endpointSet
+			if err := r.Client.Update(ctx, mergeCopy, &client.UpdateOptions{}); err != nil {
+				return fmt.Errorf("failed to update core dns merged copy %w", err)
+			}
 		}
 		return nil
 	}
@@ -735,10 +739,15 @@ func (r *DNSRecordReconciler) applyLocalChanges(ctx context.Context, dnsRecord *
 			}
 		}
 		//update endpoints only
-		kdrntLocalCopy.Spec.Endpoints = computeLocalEndpointSet(original)
-		if err := r.Client.Update(ctx, kdrntLocalCopy, &client.UpdateOptions{}); err != nil {
-			return fmt.Errorf("failed to update kuadrant local copy %w", err)
+		computedEndpoints := computeLocalEndpointSet(original)
+		if !endPointsEqual(kdrntLocalCopy.Spec.Endpoints, computedEndpoints) {
+			logger.Info("updating local endpoints for record " + kdrntLocalCopy.Name)
+			kdrntLocalCopy.Spec.Endpoints = computedEndpoints
+			if err := r.Client.Update(ctx, kdrntLocalCopy, &client.UpdateOptions{}); err != nil {
+				return fmt.Errorf("failed to update kuadrant local copy %w", err)
+			}
 		}
+
 		return nil
 	}
 
@@ -771,6 +780,23 @@ func (r *DNSRecordReconciler) applyLocalChanges(ctx context.Context, dnsRecord *
 		}
 	}
 	return hadChanges, []string{}, nil
+}
+
+func endPointsEqual(eps1, eps2 []*externaldnsendpoint.Endpoint) bool {
+	return slices.EqualFunc(eps1, eps2, func(e1, e2 *externaldnsendpoint.Endpoint) bool {
+		if e1.DNSName != e2.DNSName {
+			return false
+		}
+
+		if !e1.Targets.Same(e2.Targets) {
+			return false
+		}
+		if !slices.Equal(e1.ProviderSpecific, e2.ProviderSpecific) {
+			return false
+		}
+
+		return true
+	})
 }
 
 // applyExternalDNSChanges creates the Plan and applies it to the registry. This is used only for external cloud provider DNS. Returns true only if the Plan had no errors and there were changes to apply.
