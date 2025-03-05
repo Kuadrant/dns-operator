@@ -227,15 +227,6 @@ func (p *Plan) processStopLabel() {
 
 	// propagate the stop label in the current tree
 	common.PropagateStoppableLabel(currentTree, SoftDeleteLabel, "true", StopSoftDeleteLabel)
-
-	// write everything back to the plan
-	newDesired := []*endpoint.Endpoint{}
-	newCurrent := []*endpoint.Endpoint{}
-	common.ToEndpoints(desiredTree, &newDesired)
-	common.ToEndpoints(currentTree, &newCurrent)
-
-	p.Desired = common.MergeEndpoints(newDesired, p.Desired)
-	p.Current = common.MergeEndpoints(newCurrent, p.Current)
 }
 
 // Calculate computes the actions needed to move current state towards desired

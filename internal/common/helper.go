@@ -1,7 +1,9 @@
 package common
 
 import (
-	"strings"
+	"fmt"
+	"io"
+	"slices"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -30,26 +32,60 @@ func RandomizeDuration(variance, duration float64) time.Duration {
 		int64(upperLimit)))
 }
 
-// MergeEndpoints merges existing endpoints with new and ensures there are no duplicates
-func MergeEndpoints(currentEndpoints, newEndpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
-	// map to use as filter
-	combinedMap := make(map[string]*externaldnsendpoint.Endpoint)
-	// return struct
-	var combinedEndpoints []*externaldnsendpoint.Endpoint
+func WriteEndpoints(s io.Writer, endpoints []*externaldnsendpoint.Endpoint, title string) {
+	fmt.Fprintf(s, "\n====== %s ======\n", title)
+	for _, ep := range endpoints {
+		fmt.Fprintf(s, "	endpoint: %v > %+v with labels: %+v and flags: %+v\n", ep.DNSName, ep.Targets, ep.Labels, ep.ProviderSpecific)
+	}
+	fmt.Fprintf(s, "====== %s ======\n\n", title)
+}
 
-	// Use DNSName of EP as unique key. Ensures no duplicates
-	for _, endpoint := range currentEndpoints {
-		combinedMap[endpoint.DNSName+endpoint.RecordType+strings.Join(endpoint.Targets, "::")] = endpoint
+func EndpointsMatch(e1, e2 *externaldnsendpoint.Endpoint) bool {
+	if e1.DNSName != e2.DNSName {
+		return false
 	}
-	for _, endpoint := range newEndpoints {
-		combinedMap[endpoint.DNSName+endpoint.RecordType+strings.Join(endpoint.Targets, "::")] = endpoint
+	if e1.RecordTTL != e2.RecordTTL {
+		return false
+	}
+	if e1.RecordType != e2.RecordType {
+		return false
 	}
 
-	// Convert a map into an array
-	for _, endpoint := range combinedMap {
-		combinedEndpoints = append(combinedEndpoints, endpoint)
+	if len(e1.Targets) != len(e2.Targets) {
+		return false
 	}
-	return combinedEndpoints
+
+	if len(e1.Labels) != len(e2.Labels) {
+		return false
+	}
+
+	if len(e1.ProviderSpecific) != len(e2.ProviderSpecific) {
+		return false
+	}
+
+	for _, t := range e1.Targets {
+		if !slices.Contains(e2.Targets, t) {
+			return false
+		}
+	}
+
+	for l, e1v := range e1.Labels {
+		if e2v, ok := e2.Labels[l]; !ok {
+			return false
+		} else if e1v != e2v {
+			return false
+		}
+	}
+
+	for _, p := range e1.ProviderSpecific {
+		if !slices.ContainsFunc(e2.ProviderSpecific, func(e externaldnsendpoint.ProviderSpecificProperty) bool {
+			return e.Name == p.Name && e.Value == p.Value
+		}) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func RemoveLabelFromEndpoint(label string, endpoint *externaldnsendpoint.Endpoint) *externaldnsendpoint.Endpoint {
