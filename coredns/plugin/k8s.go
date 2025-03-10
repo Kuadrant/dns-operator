@@ -17,8 +17,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/kuadrant/coredns-kuadrant/dnsop"
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+
+	"github.com/kuadrant/coredns-kuadrant/dnsop"
 )
 
 const (

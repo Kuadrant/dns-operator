@@ -6,13 +6,13 @@ import (
 	"strconv"
 	"strings"
 
-	"sigs.k8s.io/external-dns/endpoint"
-
 	"github.com/coredns/coredns/plugin/file"
 	"github.com/coredns/coredns/plugin/metadata"
 	"github.com/coredns/coredns/plugin/pkg/dnsutil"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
+
+	"sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
@@ -112,7 +112,7 @@ func (z *Zone) InsertEndpoint(ep *endpoint.Endpoint) error {
 		rrs = append(rrs, cname)
 	}
 
-	for i, _ := range rrs {
+	for i := range rrs {
 		rrd := rrData{}
 		if wProp, wExists := ep.GetProviderSpecificProperty(v1alpha1.ProviderSpecificWeight); wExists {
 			weight, err := strconv.ParseInt(wProp, 10, 64)

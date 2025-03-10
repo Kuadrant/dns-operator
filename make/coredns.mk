@@ -22,7 +22,7 @@ coredns-run: ## Run coredns from your host.
 	cd ${COREDNS_PLUGIN_DIR} && go run --race ./cmd/coredns.go -dns.port ${DNS_PORT}
 
 .PHONY: coredns-docker-build
-coredns-docker-build: coredns-build ## Build docker image.
+coredns-docker-build: ## Build docker image.
 	cd ${COREDNS_PLUGIN_DIR} && $(CONTAINER_TOOL) build . -t ${COREDNS_IMG}
 
 .PHONY: coredns-docker-push
@@ -33,3 +33,7 @@ coredns-docker-push: ## Push docker image.
 coredns-docker-run: DNS_PORT=1053
 coredns-docker-run: coredns-docker-build ## Build docker image and run coredns in a container.
 	cd ${COREDNS_PLUGIN_DIR} && $(CONTAINER_TOOL) run --rm -it -p ${DNS_PORT}:53/udp ${COREDNS_IMG}
+
+.PHONY: coredns-generate-demo-geo-db
+coredns-generate-demo-geo-db: ## Generate demo geo db embedded in coredns image.
+	cd ${COREDNS_PLUGIN_DIR}/geoip && go run db-generator.go
