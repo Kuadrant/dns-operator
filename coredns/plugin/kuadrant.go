@@ -11,11 +11,7 @@ import (
 )
 
 var (
-	ttlDefault        = uint32(60)
-	ttlSOA            = uint32(60)
-	defaultApex       = "dns1"
-	defaultHostmaster = "hostmaster"
-	defaultSecondNS   = ""
+	ttlSOA = uint32(60)
 )
 
 type Zones struct {
@@ -27,26 +23,16 @@ type Kuadrant struct {
 	Next       plugin.Handler
 	Controller *KubeController
 	Zones
-	Filter        string
 	ConfigFile    string
 	ConfigContext string
-	ttlLow        uint32
-	ttlSOA        uint32
-	apex          string
-	hostmaster    string
-	secondNS      string
 }
 
 func newKuadrant() *Kuadrant {
-	return &Kuadrant{
-		ttlLow:     ttlDefault,
-		ttlSOA:     ttlSOA,
-		apex:       defaultApex,
-		secondNS:   defaultSecondNS,
-		hostmaster: defaultHostmaster,
-	}
+	return &Kuadrant{}
 }
 
+// ServeDNS implements the plugin.Handle interface.
+// Based on the file plugin ServeDNS implementation that the main zone lookup adapts https://github.com/coredns/coredns/blob/master/plugin/file/file.go
 func (k *Kuadrant) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
 	state := request.Request{W: w, Req: r}
 	log.Debugf("incoming query %s", state.QName())

@@ -3,7 +3,7 @@ kind: DNSRecord
 metadata:
   name: api-k-example-com
   labels:
-    kuadrant.io/zone-name: k.example.com
+    kuadrant.io/coredns-zone-name: k.example.com
 spec:
   rootHost: api.k.example.com
   endpoints:

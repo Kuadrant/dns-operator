@@ -1,35 +1,39 @@
-
-COREDNS_IMAGE_TAG_BASE ?= quay.io/kuadrant/coredns-kuadrant
-COREDNS_DEFAULT_IMG ?= $(COREDNS_IMAGE_TAG_BASE):latest
-COREDNS_IMG ?= $(COREDNS_DEFAULT_IMG)
-
 COREDNS_PLUGIN_DIR=./coredns/plugin
 
 ##@ CoreDNS Plugin
 
+# Wraps the CoreDNS plugin make targets in ${COREDNS_PLUGIN_DIR} to simplify running the tasks at the root of this repo.
+
 .PHONY: coredns-clean
 coredns-clean: ## Clean local files.
-	cd ${COREDNS_PLUGIN_DIR} && go clean
-	cd ${COREDNS_PLUGIN_DIR} && rm -f coredns
+	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) clean
 
 .PHONY: coredns-build
 coredns-build: ## Build coredns binary.
-	cd ${COREDNS_PLUGIN_DIR} && GOOS=linux CGO_ENABLED=0 go build cmd/coredns.go
+	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) build
+
+.PHONY: coredns-test-unit
+coredns-test-unit: ## Run unit tests.
+	cd ${COREDNS_PLUGIN_DIR}  && $(MAKE) test-unit
 
 .PHONY: coredns-run
 coredns-run: DNS_PORT=1053
 coredns-run: ## Run coredns from your host.
-	cd ${COREDNS_PLUGIN_DIR} && go run --race ./cmd/coredns.go -dns.port ${DNS_PORT}
+	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) run
 
 .PHONY: coredns-docker-build
-coredns-docker-build: coredns-build ## Build docker image.
-	cd ${COREDNS_PLUGIN_DIR} && $(CONTAINER_TOOL) build . -t ${COREDNS_IMG}
+coredns-docker-build: ## Build docker image.
+	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) docker-build
 
 .PHONY: coredns-docker-push
 coredns-docker-push: ## Push docker image.
-	$(CONTAINER_TOOL) push ${COREDNS_IMG}
+	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) docker-push
 
 .PHONY: coredns-docker-run
 coredns-docker-run: DNS_PORT=1053
-coredns-docker-run: coredns-docker-build ## Build docker image and run coredns in a container.
-	cd ${COREDNS_PLUGIN_DIR} && $(CONTAINER_TOOL) run --rm -it -p ${DNS_PORT}:53/udp ${COREDNS_IMG}
+coredns-docker-run: ## Build docker image and run coredns in a container.
+	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) docker-run
+
+.PHONY: coredns-generate-demo-geo-db
+coredns-generate-demo-geo-db: ## Generate demo geo db embedded in coredns image.
+	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) generate-demo-geo-db

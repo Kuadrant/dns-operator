@@ -61,9 +61,6 @@ func parse(c *caddy.Controller) (*Kuadrant, error) {
 				return k, c.ArgErr()
 			}
 			switch key {
-			case "filter":
-				log.Infof("Filter: %+v", args)
-				k.Filter = args[0]
 			case "kubeconfig":
 				k.ConfigFile = args[0]
 				if len(args) == 2 {

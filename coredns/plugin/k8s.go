@@ -17,14 +17,15 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/kuadrant/coredns-kuadrant/dnsop"
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+
+	"github.com/kuadrant/coredns-kuadrant/dnsop"
 )
 
 const (
 	defaultResyncPeriod   = 0
 	watchNamespacesEnvVar = "WATCH_NAMESPACES"
-	zoneNameLabel         = "kuadrant.io/zone-name"
+	zoneNameLabel         = "kuadrant.io/coredns-zone-name"
 )
 
 type zoneInformers struct {

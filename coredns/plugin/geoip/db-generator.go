@@ -1,6 +1,5 @@
 package main
 
-/*
 import (
 	"log"
 	"net"
@@ -110,4 +109,3 @@ func createCityDB(dbName, dbType string) {
 		log.Fatal(err)
 	}
 }
-*/

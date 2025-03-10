@@ -4,12 +4,7 @@ k.example.com {
    log
    geoip GeoLite2-City-demo.mmdb
    metadata
-   kuadrant {
-        kubeconfig /home/mnairn/.kube/config kind-kuadrant-dns-local-1
-   }
-}
-f.example.com {
-   file db.f.example.com
+   kuadrant
 }
 . {
    forward . /etc/resolv.conf

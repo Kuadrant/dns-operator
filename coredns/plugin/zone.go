@@ -6,13 +6,13 @@ import (
 	"strconv"
 	"strings"
 
-	"sigs.k8s.io/external-dns/endpoint"
-
 	"github.com/coredns/coredns/plugin/file"
 	"github.com/coredns/coredns/plugin/metadata"
 	"github.com/coredns/coredns/plugin/pkg/dnsutil"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
+
+	"sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
@@ -31,18 +31,23 @@ type rrData struct {
 
 type Zone struct {
 	file   *file.Zone
-	rrData map[dns.RR]rrData
+	rrData map[string]rrData
 }
 
 func NewZone(name string) *Zone {
 	z := &Zone{
 		file.NewZone(name, ""),
-		map[dns.RR]rrData{},
+		map[string]rrData{},
 	}
 
+	// The file plugin will do a recursive lookup of CNAMEs when resolving queries, default behaviour of this is to use
+	// the first RR found that matches the query. Adding this resolver function allows us to catch these requests and
+	// apply our own logic for weighting and geo at each step. This can be called multiple times for a single query
+	// depending on the configuration of the DNSRecord endpoints allowing for geo and weighted endpoints in a single
+	// response.
 	z.file.RRResolver = func(ctx context.Context, state request.Request, rrs []dns.RR) dns.RR {
 		log.Debugf("resolving %s in zone %s", rrs[0].Header().Name, name)
-		rrMeta := z.rrData[rrs[0]]
+		rrMeta := z.rrData[rrs[0].String()]
 		if rrMeta.geo != nil {
 			rrs = z.parseGeoAnswers(ctx, state, rrs)
 		} else if rrMeta.weight != nil {
@@ -112,7 +117,7 @@ func (z *Zone) InsertEndpoint(ep *endpoint.Endpoint) error {
 		rrs = append(rrs, cname)
 	}
 
-	for i, _ := range rrs {
+	for i := range rrs {
 		rrd := rrData{}
 		if wProp, wExists := ep.GetProviderSpecificProperty(v1alpha1.ProviderSpecificWeight); wExists {
 			weight, err := strconv.ParseInt(wProp, 10, 64)
@@ -123,7 +128,7 @@ func (z *Zone) InsertEndpoint(ep *endpoint.Endpoint) error {
 		} else if gProp, gExists := ep.GetProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode); gExists {
 			rrd.geo = &gProp
 		}
-		z.rrData[rrs[i]] = rrd
+		z.rrData[rrs[i].String()] = rrd
 		z.file.Insert(rrs[i])
 	}
 
@@ -150,7 +155,7 @@ func (z *Zone) parseWeightedAnswers(_ context.Context, _ request.Request, wrrs [
 	var weightedRRs []weightedRR
 
 	for _, r := range wrrs {
-		if w := z.rrData[r].weight; w != nil {
+		if w := z.rrData[r.String()].weight; w != nil {
 			weightedRRs = append(weightedRRs, weightedRR{r, *w})
 		}
 	}
@@ -174,10 +179,13 @@ func (z *Zone) parseGeoAnswers(ctx context.Context, request request.Request, grr
 	var answer *dns.RR
 	var geoRRs []geodRR
 
+	//ToDo Currently this will randomize the geo used when no geo is explicitly set for the resource record.
+	// This isn't desirable long term and we should add a way to select what geo should be used in the default scenario.
+	// https://github.com/Kuadrant/dns-operator/issues/409
 	roundRobinShuffle(grrs)
 
 	for _, r := range grrs {
-		if geo := z.rrData[r].geo; geo != nil {
+		if geo := z.rrData[r.String()].geo; geo != nil {
 			geoRRs = append(geoRRs, geodRR{r, *geo})
 		}
 	}
