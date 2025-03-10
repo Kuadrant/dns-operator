@@ -12,7 +12,7 @@ COPY go.sum go.sum
 RUN go mod download
 
 # Copy the go source
-COPY cmd/coredns.go cmd/coredns.go
+COPY cmd/ cmd/
 COPY dnsop/ dnsop/
 COPY k8s.go k8s.go
 COPY kuadrant.go kuadrant.go
