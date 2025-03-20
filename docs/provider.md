@@ -133,44 +133,48 @@ You will need to grant read and contributor access to the zone(s) you want manag
 
 1)  fetch DNS id used to grant access to the service principal
 
-```
-DNS_ID=$(az network dns zone show --name example.com \
- --resource-group ExampleDNSResourceGroup --query "id" --output tsv)
+    ```bash
+    DNS_ID=$(az network dns zone show --name example.com \
+     --resource-group ExampleDNSResourceGroup --query "id" --output tsv)
+    
+    # get yor resource group id
+    
+    RESOURCE_GROUP_ID=az group show --resource-group ExampleDNSResourceGroup | jq ".id" -r
+    ``` 
 
-# get yor resource group id
+2) provide reader access to the resource group
+    ```bash
+    az role assignment create --role "Reader" --assignee $DNS_SP_APP_ID --scope $DNS_ID
+    ```
 
-RESOURCE_GROUP_ID=az group show --resource-group ExampleDNSResourceGroup | jq ".id" -r
-``` 
+3) provide contributor access to DNS Zone itself
+    ```bash
+    $ az role assignment create --role "Contributor" --assignee $DNS_SP_APP_ID --scope $DNS_ID
+    ```
 
-# provide reader access to the resource group
-$ az role assignment create --role "Reader" --assignee $DNS_SP_APP_ID --scope $DNS_ID
+4) As we are setting up advanced traffic rules for GEO and Weighted responses, you will also need to grant traffic manager access:
 
-# provide contributor access to DNS Zone itself
-$ az role assignment create --role "Contributor" --assignee $DNS_SP_APP_ID --scope $DNS_ID
+    ```bash
+    az role assignment create --role "Traffic Manager Contributor" --assignee $DNS_SP_APP_ID --scope $RESOURCE_GROUP_ID
+    ```
+    
+    ```bash
+    cat <<-EOF > /local/path/to/azure.json
+    {
+      "tenantId": "$(az account show --query tenantId -o tsv)",
+      "subscriptionId": "$(az account show --query id -o tsv)",
+      "resourceGroup": "ExampleDNSResourceGroup",
+      "aadClientId": "$DNS_SP_APP_ID",
+      "aadClientSecret": "$DNS_SP_PASSWORD"
+    }
+    EOF
+    ```
 
-As we are setting up advanced traffic rules for GEO and Weighted responses you will also need to grant traffic manager access:
+5) Finally setup the secret with the credential azure.json file
 
-```
-az role assignment create --role "Traffic Manager Contributor" --assignee $DNS_SP_APP_ID --scope $RESOURCE_GROUP_ID
-```
-
-```
-cat <<-EOF > /local/path/to/azure.json
-{
-  "tenantId": "$(az account show --query tenantId -o tsv)",
-  "subscriptionId": "$(az account show --query id -o tsv)",
-  "resourceGroup": "ExampleDNSResourceGroup",
-  "aadClientId": "$DNS_SP_APP_ID",
-  "aadClientSecret": "$DNS_SP_PASSWORD"
-}
-EOF
-```
-
-Finally setup the secret with the credential azure.json file
-
-```bash
-kubectl create secret generic my-test-azure-credentials \
-  --namespace=kuadrant-dns-system \
-  --type=kuadrant.io/azure \
-  --from-file=azure.json=/local/path/to/azure.json
-```
+    ```bash
+    kubectl create secret generic my-test-azure-credentials \
+      --namespace=kuadrant-dns-system \
+      --type=kuadrant.io/azure \
+      --from-file=azure.json=/local/path/to/azure.json
+    ```
