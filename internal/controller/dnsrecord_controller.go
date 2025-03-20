@@ -669,7 +669,7 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 
 	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, healthySpecEndpoints, []externaldnsplan.Policy{policy},
 		externaldnsendpoint.MatchAllDomainFilters{&zoneDomainFilter}, managedDNSRecordTypes, excludeDNSRecordTypes,
-		registry.OwnerID(), &rootDomainName,
+		registry.OwnerID(), &rootDomainName, registry,
 	)
 
 	plan = plan.Calculate()

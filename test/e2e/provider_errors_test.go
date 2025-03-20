@@ -242,7 +242,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			invalidEndpoint,
 		}
 
-		dnsRecord = testBuildDNSRecord(testID, testDNSProviderSecret.Namespace, testDNSProviderSecret.Name, "test-owner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, testDNSProviderSecret.Namespace, testDNSProviderSecret.Name, "owner111", testHostname)
 		dnsRecord.Spec.Endpoints = testEndpoints
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid weight endpoint")
