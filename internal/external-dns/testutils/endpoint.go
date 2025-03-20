@@ -19,6 +19,7 @@ package testutils
 import (
 	"reflect"
 	"sort"
+	"strings"
 
 	"sigs.k8s.io/external-dns/endpoint"
 )
@@ -59,8 +60,12 @@ func (b byAllFields) Less(i, j int) bool {
 // SameEndpoint returns true if two endpoints are same
 // considers example.org. and example.org DNSName/Target as different endpoints
 func SameEndpoint(a, b *endpoint.Endpoint) bool {
-	return a.DNSName == b.DNSName && a.Targets.Same(b.Targets) && a.RecordType == b.RecordType && a.SetIdentifier == b.SetIdentifier &&
-		a.Labels[endpoint.OwnerLabelKey] == b.Labels[endpoint.OwnerLabelKey] && a.RecordTTL == b.RecordTTL &&
+	return a.DNSName == b.DNSName &&
+		a.Targets.Same(b.Targets) &&
+		a.RecordType == b.RecordType &&
+		a.SetIdentifier == b.SetIdentifier &&
+		a.Labels[endpoint.OwnerLabelKey] == b.Labels[endpoint.OwnerLabelKey] &&
+		a.RecordTTL == b.RecordTTL &&
 		a.Labels[endpoint.ResourceLabelKey] == b.Labels[endpoint.ResourceLabelKey] &&
 		a.Labels[endpoint.OwnedRecordLabelKey] == b.Labels[endpoint.OwnedRecordLabelKey] &&
 		SameProviderSpecific(a.ProviderSpecific, b.ProviderSpecific)
@@ -101,8 +106,35 @@ func SameEndpointLabels(a, b []*endpoint.Endpoint) bool {
 	sort.Sort(byAllFields(sb))
 
 	for i := range sa {
-		if !reflect.DeepEqual(sa[i].Labels, sb[i].Labels) {
+		labelsA := sa[i].Labels
+		labelsB := sb[i].Labels
+
+		if len(labelsA) != len(labelsB) {
 			return false
+		}
+		for keyA, valueA := range labelsA {
+			valueB, ok := labelsB[keyA]
+			if !ok {
+				return false
+			}
+			if valueA != valueB {
+				valueAS := strings.Split(valueA, ",")
+				valueBS := strings.Split(valueB, ",")
+				if len(valueAS) != len(valueBS) {
+					return false
+				}
+
+				mapA := make(map[string]struct{}, len(valueAS))
+				for _, vas := range valueAS {
+					mapA[vas] = struct{}{}
+				}
+				for _, vab := range valueBS {
+					if _, ok = mapA[vab]; !ok {
+						return false
+					}
+				}
+				return true
+			}
 		}
 	}
 	return true
