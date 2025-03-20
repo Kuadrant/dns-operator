@@ -29,6 +29,7 @@ import (
 	externaldnsplan "sigs.k8s.io/external-dns/plan"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 )
 
 var (
@@ -72,13 +73,17 @@ type Plan struct {
 	Owners []string
 
 	logger logr.Logger
+
+	registry registry.Registry
 }
 
 // NewPlan returns new Plan object
-func NewPlan(ctx context.Context, current []*endpoint.Endpoint, previous []*endpoint.Endpoint, desired []*endpoint.Endpoint, policies []Policy, domainFilter endpoint.MatchAllDomainFilters, managedRecords []string, excludeRecords []string, ownerID string, rootHost *string) *Plan {
+func NewPlan(ctx context.Context, current []*endpoint.Endpoint, previous []*endpoint.Endpoint, desired []*endpoint.Endpoint,
+	policies []Policy, domainFilter endpoint.MatchAllDomainFilters, managedRecords []string, excludeRecords []string,
+	rootHost *string, registry registry.Registry) *Plan {
 	logger := logr.FromContextOrDiscard(ctx).
 		WithName("plan")
-	logger.V(1).Info("initializing plan", "ownerID", ownerID, "rooHost", rootHost, "policies", policies, "domainFilter", domainFilter)
+	logger.V(1).Info("initializing plan", "ownerID", registry.OwnerID(), "rooHost", rootHost, "policies", policies, "domainFilter", domainFilter)
 
 	return &Plan{
 		Current:        current,
@@ -88,9 +93,10 @@ func NewPlan(ctx context.Context, current []*endpoint.Endpoint, previous []*endp
 		DomainFilter:   domainFilter,
 		ManagedRecords: managedRecords,
 		ExcludeRecords: excludeRecords,
-		OwnerID:        ownerID,
+		OwnerID:        registry.OwnerID(),
 		RootHost:       rootHost,
 		logger:         logger,
+		registry:       registry,
 	}
 }
 
@@ -123,8 +129,10 @@ type planTable struct {
 	resolver ConflictResolver
 }
 
-func newPlanTable() planTable { // TODO: make resolver configurable
-	return planTable{map[planKey]*planTableRow{}, PerResource{}}
+func newPlanTable(packer registry.LabelsPacker) planTable { // TODO: make resolver configurable
+	return planTable{map[planKey]*planTableRow{}, PerResource{
+		packer: packer,
+	}}
 }
 
 // planTableRow represents a set of current and desired domain resource records.
@@ -204,7 +212,7 @@ func (p *Plan) Error() error {
 // state. It then passes those changes to the current policy for further
 // processing. It returns a copy of Plan with the changes populated.
 func (p *Plan) Calculate() *Plan {
-	t := newPlanTable()
+	t := newPlanTable(p.registry.GetLabelsPacker())
 
 	var errs []error
 	var rootDomainFilter endpoint.DomainFilter
@@ -263,17 +271,14 @@ func (p *Plan) Calculate() *Plan {
 				if records.current != nil {
 					candidate := records.current.DeepCopy()
 					owners := []string{}
-					if endpointOwner, hasOwner := records.current.Labels[endpoint.OwnerLabelKey]; hasOwner && p.OwnerID != "" {
-						owners = strings.Split(endpointOwner, OwnerLabelDeliminator)
-						for i, v := range owners {
-							if v == p.OwnerID {
-								owners = append(owners[:i], owners[i+1:]...)
-								break
+
+					if p.OwnerID != "" {
+						delete(candidate.Labels, p.OwnerID)
+						for owner := range candidate.Labels {
+							if owner != "" {
+								owners = append(owners, owner)
 							}
 						}
-						slices.Sort(owners)
-						owners = slices.Compact[[]string, string](owners)
-						candidate.Labels[endpoint.OwnerLabelKey] = strings.Join(owners, OwnerLabelDeliminator)
 					}
 
 					if len(owners) == 0 {
@@ -304,21 +309,20 @@ func (p *Plan) Calculate() *Plan {
 
 				// update existing record
 				if records.current != nil && len(records.candidates) > 0 {
-					candidate := t.resolver.ResolveUpdate(records.current, records.candidates)
+					candidate := t.resolver.ResolveUpdate(records.current, p.OwnerID, records.candidates)
 					current := records.current.DeepCopy()
 					owners := []string{}
-					if endpointOwner, hasOwner := current.Labels[endpoint.OwnerLabelKey]; hasOwner && endpointOwner != "" {
+
+					if _, hasEmptyOwner := current.Labels[""]; len(current.Labels) > 0 && !hasEmptyOwner {
 						if p.OwnerID == "" {
 							// Only allow owned records to be updated by other owned records
 							errs = append(errs, fmt.Errorf("%w, cannot update endpoint '%s' with no owner when existing endpoint is already owned", ErrOwnerConflict, candidate.DNSName))
 							continue
 						}
 
-						owners = strings.Split(endpointOwner, OwnerLabelDeliminator)
-						owners = append(owners, p.OwnerID)
-						slices.Sort(owners)
-						owners = slices.Compact[[]string, string](owners)
-						current.Labels[endpoint.OwnerLabelKey] = strings.Join(owners, OwnerLabelDeliminator)
+						if _, alreadyOwned := current.Labels[p.OwnerID]; !alreadyOwned {
+							current.Labels[p.OwnerID] = ""
+						}
 					} else {
 						if p.OwnerID != "" {
 							// Only allow unowned records to be updated by other unowned records
@@ -326,7 +330,13 @@ func (p *Plan) Calculate() *Plan {
 							continue
 						}
 					}
-					inheritOwner(current, candidate)
+
+					for owner := range current.Labels {
+						if owner != "" {
+							owners = append(owners, owner)
+						}
+					}
+					candidate.Labels = current.Labels
 					managedChanges.updates = append(managedChanges.updates, &endpointUpdate{desired: candidate, current: records.current, previous: records.previous, isDelete: false})
 					managedChanges.dnsNameOwners[key.dnsName] = append(managedChanges.dnsNameOwners[key.dnsName], owners...)
 				}
@@ -351,7 +361,7 @@ func (p *Plan) Calculate() *Plan {
 
 	// filter out updates this external dns does not have ownership claim over
 	if p.OwnerID != "" {
-		changes.Delete = endpoint.FilterEndpointsByOwnerID(p.OwnerID, changes.Delete)
+		changes.Delete = p.registry.FilterEndpointsByOwnerID(p.OwnerID, changes.Delete)
 		//ToDo Ideally we would still be able to ensure ownership on update
 		//changes.UpdateOld = endpoint.FilterEndpointsByOwnerID(p.OwnerID, changes.UpdateOld)
 		//changes.UpdateNew = endpoint.FilterEndpointsByOwnerID(p.OwnerID, changes.UpdateNew)
@@ -397,16 +407,6 @@ func (p *Plan) filterRecordsForPlan(records []*endpoint.Endpoint) []*endpoint.En
 	}
 
 	return filtered
-}
-
-func inheritOwner(from, to *endpoint.Endpoint) {
-	if to.Labels == nil {
-		to.Labels = map[string]string{}
-	}
-	if from.Labels == nil {
-		from.Labels = map[string]string{}
-	}
-	to.Labels[endpoint.OwnerLabelKey] = from.Labels[endpoint.OwnerLabelKey]
 }
 
 type endpointUpdate struct {
@@ -609,10 +609,30 @@ func targetChanged(desired, current *endpoint.Endpoint) bool {
 }
 
 func shouldUpdateOwner(desired, current *endpoint.Endpoint) bool {
-	currentOwner, hasCurrentOwner := current.Labels[endpoint.OwnerLabelKey]
-	desiredOwner, hasDesiredOwner := desired.Labels[endpoint.OwnerLabelKey]
-	if hasCurrentOwner && hasDesiredOwner {
-		return currentOwner != desiredOwner
+	desiredOwners := map[string]struct{}{}
+	currentOwners := map[string]struct{}{}
+
+	for desiredOwner := range desired.Labels {
+		if desiredOwner != "" {
+			desiredOwners[desiredOwner] = struct{}{}
+		}
+	}
+
+	for currentOwner := range current.Labels {
+		if currentOwner != "" {
+			currentOwners[currentOwner] = struct{}{}
+		}
+	}
+
+	if len(desiredOwners) > 0 && len(currentOwners) > 0 {
+		if len(desiredOwners) != len(currentOwners) {
+			return true
+		}
+		for desiredOwner := range desiredOwners {
+			if _, ok := currentOwners[desiredOwner]; !ok {
+				return true
+			}
+		}
 	}
 	return false
 }
