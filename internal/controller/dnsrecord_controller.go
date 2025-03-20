@@ -966,7 +966,7 @@ func (r *DNSRecordReconciler) applyExternalDNSChanges(ctx context.Context, dnsRe
 
 	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, healthySpecEndpoints, []externaldnsplan.Policy{policy},
 		externaldnsendpoint.MatchAllDomainFilters{&zoneDomainFilter}, managedDNSRecordTypes, excludeDNSRecordTypes,
-		registry.OwnerID(), &rootDomainName,
+		&rootDomainName, registry,
 	)
 
 	plan = plan.Calculate()

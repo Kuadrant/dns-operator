@@ -20,18 +20,22 @@ import (
 	"sort"
 
 	"sigs.k8s.io/external-dns/endpoint"
+
+	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 )
 
 // ConflictResolver is used to make a decision in case of two or more different kubernetes resources
 // are trying to acquire same DNS name
 type ConflictResolver interface {
 	ResolveCreate(candidates []*endpoint.Endpoint) *endpoint.Endpoint
-	ResolveUpdate(current *endpoint.Endpoint, candidates []*endpoint.Endpoint) *endpoint.Endpoint
+	ResolveUpdate(current *endpoint.Endpoint, owner string, candidates []*endpoint.Endpoint) *endpoint.Endpoint
 	ResolveRecordTypes(key planKey, row *planTableRow) map[string]*domainEndpoints
 }
 
 // PerResource allows only one resource to own a given dns name
-type PerResource struct{}
+type PerResource struct {
+	packer registry.LabelsPacker
+}
 
 // ResolveCreate is invoked when dns name is not owned by any resource
 // ResolveCreate takes "minimal" (string comparison of Target) endpoint to acquire the DNS record
@@ -48,15 +52,23 @@ func (s PerResource) ResolveCreate(candidates []*endpoint.Endpoint) *endpoint.En
 // ResolveUpdate is invoked when dns name is already owned by "current" endpoint
 // ResolveUpdate uses "current" record as base and updates it accordingly with new version of same resource
 // if it doesn't exist then pick min
-func (s PerResource) ResolveUpdate(current *endpoint.Endpoint, candidates []*endpoint.Endpoint) *endpoint.Endpoint {
-	currentResource := current.Labels[endpoint.ResourceLabelKey] // resource which has already acquired the DNS
+func (s PerResource) ResolveUpdate(current *endpoint.Endpoint, owner string, candidates []*endpoint.Endpoint) *endpoint.Endpoint {
+	ownedLabels := s.packer.UnpackLabels(current.Labels)[owner]
+	if ownedLabels == nil {
+		ownedLabels = current.Labels
+	}
+	currentResource := ownedLabels[endpoint.ResourceLabelKey] // resource which has already acquired the DNS
 	// TODO: sort candidates only needed because we can still have two endpoints from same resource here. We sort for consistency
 	// TODO: remove once single endpoint can have multiple targets
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return s.less(candidates[i], candidates[j])
 	})
 	for _, ep := range candidates {
-		if ep.Labels[endpoint.ResourceLabelKey] == currentResource {
+		if ep.Labels == nil {
+			ep.Labels = endpoint.NewLabels()
+			continue
+		}
+		if ep.Labels[endpoint.ResourceLabelKey] == currentResource || s.packer.UnpackLabels(ep.Labels)[owner][endpoint.ResourceLabelKey] == currentResource {
 			return ep
 		}
 	}
