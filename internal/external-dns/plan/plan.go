@@ -264,16 +264,9 @@ func (p *Plan) Calculate() *Plan {
 					candidate := records.current.DeepCopy()
 					owners := []string{}
 					if endpointOwner, hasOwner := records.current.Labels[endpoint.OwnerLabelKey]; hasOwner && p.OwnerID != "" {
-						owners = strings.Split(endpointOwner, OwnerLabelDeliminator)
-						for i, v := range owners {
-							if v == p.OwnerID {
-								owners = append(owners[:i], owners[i+1:]...)
-								break
-							}
-						}
-						slices.Sort(owners)
-						owners = slices.Compact[[]string, string](owners)
-						candidate.Labels[endpoint.OwnerLabelKey] = strings.Join(owners, OwnerLabelDeliminator)
+						ownersLabel := RemoveLabel(endpointOwner, p.OwnerID)
+						candidate.Labels[endpoint.OwnerLabelKey] = ownersLabel
+						owners = SplitLabels(ownersLabel)
 					}
 
 					if len(owners) == 0 {
@@ -314,11 +307,8 @@ func (p *Plan) Calculate() *Plan {
 							continue
 						}
 
-						owners = strings.Split(endpointOwner, OwnerLabelDeliminator)
-						owners = append(owners, p.OwnerID)
-						slices.Sort(owners)
-						owners = slices.Compact[[]string, string](owners)
-						current.Labels[endpoint.OwnerLabelKey] = strings.Join(owners, OwnerLabelDeliminator)
+						owners = SplitLabels(endpointOwner)
+						current.Labels[endpoint.OwnerLabelKey] = EnsureLabel(endpointOwner, p.OwnerID)
 					} else {
 						if p.OwnerID != "" {
 							// Only allow unowned records to be updated by other unowned records
