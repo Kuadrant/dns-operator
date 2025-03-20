@@ -171,15 +171,15 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		if txtRegistryEnabled {
 			expectedElementMatchers = append(expectedElementMatchers,
 				PointTo(MatchFields(IgnoreExtras, Fields{
-					"DNSName":       Equal("kuadrant-a-wildcard." + testHostname),
-					"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+					"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-a-wildcard." + testHostname),
+					"Targets":       ConsistOf("\"\""),
 					"RecordType":    Equal("TXT"),
 					"SetIdentifier": Equal(""),
 					"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 				})),
 				PointTo(MatchFields(IgnoreExtras, Fields{
-					"DNSName":       Equal("kuadrant-a-" + testHostname2),
-					"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+					"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-a-" + testHostname2),
+					"Targets":       ConsistOf("\"\""),
 					"RecordType":    Equal("TXT"),
 					"SetIdentifier": Equal(""),
 					"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -260,8 +260,8 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			if txtRegistryEnabled {
 				expectedElementMatchers = append(expectedElementMatchers,
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-a-" + testHostname),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-a-" + testHostname),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -451,29 +451,29 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						}),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-a-" + cluster1KlbHostName),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-a-" + cluster1KlbHostName),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-cname-" + testHostname),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-cname-" + testHostname),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-cname-" + geo1KlbHostName),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-cname-" + geo1KlbHostName),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-cname-" + klbHostName),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-cname-" + klbHostName),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -524,32 +524,32 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-a-" + cluster1KlbHostName),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-a-" + cluster1KlbHostName),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-cname-" + testHostname),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-cname-" + testHostname),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-cname-" + geo1KlbHostName),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-cname-" + geo1KlbHostName),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-cname-" + klbHostName),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-cname-" + klbHostName),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -606,22 +606,22 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						}),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-a-" + cluster1KlbHostName),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-a-" + cluster1KlbHostName),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-cname-" + testHostname),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-cname-" + testHostname),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-cname-" + geo1KlbHostName),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-cname-" + geo1KlbHostName),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(cluster1KlbHostName),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -630,8 +630,8 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						}),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-cname-" + klbHostName),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-cname-" + klbHostName),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(geoCode),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -640,8 +640,8 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						}),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal("kuadrant-cname-" + klbHostName),
-						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"DNSName":       Equal("kuadrant-" + dnsRecord.Status.OwnerID + "-cname-" + klbHostName),
+						"Targets":       ConsistOf("\"\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal("default"),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
