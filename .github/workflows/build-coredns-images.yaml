@@ -1,0 +1,67 @@
+name: Build and Publish CoreDNS Images
+
+on:
+  push:
+    branches:
+      - main
+      - "release-*"
+  workflow_dispatch:
+
+env:
+  IMG_TAGS: ${{ github.sha }} ${{ github.ref_name }}
+  IMG_REGISTRY_HOST: quay.io
+  IMG_REGISTRY_ORG: kuadrant
+  IMG_REGISTRY_REPO: coredns-kuadrant
+  MAIN_BRANCH_NAME: main
+  COREDNS_PLUGIN_NAME: coredns-kuadrant
+
+jobs:
+  build:
+    name: Build and Push CoreDNS image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Add latest tag
+        if: ${{ github.ref_name == env.MAIN_BRANCH_NAME }}
+        id: add-latest-tag
+        run: |
+          echo "IMG_TAGS=latest ${{ env.IMG_TAGS }}" >> $GITHUB_ENV
+
+      - name: Install qemu dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+
+      - name: Run make coredns-generate-demo-geo-db
+        run: |
+          make coredns-generate-demo-geo-db
+
+      - name: Build Image
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.COREDNS_PLUGIN_NAME }}
+          tags: ${{ env.IMG_TAGS }}
+          platforms: linux/amd64,linux/arm64
+          context: ./coredns/plugin
+          dockerfiles: |
+            ./coredns/plugin/Dockerfile
+
+      - name: Print Build Info
+        run: echo "Image = ${{ steps.build-image.outputs.image }}, Tags = ${{ steps.build-image.outputs.tags }}"
+
+      - name: Push Image
+        if: github.repository_owner == 'kuadrant'
+        id: push-to-quay
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}
+          username: ${{ secrets.IMG_REGISTRY_USERNAME }}
+          password: ${{ secrets.IMG_REGISTRY_TOKEN }}
+
+      - name: Print Image URL
+        run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
