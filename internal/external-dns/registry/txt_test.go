@@ -1185,17 +1185,18 @@ func TestCacheMethods(t *testing.T) {
 
 func TestDropPrefix(t *testing.T) {
 	mapper := newaffixNameMapper("foo-%{record_type}-", "", "")
+	setID := "set.id"
 	expectedOutput := "test.example.com"
 
 	tests := []string{
-		"foo-cname-test.example.com",
+		"foo-set.id-cname-test.example.com",
 		"foo-a-test.example.com",
 		"foo--test.example.com",
 	}
 
 	for _, tc := range tests {
 		t.Run(tc, func(t *testing.T) {
-			actualOutput, _ := mapper.dropAffixExtractType(tc)
+			actualOutput, _ := mapper.dropAffixExtractType(tc, setID)
 			assert.Equal(t, expectedOutput, actualOutput)
 		})
 	}
@@ -1203,6 +1204,7 @@ func TestDropPrefix(t *testing.T) {
 
 func TestDropSuffix(t *testing.T) {
 	mapper := newaffixNameMapper("", "-%{record_type}-foo", "")
+	setID := "set.id"
 	expectedOutput := "test.example.com"
 
 	tests := []string{
@@ -1213,7 +1215,7 @@ func TestDropSuffix(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc, func(t *testing.T) {
 			r := strings.SplitN(tc, ".", 2)
-			rClean, _ := mapper.dropAffixExtractType(r[0])
+			rClean, _ := mapper.dropAffixExtractType(r[0], setID)
 			actualOutput := rClean + "." + r[1]
 			assert.Equal(t, expectedOutput, actualOutput)
 		})
@@ -1264,6 +1266,7 @@ func TestToEndpointNameNewTXT(t *testing.T) {
 		domain     string
 		txtDomain  string
 		recordType string
+		setID      string
 	}{
 		{
 			name:       "prefix",
@@ -1292,6 +1295,7 @@ func TestToEndpointNameNewTXT(t *testing.T) {
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "cname-example-foo.com",
+			setID:      "target.hostname.example.com",
 		},
 		{
 			name:       "prefix with dot",
@@ -1299,6 +1303,7 @@ func TestToEndpointNameNewTXT(t *testing.T) {
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "foo.cname-example.com",
+			setID:      "target.hostname.example.com",
 		},
 		{
 			name:       "suffix with dot",
@@ -1306,6 +1311,7 @@ func TestToEndpointNameNewTXT(t *testing.T) {
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "cname-example.foo.com",
+			setID:      "target.hostname.example.com",
 		},
 		{
 			name:       "prefix with multiple dots",
@@ -1313,6 +1319,7 @@ func TestToEndpointNameNewTXT(t *testing.T) {
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "foo.bar.cname-example.com",
+			setID:      "target.hostname.example.com",
 		},
 		{
 			name:       "suffix with multiple dots",
@@ -1320,6 +1327,7 @@ func TestToEndpointNameNewTXT(t *testing.T) {
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "cname-example.foo.bar.test.com",
+			setID:      "target.hostname.example.com",
 		},
 		{
 			name:       "templated prefix",
@@ -1341,6 +1349,7 @@ func TestToEndpointNameNewTXT(t *testing.T) {
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "cnamefoo.example.com",
+			setID:      "target.hostname.example.com",
 		},
 		{
 			name:       "templated suffix with dot",
@@ -1355,6 +1364,7 @@ func TestToEndpointNameNewTXT(t *testing.T) {
 			domain:     "example.com",
 			recordType: "CNAME",
 			txtDomain:  "bar.cname.foo.example.com",
+			setID:      "target.hostname.example.com",
 		},
 		{
 			name:       "templated suffix with multiple dots",
@@ -1367,10 +1377,10 @@ func TestToEndpointNameNewTXT(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			txtDomain := tc.mapper.toNewTXTName(tc.domain, tc.recordType)
+			txtDomain := tc.mapper.toNewTXTName(tc.domain, tc.recordType, tc.setID)
 			assert.Equal(t, tc.txtDomain, txtDomain)
 
-			domain, _ := tc.mapper.toEndpointName(txtDomain)
+			domain, _ := tc.mapper.toEndpointName(txtDomain, tc.setID)
 			assert.Equal(t, tc.domain, domain)
 		})
 	}
