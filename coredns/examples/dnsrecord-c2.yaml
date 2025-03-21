@@ -1,0 +1,40 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: c1-loadbalanced-dns
+  namespace: kuadrant-coredns-2
+  labels:
+    'provider': 'kuadrant'
+spec:
+  providerRef:
+    name: core-dns
+  rootHost: k.example.com
+  endpoints:
+    - dnsName: k.example.com
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.k.example.com
+    - dnsName: klb.k.example.com
+      providerSpecific:
+        - name: geo-code
+          value: GEO-EU
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: GEO-EU
+      targets:
+        - geo-eu.klb.k.example.com
+    - dnsName: geo-eu.klb.k.example.com
+      providerSpecific:
+        - name: weight
+          value: '200'
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster2.klb.k.example.com
+      targets:
+        - cluster2.klb.k.example.com
+    - dnsName: cluster2.klb.k.example.com
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 81.17.23.10
