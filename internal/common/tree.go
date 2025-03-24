@@ -1,29 +1,30 @@
 package common
 
 import (
+	"fmt"
+	"io"
 	"slices"
 
 	"sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common/slice"
 )
 
 // DNSTreeNode stores a relation between endpoints that were parsed into a tree
 type DNSTreeNode struct {
-	Name     string
-	Children []*DNSTreeNode
-	DataSets []DNSTreeNodeData
-	Parent   *DNSTreeNode
+	Name      string
+	Children  []*DNSTreeNode
+	Endpoints []*endpoint.Endpoint
+	Parent    *DNSTreeNode
 }
 
-// DNSTreeNodeData holds a data for the enpoint(s) that correspond to this node
-type DNSTreeNodeData struct {
-	RecordType       string
-	SetIdentifier    string
-	RecordTTL        endpoint.TTL
-	Labels           endpoint.Labels
-	ProviderSpecific endpoint.ProviderSpecific
-	Targets          []string
+func (d *DNSTreeNode) String() string {
+	return fmt.Sprintf("host: %s, endpoints: %+v, children: %+v", d.Name, d.Endpoints, d.Children)
+}
+
+func WriteTree(s io.Writer, node *DNSTreeNode, title string) {
+	WriteEndpoints(s, *ToEndpoints(node, &[]*endpoint.Endpoint{}), title)
 }
 
 // PropagateStoppableLabel takes a propLabel (and value) to propagate throughout a tree, and a stopLabel
@@ -42,13 +43,51 @@ type DNSTreeNodeData struct {
 //   - Any node with the stopLabel and the propLabel:
 //   - Has the propLabel removed from itself and all it's children
 //   - Has the propLabel removed from any parent (or parent's parent) that has the label
-
 func PropagateStoppableLabel(node *DNSTreeNode, propLabel, value, stopLabel string) {
 	//propagate labels regardless of stop labels
-	propagateLabel(node, propLabel, value)
+	PropagateLabel(node, propLabel, value)
 
 	//propagate stop labels
 	resolveStops(node, propLabel, value, stopLabel)
+}
+
+func CopyLabel(label string, from, to *DNSTreeNode) {
+	toNode := FindNode(to, from.Name)
+	if toNode != nil {
+		// copy label values to any matching datasets
+		for _, fromEP := range from.Endpoints {
+			for _, toEP := range toNode.Endpoints {
+				if fromEP.Key() == toEP.Key() {
+					if fromEP.Labels == nil || fromEP.Labels[label] == "" {
+						if toEP.Labels != nil {
+							delete(toEP.Labels, label)
+						}
+					} else {
+						if toEP.Labels == nil {
+							toEP.Labels = endpoint.NewLabels()
+						}
+						toEP.Labels[label] = fromEP.Labels[label]
+					}
+				}
+			}
+		}
+	}
+	for _, c := range from.Children {
+		CopyLabel(label, c, to)
+	}
+}
+
+func FindNode(tree *DNSTreeNode, name string) *DNSTreeNode {
+	if tree.Name == name {
+		return tree
+	}
+	for _, c := range tree.Children {
+		n := FindNode(c, name)
+		if n != nil {
+			return n
+		}
+	}
+	return nil
 }
 
 func resolveStops(node *DNSTreeNode, label, value, stopLabel string) {
@@ -60,13 +99,19 @@ func resolveStops(node *DNSTreeNode, label, value, stopLabel string) {
 
 	//remove label from stop labelled children
 	for _, c := range node.Children {
-		d := findDataSetForChild(node, c.Name)
-		//has label and stop label = remove label from this dataset and all children
-		if d != nil && d.Labels[stopLabel] != "" && d.Labels[label] != "" {
-			delete(d.Labels, label)
-			RemoveLabelFromTree(c, label)
-			RemoveLabelFromParents(node, label)
-		} else {
+		hadLabel := false
+		endpoints := findEndpointsForChild(node, c.Name)
+		for _, ep := range endpoints {
+			//has label and stop label = remove label from this dataset and all children
+			if ep.Labels != nil && ep.Labels[stopLabel] == value && ep.Labels[label] == value {
+				delete(ep.Labels, label)
+				RemoveLabelFromTree(c, label)
+				removeLabelFromParents(node, label)
+				hadLabel = true
+				break
+			}
+		}
+		if !hadLabel {
 			resolveStops(c, label, value, stopLabel)
 		}
 
@@ -74,15 +119,25 @@ func resolveStops(node *DNSTreeNode, label, value, stopLabel string) {
 
 }
 
-func propagateLabel(node *DNSTreeNode, label, value string) {
+func PropagateLabel(node *DNSTreeNode, label, value string) {
 	for _, c := range node.Children {
-		d := findDataSetForChild(node, c.Name)
-		if d != nil && d.Labels[label] != "" {
+		dsets := findEndpointsForChild(node, c.Name)
+		if len(dsets) == 0 {
+			PropagateLabel(c, label, value)
+		}
+		foundLabel := false
+		for _, d := range dsets {
+			if d.Labels[label] != "" {
+				foundLabel = true
+				break
+			}
+		}
+		if foundLabel {
 			//this child is labelled, indiscriminately label entire tree under this child
 			AddLabelToTree(c, label, value)
 		} else {
 			// this child is not labelled, continue descending to propagate label
-			propagateLabel(c, label, value)
+			PropagateLabel(c, label, value)
 		}
 	}
 
@@ -98,26 +153,28 @@ func isRoot(node *DNSTreeNode) bool {
 
 func allChildrenHaveLabel(node *DNSTreeNode, label, value string) bool {
 	for _, c := range node.Children {
-		if !HasLabelForBranch(node, c.Name, label, value) {
+		if !hasLabelForBranch(node, c.Name, label, value) {
 			return false
 		}
 	}
 	return true
 }
 
-func findDataSetForChild(node *DNSTreeNode, name string) *DNSTreeNodeData {
-	for _, d := range node.DataSets {
-		if slices.Contains(d.Targets, name) {
-			return &d
+func findEndpointsForChild(node *DNSTreeNode, name string) []*endpoint.Endpoint {
+	ret := []*endpoint.Endpoint{}
+	for _, ep := range node.Endpoints {
+		if slices.Contains(ep.Targets, name) {
+			ret = append(ret, ep)
 		}
 	}
-	return nil
+	return ret
 }
 
 func AddLabelToBranch(node *DNSTreeNode, branch, label, value string) {
-	d := findDataSetForChild(node, branch)
-	if d == nil {
-		node.DataSets = append(node.DataSets, DNSTreeNodeData{
+	eps := findEndpointsForChild(node, branch)
+	if len(eps) == 0 {
+		node.Endpoints = append(node.Endpoints, &endpoint.Endpoint{
+			DNSName: node.Name,
 			Labels: endpoint.Labels{
 				label: value,
 			},
@@ -126,19 +183,28 @@ func AddLabelToBranch(node *DNSTreeNode, branch, label, value string) {
 			},
 		})
 	} else {
-		if len(d.Targets) == 1 {
-			d.Labels[label] = value
-		} else {
-			//remove target from shared dataset and recreate uniquely
-			for i, t := range d.Targets {
-				if t == branch {
-					d.Targets = append(d.Targets[:i], d.Targets[i+1:]...)
-					newDS := DNSTreeNodeData{
-						Labels:  d.Labels.DeepCopy(),
-						Targets: []string{branch},
+		for _, ep := range eps {
+			if len(ep.Targets) == 1 {
+				if ep.Labels == nil {
+					ep.Labels = endpoint.NewLabels()
+				}
+				ep.Labels[label] = value
+			} else {
+				//remove target from shared endpoint and recreate uniquely
+				for i, t := range ep.Targets {
+					if t == branch {
+						ep.Targets = append(ep.Targets[:i], ep.Targets[i+1:]...)
+						newEP := &endpoint.Endpoint{
+							Labels:  ep.Labels.DeepCopy(),
+							Targets: []string{branch},
+						}
+						if newEP.Labels == nil {
+							newEP.Labels = endpoint.NewLabels()
+						}
+						newEP.Labels[label] = value
+						node.Endpoints = append(node.Endpoints, newEP)
+						break
 					}
-					newDS.Labels[label] = value
-					node.DataSets = append(node.DataSets, newDS)
 				}
 			}
 		}
@@ -150,24 +216,23 @@ func AddChild(parent *DNSTreeNode, child *DNSTreeNode) {
 	child.Parent = parent
 }
 
-func RemoveLabelFromParents(node *DNSTreeNode, label string) {
+func removeLabelFromParents(node *DNSTreeNode, label string) {
 	if isRoot(node) {
 		return
 	}
 
-	d := findDataSetForChild(node.Parent, node.Name)
-	if d == nil {
-		return
+	eps := findEndpointsForChild(node.Parent, node.Name)
+
+	for _, ep := range eps {
+		delete(ep.Labels, label)
+
 	}
-
-	delete(d.Labels, label)
-
-	RemoveLabelFromParents(node.Parent, label)
+	removeLabelFromParents(node.Parent, label)
 }
 
 func RemoveLabelFromTree(node *DNSTreeNode, label string) {
-	for _, d := range node.DataSets {
-		delete(d.Labels, label)
+	for _, ep := range node.Endpoints {
+		delete(ep.Labels, label)
 	}
 
 	for _, c := range node.Children {
@@ -176,84 +241,57 @@ func RemoveLabelFromTree(node *DNSTreeNode, label string) {
 }
 
 func AddLabelToTree(node *DNSTreeNode, label, value string) {
+
+	for _, ep := range node.Endpoints {
+		if ep.Labels == nil {
+			ep.Labels = endpoint.NewLabels()
+		}
+		ep.Labels[label] = value
+	}
+
 	for _, c := range node.Children {
 		AddLabelToBranch(node, c.Name, label, value)
 		AddLabelToTree(c, label, value)
 	}
 }
 
-func HasLabelForBranch(node *DNSTreeNode, branch, label, value string) bool {
-	d := findDataSetForChild(node, branch)
-	if d == nil {
-		return false
-	}
-	if v, ok := d.Labels[label]; ok {
-		return value == v
+func hasLabelForBranch(node *DNSTreeNode, branch, label, value string) bool {
+	for _, ep := range findEndpointsForChild(node, branch) {
+		if v, ok := ep.Labels[label]; ok {
+			return value == v
+		}
 	}
 	return false
 }
 
-// RemoveNode removes a node from a tree.
-// If the node was the only child of the parent node,
-// the parent will be removed as well unless the parent is a root node
-func (n *DNSTreeNode) RemoveNode(deleteNode *DNSTreeNode) {
-	// store indexes of dead branches
-	var deadBranches []int
-	var deadDataSets []string
+func RemoveNode(container, removeNode *DNSTreeNode) {
+	children := append([]*DNSTreeNode{}, container.Children...)
+	for i, child := range children {
+		if child.Name == removeNode.Name {
+			container.Children = append(container.Children[:i], container.Children[i+1:]...)
 
-	if deleteNode == nil {
-		return
-	}
-
-	for i, node := range n.Children {
-		if node.Name == deleteNode.Name {
-			n.Children = append(n.Children[:i], n.Children[i+1:]...)
-
-			// we removed child, but need to clean up data sets
-			for j, dataset := range n.DataSets {
-				index := slices.Index(dataset.Targets, deleteNode.Name)
-				if index >= 0 {
-					n.DataSets[j].Targets = append(dataset.Targets[:index], dataset.Targets[index+1:]...)
+			newEps := []*endpoint.Endpoint{}
+			for _, ep := range container.Endpoints {
+				if slices.Contains(ep.Targets, removeNode.Name) {
+					//only one target shouldn't go to newEPs
+					if len(ep.Targets) > 1 {
+						ep.Targets = slice.RemoveString(ep.Targets, removeNode.Name)
+						newEps = append(newEps, ep)
+					}
+				} else {
+					newEps = append(newEps, ep)
 				}
+			}
+			container.Endpoints = newEps
+			// no children left? Remove this node from it's parent
+			if len(container.Children) == 0 && container.Parent != nil {
+				RemoveNode(container.Parent, container)
 			}
 			return
 		}
 
-		// no children matched, try on each child
-		node.RemoveNode(deleteNode)
-
-		// the removed node was the only child - we have a dead branch (it is a leaf now)
-		// children are nil on leaf node
-		// not checking for it will nuke the whole tree as leafs will be considered dead branches
-		if node.Children != nil && isALeafNode(node) {
-			// store the index. indexes are in ascending order
-			deadBranches = append(deadBranches, i)
-
-			// we can't rely on indexes for data sets, so store node name
-			deadDataSets = append(deadDataSets, node.Name)
-		}
+		RemoveNode(child, removeNode)
 	}
-
-	// prune dead branches separately from the main for loop.
-	// doing it inside will shift indexes the for loop is iterating through
-	for count, deadBranchIndex := range deadBranches {
-		// after the first removal, all subsequent deadBranchIndexes will de one to high,
-		// but since we have them ascending, we can use count as modifier
-		n.Children = append(n.Children[:deadBranchIndex-count], n.Children[deadBranchIndex-count+1:]...)
-	}
-
-	var healthyDataSets []DNSTreeNodeData
-	// clean up data nodes from dead branches
-	for _, dataSet := range n.DataSets {
-
-		// we are dealing with CNAMES only here.
-		// the A record is already removed from datasets
-		if !slices.Contains(deadDataSets, dataSet.Targets[0]) {
-			healthyDataSets = append(healthyDataSets, dataSet)
-		}
-	}
-	n.DataSets = healthyDataSets
-
 }
 
 // GetLeafsTargets returns IP or CNAME of the leafs of a tree.
@@ -276,8 +314,12 @@ func GetLeafsTargets(node *DNSTreeNode, targets *[]string) *[]string {
 // ToEndpoints transforms a tree into an array of endpoints.
 // The array could be returned or passed in to be populated
 func ToEndpoints(node *DNSTreeNode, endpoints *[]*endpoint.Endpoint) *[]*endpoint.Endpoint {
-	if node == nil || endpoints == nil {
+	if node == nil {
 		return &[]*endpoint.Endpoint{}
+	}
+
+	if endpoints == nil {
+		endpoints = &[]*endpoint.Endpoint{}
 	}
 
 	if isALeafNode(node) {
@@ -288,16 +330,11 @@ func ToEndpoints(node *DNSTreeNode, endpoints *[]*endpoint.Endpoint) *[]*endpoin
 		ToEndpoints(child, endpoints)
 	}
 
-	for _, data := range node.DataSets {
-		*endpoints = append(*endpoints, &endpoint.Endpoint{
-			DNSName:          node.Name,
-			Targets:          data.Targets,
-			RecordType:       data.RecordType,
-			RecordTTL:        data.RecordTTL,
-			SetIdentifier:    data.SetIdentifier,
-			Labels:           data.Labels,
-			ProviderSpecific: data.ProviderSpecific,
-		})
+	for _, ep := range node.Endpoints {
+		if len(ep.Labels) == 0 {
+			ep.Labels = nil
+		}
+		*endpoints = append(*endpoints, ep)
 	}
 	return endpoints
 }
@@ -306,30 +343,37 @@ func MakeTreeFromDNSRecord(record *v1alpha1.DNSRecord) *DNSTreeNode {
 	if record == nil {
 		return &DNSTreeNode{}
 	}
-	rootNode := &DNSTreeNode{Name: record.Spec.RootHost}
-	populateNode(rootNode, record)
+	return MakeTreeFromEndpoints(record.Spec.RootHost, record.Spec.Endpoints)
+}
+
+func MakeTreeFromEndpoints(rootHost string, endpoints []*endpoint.Endpoint) *DNSTreeNode {
+	if rootHost == "" {
+		return &DNSTreeNode{}
+	}
+	rootNode := &DNSTreeNode{Name: rootHost}
+	populateNode(rootNode, endpoints)
 	return rootNode
 }
 
-func populateNode(node *DNSTreeNode, record *v1alpha1.DNSRecord) {
-	node.DataSets = findDataSets(node.Name, record)
+func populateNode(node *DNSTreeNode, endpoints []*endpoint.Endpoint) {
+	node.Endpoints = findEndpointsForName(node.Name, endpoints)
 
-	children := findChildren(node.Name, record)
+	children := findChildren(node.Name, endpoints)
 	if len(children) == 0 {
 		return
 	}
 
 	for _, c := range children {
 		c.Parent = node
-		populateNode(c, record)
+		populateNode(c, endpoints)
 	}
 	node.Children = children
 }
 
-func findChildren(name string, record *v1alpha1.DNSRecord) []*DNSTreeNode {
+func findChildren(name string, endpoints []*endpoint.Endpoint) []*DNSTreeNode {
 	nodes := []*DNSTreeNode{}
 	targets := map[string]string{}
-	for _, ep := range record.Spec.Endpoints {
+	for _, ep := range endpoints {
 		if ep.DNSName == name {
 			for _, t := range ep.Targets {
 				targets[t] = t
@@ -343,21 +387,14 @@ func findChildren(name string, record *v1alpha1.DNSRecord) []*DNSTreeNode {
 	return nodes
 }
 
-func findDataSets(name string, record *v1alpha1.DNSRecord) []DNSTreeNodeData {
-	dataSets := []DNSTreeNodeData{}
-	for _, ep := range record.Spec.Endpoints {
+func findEndpointsForName(name string, endpoints []*endpoint.Endpoint) []*endpoint.Endpoint {
+	retEndpoints := []*endpoint.Endpoint{}
+	for _, ep := range endpoints {
 		if ep.DNSName == name {
-			dataSets = append(dataSets, DNSTreeNodeData{
-				RecordType:       ep.RecordType,
-				RecordTTL:        ep.RecordTTL,
-				SetIdentifier:    ep.SetIdentifier,
-				Labels:           ep.Labels,
-				ProviderSpecific: ep.ProviderSpecific,
-				Targets:          ep.Targets,
-			})
+			retEndpoints = append(retEndpoints, ep)
 		}
 	}
-	return dataSets
+	return retEndpoints
 }
 
 // isALeafNode check if this is the last node in a tree
