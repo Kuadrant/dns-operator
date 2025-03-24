@@ -12,6 +12,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/hash"
+	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
 )
 
 const (
@@ -237,12 +238,20 @@ func (builder *EndpointsBuilder) getLoadBalancedEndpoints() []*externaldns.Endpo
 	//Create lbName CNAME (lb-a1b2.shop.example.com -> <geoCode>.lb-a1b2.shop.example.com)
 	endpoint = createEndpoint(lbName, []string{geoLbName}, v1alpha1.CNAMERecordType, geoCode, DefaultCnameTTL)
 	endpoint.SetProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode, geoCode)
+	if endpoint.Labels == nil {
+		endpoint.Labels = externaldns.NewLabels()
+	}
+	endpoint.Labels[externaldnsplan.StopSoftDeleteLabel] = "true"
 	endpoints = append(endpoints, endpoint)
 
 	//Add a default geo (*) endpoint if the current geoCode is a default geo
 	if builder.loadBalancing.IsDefaultGeo {
 		endpoint = createEndpoint(lbName, []string{geoLbName}, v1alpha1.CNAMERecordType, "default", DefaultCnameTTL)
 		endpoint.SetProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode, WildcardGeo)
+		if endpoint.Labels == nil {
+			endpoint.Labels = externaldns.NewLabels()
+		}
+		endpoint.Labels[externaldnsplan.StopSoftDeleteLabel] = "true"
 		endpoints = append(endpoints, endpoint)
 	}
 
