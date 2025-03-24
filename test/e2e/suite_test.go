@@ -53,16 +53,16 @@ var (
 	testDNSProvider        string
 	testClusters           []testCluster
 
-	supportedHealthCheckProviders = []string{"aws"}
+	supportedHealthCheckProviders = []string{provider.DNSProviderAWS.String()}
 
 	defaultRecordsReadyTimeout = time.Minute
 	customRecordsReadyTimeout  = map[string]time.Duration{
-		"azure": 5 * time.Minute,
+		provider.DNSProviderAzure.String(): 5 * time.Minute,
 	}
 
 	defaultRecordsDeletedTimeout = time.Second * 90
 	customRecordsDeletedTimeout  = map[string]time.Duration{
-		"azure": 5 * time.Minute,
+		provider.DNSProviderAzure.String(): 5 * time.Minute,
 	}
 	recordsReadyMaxDuration   time.Duration
 	recordsRemovedMaxDuration time.Duration
@@ -126,7 +126,7 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	testSuiteID = "dns-op-e2e-" + GenerateName()
 
 	geoCode := "GEO-EU"
-	if testDNSProvider == "google" {
+	if testDNSProvider == provider.DNSProviderGCP.String() {
 		geoCode = "europe-west1"
 	}
 	SetTestEnv("testGeoCode", geoCode)

@@ -20,6 +20,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/provider"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
@@ -47,9 +48,9 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		k8sClient = testClusters[0].k8sClient
 		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
-		if testDNSProvider == "google" {
+		if testDNSProvider == provider.DNSProviderGCP.String() {
 			geoCode = "us-east1"
-		} else if testDNSProvider == "azure" {
+		} else if testDNSProvider == provider.DNSProviderAzure.String() {
 			geoCode = "GEO-NA"
 		} else {
 			geoCode = "US"
@@ -368,7 +369,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
-			if testDNSProvider == "google" {
+			if testDNSProvider == provider.DNSProviderGCP.String() {
 				Expect(zoneEndpoints).To(HaveLen(8))
 				Expect(zoneEndpoints).To(ContainElements(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -437,7 +438,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					})),
 				))
 			}
-			if testDNSProvider == "azure" {
+			if testDNSProvider == provider.DNSProviderAzure.String() {
 				Expect(zoneEndpoints).To(HaveLen(8))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -512,7 +513,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 			}
-			if testDNSProvider == "aws" {
+			if testDNSProvider == provider.DNSProviderAWS.String() {
 				Expect(zoneEndpoints).To(HaveLen(10))
 				Expect(zoneEndpoints).To(ContainElements(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -641,9 +642,9 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			By("creating " + strconv.Itoa(testConcurrentRecords) + " DNS Records")
 			SetTestEnv("testNamespace", testDNSProviderSecret.Namespace)
 
-			if testDNSProvider == "google" {
+			if testDNSProvider == provider.DNSProviderGCP.String() {
 				SetTestEnv("testGeoCode", "europe-west1")
-			} else if testDNSProvider == "azure" {
+			} else if testDNSProvider == provider.DNSProviderAzure.String() {
 				SetTestEnv("testGeoCode", "GEO-EU")
 			} else {
 				SetTestEnv("testGeoCode", "GEO-EU")
