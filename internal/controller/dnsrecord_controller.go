@@ -731,7 +731,7 @@ func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alp
 			if apierrors.IsNotFound(err) {
 				mergeCopy.Spec = original.Spec
 				mergeCopy.Spec.Endpoints = endpointSet
-				mergeCopy.Labels = map[string]string{"kuadrant.io/type": "merged", "kuadrant.io/zone-name": original.Status.ZoneDomainName}
+				mergeCopy.Labels = map[string]string{"kuadrant.io/type": "merged", "kuadrant.io/coredns-zone-name": original.Status.ZoneDomainName}
 				if err := controllerutil.SetOwnerReference(dnsRecord, mergeCopy, r.Scheme); err != nil {
 					return err
 				}
@@ -768,7 +768,7 @@ func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alp
 				// create
 				logger.Info("coredns no dns record found creating local copy")
 				kdrntLocalCopy.Spec = original.Spec
-				kdrntLocalCopy.Labels = map[string]string{"kuadrant.io/type": "local", "kuadrant.io/zone-name": provider.KuadrantTLD}
+				kdrntLocalCopy.Labels = map[string]string{"kuadrant.io/type": "local", "kuadrant.io/coredns-zone-name": provider.KuadrantTLD}
 				kdrntLocalCopy.Spec.RootHost = fmt.Sprintf("%s.%s", original.Spec.RootHost, provider.KuadrantTLD)
 				var computedEndpoints, err = r.computeLocalEndpointSet(original)
 				if err != nil {
