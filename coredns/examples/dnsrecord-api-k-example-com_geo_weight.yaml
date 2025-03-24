@@ -72,10 +72,10 @@ spec:
       recordType: A
       targets:
         - 127.0.0.1
-    - dnsName: "*.api.k.example.com"
+    - dnsName: '*.api.k.example.com'
       recordTTL: 60
       recordType: A
       targets:
         - 9.9.9.9
   providerRef:
-    name: dns-provider-credentials-coredns
+    name: dns-provider-core-dns

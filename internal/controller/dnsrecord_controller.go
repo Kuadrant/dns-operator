@@ -636,8 +636,14 @@ func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) (
 		if len(localEP.ProviderSpecific) > 0 {
 			for _, ps := range localEP.ProviderSpecific {
 				if ps.Name == "weight" {
+					weightName := "w." + fmt.Sprintf("%s.%s", rootDomainName, provider.KuadrantTLD)
+					for _, lp := range localEndpoints {
+						if lp.DNSName == weightName {
+							break
+						}
+					}
 					weightEP := externaldnsendpoint.Endpoint{
-						DNSName:    "w." + fmt.Sprintf("%s.%s", rootDomainName, provider.KuadrantTLD),
+						DNSName:    weightName,
 						Targets:    []string{fmt.Sprintf("%s,%s", ps.Value, localEP.DNSName)},
 						RecordType: "TXT",
 					}
@@ -646,13 +652,20 @@ func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) (
 				if ps.Name == "geo-code" {
 					// validate
 					codeType := "continent"
+					geoName := "g." + fmt.Sprintf("%s.%s", rootDomainName, provider.KuadrantTLD)
+					for _, lp := range localEndpoints {
+						if lp.DNSName == geoName {
+							break
+						}
+					}
 					if strings.HasPrefix(ps.Value, geoContinentPrefix) {
+
 						continent := strings.Replace(ps.Value, geoContinentPrefix, "", -1)
+						fmt.Println("contient check ", continent)
 						if !provider.IsContinentCode(continent) {
 							return nil, fmt.Errorf("unexpected continent code. %s", continent)
 						}
-					}
-					if !provider.IsISO3166Alpha2Code(ps.Value) && ps.Value != "*" {
+					} else if !provider.IsISO3166Alpha2Code(ps.Value) && ps.Value != "*" {
 						return nil, fmt.Errorf("unexpected geo code. Prefix with %s for continents or use ISO_3166 Alpha 2 supported code for countries", geoContinentPrefix)
 					}
 					isDefault := originalEP.SetIdentifier == "default"
@@ -660,6 +673,7 @@ func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) (
 						DNSName: "g." + fmt.Sprintf("%s.%s", rootDomainName, provider.KuadrantTLD),
 						Targets: []string{fmt.Sprintf("geo=%s", ps.Value), fmt.Sprintf("type=%s", codeType), fmt.Sprintf("default=%t", isDefault)},
 					}
+
 					localEndpoints = append(localEndpoints, &geoEP)
 				}
 			}

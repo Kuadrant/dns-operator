@@ -129,7 +129,7 @@ func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*e
 	var endpoints []*endpoint.Endpoint
 	// do our queries and gather up the answers
 	answers := map[string]map[string]*dns.Msg{}
-	p.logger.Info("RecordsForHost", "total nameservers", len(p.nameservers))
+	p.logger.Info("RecordsForHost", "total nameservers", len(p.nameservers), "hosts", hosts)
 	for _, nServer := range p.nameservers {
 		p.logger.Info("checking nameserver ", "address", *nServer)
 		nsAnswer, err := p.DNSQueryFunc(hosts, *nServer)
