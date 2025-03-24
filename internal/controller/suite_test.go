@@ -97,7 +97,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	providerFactory, err := provider.NewFactory(mgr.GetClient(), []string{"inmemory"})
+	providerFactory, err := provider.NewFactory(mgr.GetClient(), []string{provider.DNSProviderInMem.String()})
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&DNSRecordReconciler{

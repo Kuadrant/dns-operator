@@ -28,10 +28,13 @@ make local-setup DEPLOY=true
 
 ### Namespace scoped on single cluster
 
+> Note currently doesn't work with core dns
+
 Deploy the operator on a single kind cluster with two operator instances in two namespaces watching their own namespace only:
 ```shell
 make local-setup DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2
 ```
+
 
 The above will create two dns operator deployments on the kind cluster, each configured to watch its own namespace, with the development provider secrets (Assuming you have configured them locally) created in each deployment namespace.
 
@@ -55,6 +58,7 @@ dns-operator-2   dns-provider-credentials-aws        kuadrant.io/aws            
 dns-operator-2   dns-provider-credentials-azure      kuadrant.io/azure               3      21s
 dns-operator-2   dns-provider-credentials-gcp        kuadrant.io/gcp                 4      21s
 dns-operator-2   dns-provider-credentials-inmemory   kuadrant.io/inmemory            0      21s
+dnstest          dns-provider-core-dns               kuadrant.io/coredns             5      68s
 dnstest          dns-provider-credentials-aws        kuadrant.io/aws                 5      68s
 dnstest          dns-provider-credentials-azure      kuadrant.io/azure               3      68s
 dnstest          dns-provider-credentials-gcp        kuadrant.io/gcp                 4      68s
@@ -67,6 +71,8 @@ Deploy the operator on two kind clusters each with one operator instance watchin
 ```shell
 make local-setup DEPLOY=true CLUSTER_COUNT=2
 ```
+
+>Note for coredns, you will need to run the `make local-setup-coredns-credentials TARGET_NAMESPACE=dnstest COREDNS_NAMESERVERS="coredns-service-ip1,corends-ip2"`
 
 ### Namespace scoped on multiple clusters
 

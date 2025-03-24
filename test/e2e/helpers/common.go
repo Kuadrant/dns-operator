@@ -32,27 +32,45 @@ func GenerateName() string {
 	return namegenerator.NewNameGenerator(nBig.Int64()).Generate()
 }
 
-func ResolverForDomainName(domainName string) *net.Resolver {
-	nameservers, err := net.LookupNS(domainName)
+type NameServerNone string
+
+func ResolverForDomainName(domainName, nameserver string) *net.Resolver {
+	var (
+		nameservers []*net.NS
+		err         error
+	)
+	if nameserver != "" {
+		nameservers = []*net.NS{{Host: nameserver}}
+	} else {
+		nameservers, err = net.LookupNS(domainName)
+	}
 	Expect(err).ToNot(HaveOccurred())
+	nameserver = nameservers[0].Host
+	if !strings.Contains(nameserver, ":53") {
+		nameserver = strings.Join([]string{nameservers[0].Host, "53"}, ":")
+	}
 	GinkgoWriter.Printf("[debug] authoritative nameserver used for DNS record resolution: %s\n", nameservers[0].Host)
 
 	authoritativeResolver := &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 			d := net.Dialer{Timeout: 10 * time.Second}
-			return d.DialContext(ctx, network, strings.Join([]string{nameservers[0].Host, "53"}, ":"))
+			return d.DialContext(ctx, network, nameserver)
 		},
 	}
 	return authoritativeResolver
 }
 
-func EndpointsForHost(ctx context.Context, provider provider.Provider, host string) ([]*externaldnsendpoint.Endpoint, error) {
+func EndpointsForHost(ctx context.Context, p provider.Provider, host string) ([]*externaldnsendpoint.Endpoint, error) {
 	filtered := []*externaldnsendpoint.Endpoint{}
-
-	records, err := provider.Records(ctx)
-	if err != nil {
-		return nil, err
+	// TODO we have added a recordsForHost to the provider interface so we need to fill in the other to use the logic in here
+	var (
+		records   []*externaldnsendpoint.Endpoint
+		recordErr error
+	)
+	records, recordErr = p.Records(ctx)
+	if recordErr != nil {
+		return nil, recordErr
 	}
 
 	hostRegexp, err := regexp.Compile(host)
@@ -73,7 +91,7 @@ func EndpointsForHost(ctx context.Context, provider provider.Provider, host stri
 }
 
 func ProviderForDNSRecord(ctx context.Context, record *v1alpha1.DNSRecord, c client.Client) (provider.Provider, error) {
-	providerFactory, err := provider.NewFactory(c, []string{"aws", "google", "azure"})
+	providerFactory, err := provider.NewFactory(c, []string{provider.DNSProviderAWS.String(), provider.DNSProviderGCP.String(), provider.DNSProviderAzure.String(), provider.DNSProviderCoreDNS.String()})
 	if err != nil {
 		return nil, err
 	}

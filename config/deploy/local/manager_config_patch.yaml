@@ -7,5 +7,10 @@ spec:
   template:
     spec:
       containers:
-      - name: manager
-        imagePullPolicy: IfNotPresent
+        - name: manager
+          imagePullPolicy: IfNotPresent
+          args:
+            - --metrics-bind-address=:8080
+            - --leader-elect
+            - --provider=aws,google,inmemory,azure,coredns
+            - --zap-log-level=debug
