@@ -34,5 +34,5 @@ spec:
     targets:
     - geo-eu.klb.${KUADRANT_SUB_DOMAIN}
   providerRef:
-    name: dns-provider-credentials-azure
+    name: ${KUADRANT_DNS_PROVIDER_REF}
   rootHost: ${KUADRANT_SUB_DOMAIN}
