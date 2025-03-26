@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -626,7 +627,7 @@ type CoreDNSHandler struct {
 }
 
 func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) ([]*externaldnsendpoint.Endpoint, error) {
-	fmt.Println("************ computeLocalEndpointSet **************")
+	// TODO look to see can we move to using the endpoint builder
 	var geoContinentPrefix = "GEO-"
 	var localEndpoints []*externaldnsendpoint.Endpoint
 	rootDomainName := original.Spec.RootHost
@@ -635,43 +636,57 @@ func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) (
 		localEP.DNSName = fmt.Sprintf("%s.%s", localEP.DNSName, provider.KuadrantTLD)
 		if len(localEP.ProviderSpecific) > 0 {
 			for _, ps := range localEP.ProviderSpecific {
+				nonWildCardRoot := strings.ReplaceAll(rootDomainName, "*.", "")
 				if ps.Name == "weight" {
-					weightName := "w." + fmt.Sprintf("%s.%s", rootDomainName, provider.KuadrantTLD)
+					// we need a weight >=0 if we can't parse unsigned int then fail
+					if _, err := strconv.ParseUint(ps.Value, 10, 64); err != nil {
+						return nil, fmt.Errorf("invalid weight expected a value >= 0")
+					}
+					weightTargets := []string{fmt.Sprintf("%s,%s", ps.Value, localEP.DNSName)}
+					weightName := "w." + fmt.Sprintf("%s.%s", nonWildCardRoot, provider.KuadrantTLD)
 					for _, lp := range localEndpoints {
+						// endpoint already exists update the target values
 						if lp.DNSName == weightName {
+							lp.Targets = weightTargets
 							break
 						}
 					}
+					// TODO move weight to multi value response
 					weightEP := externaldnsendpoint.Endpoint{
 						DNSName:    weightName,
-						Targets:    []string{fmt.Sprintf("%s,%s", ps.Value, localEP.DNSName)},
+						Targets:    weightTargets,
 						RecordType: "TXT",
 					}
 					localEndpoints = append(localEndpoints, &weightEP)
 				}
+				codeType := ""
 				if ps.Name == "geo-code" {
-					// validate
-					codeType := "continent"
-					geoName := "g." + fmt.Sprintf("%s.%s", rootDomainName, provider.KuadrantTLD)
-					for _, lp := range localEndpoints {
-						if lp.DNSName == geoName {
-							break
-						}
-					}
+					// validate input
 					if strings.HasPrefix(ps.Value, geoContinentPrefix) {
-
+						codeType = "continent"
 						continent := strings.Replace(ps.Value, geoContinentPrefix, "", -1)
-						fmt.Println("contient check ", continent)
 						if !provider.IsContinentCode(continent) {
 							return nil, fmt.Errorf("unexpected continent code. %s", continent)
 						}
 					} else if !provider.IsISO3166Alpha2Code(ps.Value) && ps.Value != "*" {
 						return nil, fmt.Errorf("unexpected geo code. Prefix with %s for continents or use ISO_3166 Alpha 2 supported code for countries", geoContinentPrefix)
 					}
+
+					geoName := "g." + fmt.Sprintf("%s.%s", nonWildCardRoot, provider.KuadrantTLD)
 					isDefault := originalEP.SetIdentifier == "default"
+					geoTxtTargets := []string{fmt.Sprintf("geo=%s", ps.Value), fmt.Sprintf("type=%s", codeType), fmt.Sprintf("default=%t", isDefault)}
+					for _, lp := range localEndpoints {
+						// endpoint already exists update the target values
+						if lp.DNSName == geoName {
+							lp.Targets = geoTxtTargets
+							break
+						}
+					}
+
 					geoEP := externaldnsendpoint.Endpoint{
-						DNSName: "g." + fmt.Sprintf("%s.%s", rootDomainName, provider.KuadrantTLD),
-						Targets: []string{fmt.Sprintf("geo=%s", ps.Value), fmt.Sprintf("type=%s", codeType), fmt.Sprintf("default=%t", isDefault)},
+						DNSName:    "g." + fmt.Sprintf("%s.%s", nonWildCardRoot, provider.KuadrantTLD),
+						RecordType: "TXT",
+						Targets:    []string{fmt.Sprintf("geo=%s", ps.Value), fmt.Sprintf("type=%s", codeType), fmt.Sprintf("default=%t", isDefault)},
 					}
 
 					localEndpoints = append(localEndpoints, &geoEP)
@@ -708,6 +723,9 @@ func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alp
 	hadChanges := false
 	logger := log.FromContext(ctx)
 
+	var coreDNSRecordLabel = "kuadrant.io/coredns-zone-name"
+	var coreDNSRecordTypeLabel = "kuadrant.io/type"
+
 	var createUpdateMergeCopy = func(original *v1alpha1.DNSRecord) error {
 		// merge copy contains the records from this and the other configured nameservers, it also has all the provider specific data
 		logger.Info("coredns creating or updating merged record")
@@ -720,7 +738,6 @@ func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alp
 		}
 		endpointSet, err := r.computeFullEndpointSet(ctx, original, dnsProvider)
 		if err != nil {
-			fmt.Println("FAILED TO COMPUTE ENDPOINTS")
 			return err
 		}
 		if len(endpointSet) == 0 {
@@ -731,7 +748,7 @@ func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alp
 			if apierrors.IsNotFound(err) {
 				mergeCopy.Spec = original.Spec
 				mergeCopy.Spec.Endpoints = endpointSet
-				mergeCopy.Labels = map[string]string{"kuadrant.io/type": "merged", "kuadrant.io/coredns-zone-name": original.Status.ZoneDomainName}
+				mergeCopy.Labels = map[string]string{coreDNSRecordTypeLabel: "merged", coreDNSRecordLabel: original.Status.ZoneDomainName}
 				if err := controllerutil.SetOwnerReference(dnsRecord, mergeCopy, r.Scheme); err != nil {
 					return err
 				}
@@ -768,11 +785,10 @@ func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alp
 				// create
 				logger.Info("coredns no dns record found creating local copy")
 				kdrntLocalCopy.Spec = original.Spec
-				kdrntLocalCopy.Labels = map[string]string{"kuadrant.io/type": "local", "kuadrant.io/coredns-zone-name": provider.KuadrantTLD}
+				kdrntLocalCopy.Labels = map[string]string{coreDNSRecordTypeLabel: "local", coreDNSRecordLabel: provider.KuadrantTLD}
 				kdrntLocalCopy.Spec.RootHost = fmt.Sprintf("%s.%s", original.Spec.RootHost, provider.KuadrantTLD)
 				var computedEndpoints, err = r.computeLocalEndpointSet(original)
 				if err != nil {
-					fmt.Println("FAILED TO CREATE LOCAL COPY COMPUTE ENDPOINTS")
 					return err
 				}
 				kdrntLocalCopy.Spec.Endpoints = computedEndpoints
@@ -790,7 +806,6 @@ func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alp
 		//update endpoints only
 		computedEndpoints, err := r.computeLocalEndpointSet(original)
 		if err != nil {
-			fmt.Println("FAILED TO UPDATE LOCAL COPY COMPUTE ENDPOINTS")
 			return err
 		}
 		if !endPointsEqual(kdrntLocalCopy.Spec.Endpoints, computedEndpoints) {
@@ -826,7 +841,6 @@ func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alp
 	// handle core dns merged record updates
 	if isOriginal(dnsRecord) {
 		if err := createUpdateLocalCopy(dnsRecord); err != nil {
-			fmt.Println("FAILED TO createUpdateLocalCopy ", hadChanges, err)
 			return hadChanges, []string{}, err
 		}
 		if err := createUpdateMergeCopy(dnsRecord); err != nil {

@@ -95,13 +95,17 @@ func FindDNSZoneForHost(ctx context.Context, host string, zones []DNSZone) (*DNS
 	return z, err
 }
 
-func isApexDomain(host string, zones []DNSZone) (string, bool) {
+func IsApexDomain(host string, zones []DNSZone) (string, bool) {
 	for _, z := range zones {
 		if z.DNSName == host {
 			return z.ID, true
 		}
 	}
 	return "", false
+}
+
+func IsWildCardHost(host string) bool {
+	return strings.HasPrefix(host, "*.")
 }
 
 // findDNSZoneForHost will take a host and look for a zone that patches the immediate parent of that host and will continue to step through parents until it either finds a zone  or fails. Example *.example.com will look for example.com and other.domain.example.com will step through each subdomain until it hits example.com.
@@ -119,7 +123,7 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone) (*DNSZone, s
 	}
 
 	// We do not currently support creating records for Apex domains, and a DNSZone represents an Apex domain we cannot setup dns for the host
-	if id, is := isApexDomain(originalHost, zones); is {
+	if id, is := IsApexDomain(originalHost, zones); is {
 		return nil, "", fmt.Errorf("host %s is an apex domain with zone id %s. Cannot configure DNS for apex domain as apex domains only support A records", originalHost, id)
 	}
 

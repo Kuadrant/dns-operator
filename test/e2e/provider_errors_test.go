@@ -118,7 +118,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 
 	})
 
-	FIt("correctly handles invalid geo", func(ctx SpecContext) {
+	It("correctly handles invalid geo", func(ctx SpecContext) {
 		var validGeoCode string
 		var expectedProviderErr string
 		if testDNSProvider == provider.DNSProviderGCP.String() {
@@ -223,6 +223,8 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		} else if testDNSProvider == provider.DNSProviderAzure.String() {
 			//Azure
 			expectedProviderErr = "Operation input is malformed. Please retry the request."
+		} else if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+			expectedProviderErr = "invalid weight expected a value >= 0"
 		} else {
 			//AWS
 			expectedProviderErr = "weight' failed to satisfy constraint: Member must have value greater than or equal to 0"

@@ -29,6 +29,7 @@ func TestRecordsForHost(t *testing.T) {
 
 	testCases := []struct {
 		Name              string
+		Host              string
 		Secret            *v1.Secret
 		QueryResponse     coredns.QueryFunc
 		ExpectedEndPoints []*endpoint.Endpoint
@@ -36,6 +37,7 @@ func TestRecordsForHost(t *testing.T) {
 	}{
 		{
 			Name: "test merged endpoints with weight and geo",
+			Host: "k.example.com",
 			Secret: &v1.Secret{
 				Data: map[string][]byte{
 					"ZONES":       []byte("k.example.com"),
@@ -44,7 +46,7 @@ func TestRecordsForHost(t *testing.T) {
 			},
 			ExpectedEndPoints: []*endpoint.Endpoint{
 				endpoint.NewEndpoint("k.example.com", "CNAME", "lb.k.example.com"),
-				endpoint.NewEndpoint("lb.k.example.com", "CNAME", "geo-na.lb.k.example.com").WithProviderSpecific("geo-code", "GEO-NA"),
+				endpoint.NewEndpoint("lb.k.example.com", "CNAME", "geo-na.lb.k.example.com").WithProviderSpecific("geo-code", "GEO-NA").WithSetIdentifier("default"),
 				endpoint.NewEndpoint("lb.k.example.com", "CNAME", "geo-eu.lb.k.example.com").WithProviderSpecific("geo-code", "GEO-EU"),
 				endpoint.NewEndpoint("geo-na.lb.k.example.com", "CNAME", gateway1Name+".lb.k.example.com").WithProviderSpecific("weight", "200"),
 				endpoint.NewEndpoint("geo-eu.lb.k.example.com", "CNAME", gateway2Name+".lb.k.example.com").WithProviderSpecific("weight", "100"),
@@ -56,8 +58,10 @@ func TestRecordsForHost(t *testing.T) {
 				weight := "200"
 				gatewayIP := gateway1IP
 				gatewayName := gateway1Name
+				isDefault := true
 				if nameServer == nameserver1 {
 					geo = "geo-eu"
+					isDefault = false
 					weight = "100"
 					gatewayIP = gateway2IP
 					gatewayName = gateway2Name
@@ -76,14 +80,14 @@ func TestRecordsForHost(t *testing.T) {
 							},
 						}
 
-					} else if strings.HasPrefix(host, "d.") {
-						answers["defaultGeo"] = &dns.Msg{
+					} else if strings.HasPrefix(host, "g.") {
+						answers["geo"] = &dns.Msg{
 							Answer: []dns.RR{
 								&dns.TXT{
 									Hdr: dns.RR_Header{
 										Name: host,
 									},
-									Txt: []string{"NA"},
+									Txt: []string{fmt.Sprintf("geo=%s", strings.ToUpper(geo)), "type=continent", fmt.Sprintf("default=%t", isDefault)},
 								},
 							},
 						}
@@ -131,11 +135,11 @@ func TestRecordsForHost(t *testing.T) {
 			}
 			p.(*coredns.CoreDNSProvider).DNSQueryFunc = testCase.QueryResponse
 
-			endpoints, _ := p.RecordsForHost(context.Background(), "k.example.com")
+			endpoints, _ := p.RecordsForHost(context.Background(), testCase.Host)
 
 			equal := endpointsEqual(endpoints, testCase.ExpectedEndPoints)
 			if !equal {
-				t.Fatalf("expected the endpoints to match %v not the same as %v ", endpoints, testCase.ExpectedEndPoints)
+				t.Fatalf("endpoints \n %v \n should match expected endpoints \n %v ", endpoints, testCase.ExpectedEndPoints)
 			}
 		})
 	}
@@ -149,11 +153,14 @@ func endpointsEqual(eps1, eps2 []*endpoint.Endpoint) bool {
 		found := false
 		for _, ep2 := range eps2 {
 			if ep1.Key() == ep2.Key() {
-				if slices.Equal(ep1.Targets, ep2.Targets) &&
-					equality.Semantic.DeepEqual(ep1.ProviderSpecific, ep2.ProviderSpecific) {
-					found = true
-					break
+				if slices.Equal(ep1.Targets, ep2.Targets) {
+					fmt.Println("found endpoint with same targets ", ep1, ep2)
+					if equality.Semantic.DeepEqual(ep1.ProviderSpecific, ep2.ProviderSpecific) {
+						found = true
+						break
+					}
 				}
+
 			}
 		}
 		if !found {

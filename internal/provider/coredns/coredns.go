@@ -1,3 +1,5 @@
+// Core DNS provider is responsible for calling out to core dns instances via DNS for hosts it knows about to pull together the full set of "merged endpoints". This set of merged endpoints reprent the entire record set for a given host.
+
 package coredns
 
 import (
@@ -28,6 +30,14 @@ type QueryFunc func(hosts []string, nameserver string) (map[string]*dns.Msg, err
 
 var p provider.Provider = &CoreDNSProvider{}
 
+const (
+	TxtGEOCodePrefix      = "geo="
+	TxtDefaultGEOPrefix   = "default="
+	TxtCodeTypeGEOPrefix  = "type="
+	ProviderNameserverKey = "NAMESERVERS"
+	ProviderZonesKey      = "ZONES"
+)
+
 // Register this Provider with the provider factory
 func init() {
 	provider.RegisterProvider(p.Name().String(), NewCoreDNSProviderFromSecret, true)
@@ -38,9 +48,9 @@ func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.
 	p := &CoreDNSProvider{
 		logger: logger,
 	}
-	if _, ok := s.Data["NAMESERVERS"]; ok {
+	if _, ok := s.Data[ProviderNameserverKey]; ok {
 		nameservers := []*string{}
-		nservers := strings.Split(strings.TrimSpace(string(s.Data["NAMESERVERS"])), ",")
+		nservers := strings.Split(strings.TrimSpace(string(s.Data[ProviderNameserverKey])), ",")
 		for _, ns := range nservers {
 			if err := validateNSAddress(ns); err != nil {
 				return p, err
@@ -49,8 +59,8 @@ func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.
 		}
 		p.nameservers = nameservers
 	}
-	if _, ok := s.Data["ZONES"]; ok {
-		p.availableZones = strings.Split(strings.TrimSpace(string(s.Data["ZONES"])), ",")
+	if _, ok := s.Data[ProviderZonesKey]; ok {
+		p.availableZones = strings.Split(strings.TrimSpace(string(s.Data[ProviderZonesKey])), ",")
 	}
 	p.availableZones = append(p.availableZones, provider.KuadrantTLD)
 	p.DNSQueryFunc = p.dnsQuery
@@ -118,13 +128,10 @@ func (p *CoreDNSProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, er
 	return []*endpoint.Endpoint{}, fmt.Errorf("no impl for core dns")
 }
 
-// TODO centralise
-const kuadrantTLD = "kdrnt"
-
 func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*endpoint.Endpoint, error) {
 	// if host prefix matches our local prefix query nameservers to get other records and return merged endpoints
 	// if host doesn't match prefix get the records from the resource directly.
-	kudrantHost := fmt.Sprintf("%s.%s", host, kuadrantTLD)
+	kudrantHost := fmt.Sprintf("%s.%s", host, provider.KuadrantTLD)
 	hosts := []string{kudrantHost, fmt.Sprintf("w.%s", kudrantHost), fmt.Sprintf("g.%s", kudrantHost)}
 	var endpoints []*endpoint.Endpoint
 	// do our queries and gather up the answers
@@ -146,22 +153,19 @@ func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*e
 		if dns == nil {
 			return nil, fmt.Errorf("expected a dns response but got none from  %s", server)
 		}
-
-		// merge the actual dns record answers
-		if _, ok := answer["dns"]; !ok {
-			continue
+		if _, ok := answer["weight"]; ok && answer["dns"].Answer != nil {
+			for _, rr := range answer["dns"].Answer {
+				//need to remove duplicates where the dns name is the same and the targets are the same but keep duplicates where the targets are different
+				endpoints = p.mergeDNSEndpoints(rr, endpoints)
+			}
 		}
-		for _, rr := range answer["dns"].Answer {
-			//need to remove duplicates where the dns name is the same and the targets are the same but keep duplicates where the targets are different
-			endpoints = p.mergeDNSEndpoints(rr, endpoints)
-		}
-		if answer["weight"].Answer != nil {
+		if _, ok := answer["weight"]; ok && answer["weight"].Answer != nil {
 			for _, rr := range answer["weight"].Answer {
 				// these will be unique dns names
 				addWeight(rr, endpoints)
 			}
 		}
-		if answer["geo"].Answer != nil {
+		if _, ok := answer["geo"]; ok && answer["geo"].Answer != nil {
 			for _, rr := range answer["geo"].Answer {
 				if err := populateGEO(rr, endpoints); err != nil {
 					return endpoints, err
@@ -174,7 +178,7 @@ func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*e
 }
 
 func sanitize(host string) string {
-	return strings.TrimSuffix(strings.TrimSpace(strings.TrimSuffix(host, ".")), "."+kuadrantTLD)
+	return strings.TrimSuffix(strings.TrimSpace(strings.TrimSuffix(host, ".")), "."+provider.KuadrantTLD)
 }
 
 func (p *CoreDNSProvider) mergeDNSEndpoints(rr dns.RR, endpoints []*endpoint.Endpoint) []*endpoint.Endpoint {
@@ -213,24 +217,24 @@ func (p *CoreDNSProvider) mergeDNSEndpoints(rr dns.RR, endpoints []*endpoint.End
 }
 
 func populateGEO(rr dns.RR, endpoints []*endpoint.Endpoint) error {
-	// very basic look for endpoints targeting endpoints starting with geo- add add provider specific data to those
 	txt := rr.(*dns.TXT)
 	if len(txt.Txt) != 3 {
 		// return an error we expect 3 pieces of info
 		return fmt.Errorf("expected 3 lines in the geo txt record but got %d", len(txt.Txt))
 	}
-	geo := getGeoData(txt)
+	geo := newGeoData(txt)
 	for _, ep := range endpoints {
 		for _, target := range ep.Targets {
-			if strings.HasPrefix(target, "geo-") {
+			if strings.HasPrefix(target, geo.subdomain()) {
 				if geo.Default {
 					ep.SetIdentifier = "default"
 				}
-				ep.ProviderSpecific = append(ep.ProviderSpecific, endpoint.ProviderSpecificProperty{
-					Name:  "geo-code",
-					Value: geo.Code,
-				})
-
+				if len(ep.ProviderSpecific) == 0 {
+					ep.ProviderSpecific = append(ep.ProviderSpecific, endpoint.ProviderSpecificProperty{
+						Name:  "geo-code",
+						Value: geo.Code,
+					})
+				}
 			}
 		}
 	}
@@ -238,32 +242,46 @@ func populateGEO(rr dns.RR, endpoints []*endpoint.Endpoint) error {
 }
 
 type geoData struct {
-	Code    string
-	Default bool
+	Code      string
+	Default   bool
+	Continent bool
 }
 
-func getGeoData(txt *dns.TXT) geoData {
+func (g *geoData) subdomain() string {
+	if strings.HasPrefix(g.Code, "GEO-") {
+		return strings.ToLower(g.Code)
+	}
+	return fmt.Sprintf("geo-%s", strings.ToLower(g.Code))
+}
+
+func newGeoData(txt *dns.TXT) geoData {
 	gd := geoData{}
 	for _, val := range txt.Txt {
-		if strings.HasPrefix(val, "geo=") {
-			gd.Code = strings.Replace(val, "geo=", "", -1)
+		if strings.HasPrefix(val, TxtGEOCodePrefix) {
+			gd.Code = strings.Replace(val, TxtGEOCodePrefix, "", -1)
 		}
-		if strings.HasPrefix(val, "default=") {
-			val = strings.Replace(val, "default=", "", -1)
+		if strings.HasPrefix(val, TxtDefaultGEOPrefix) {
+			val = strings.Replace(val, TxtDefaultGEOPrefix, "", -1)
 			gd.Default = strings.ToLower(strings.TrimSpace(val)) == "true"
+		}
+		if strings.HasPrefix(val, TxtCodeTypeGEOPrefix) {
+			val = strings.Replace(val, TxtCodeTypeGEOPrefix, "", -1)
+			if val == "continent" {
+				gd.Continent = true
+			}
 		}
 	}
 	return gd
 }
 
 func addWeight(rr dns.RR, endpoints []*endpoint.Endpoint) {
-
 	txt := rr.(*dns.TXT)
 
 	if len(txt.Txt) == 1 {
 		values := strings.Split(txt.Txt[0], ",")
 		weight := values[0]
 		dnsName := sanitize(values[1])
+
 		for _, ep := range endpoints {
 			if sanitize(ep.DNSName) == sanitize(dnsName) {
 				ep.ProviderSpecific = []endpoint.ProviderSpecificProperty{
