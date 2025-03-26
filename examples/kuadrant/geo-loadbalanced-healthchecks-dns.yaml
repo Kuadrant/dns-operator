@@ -59,8 +59,10 @@ spec:
       targets:
         - eu.klb.${KUADRANT_SUB_DOMAIN}
   healthCheck:
-    endpoint: /health
+    path: /health
     failureThreshold: 3
     port: 80
     protocol: HTTPS
   rootHost: ${KUADRANT_SUB_DOMAIN}
+  providerRef:
+    name: ${KUADRANT_DNS_PROVIDER_REF}
