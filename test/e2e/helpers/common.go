@@ -47,12 +47,20 @@ func ResolverForDomainName(domainName string) *net.Resolver {
 	return authoritativeResolver
 }
 
-func EndpointsForHost(ctx context.Context, provider provider.Provider, host string) ([]*externaldnsendpoint.Endpoint, error) {
+func EndpointsForHost(ctx context.Context, p provider.Provider, host string) ([]*externaldnsendpoint.Endpoint, error) {
 	filtered := []*externaldnsendpoint.Endpoint{}
-
-	records, err := provider.Records(ctx)
-	if err != nil {
-		return nil, err
+	// TODO we have added a recordsForHost to the provider interface so we need to fill in the other to use the logic in here
+	var (
+		records   []*externaldnsendpoint.Endpoint
+		recordErr error
+	)
+	if p.Name() == provider.DNSProviderCoreDNS {
+		records, recordErr = p.RecordsForHost(ctx, host)
+	} else {
+		records, recordErr = p.Records(ctx)
+	}
+	if recordErr != nil {
+		return nil, recordErr
 	}
 
 	hostRegexp, err := regexp.Compile(host)
@@ -73,7 +81,7 @@ func EndpointsForHost(ctx context.Context, provider provider.Provider, host stri
 }
 
 func ProviderForDNSRecord(ctx context.Context, record *v1alpha1.DNSRecord, c client.Client) (provider.Provider, error) {
-	providerFactory, err := provider.NewFactory(c, []string{provider.DNSProviderAWS.String(), provider.DNSProviderGCP.String(), provider.DNSProviderAzure.String()})
+	providerFactory, err := provider.NewFactory(c, []string{provider.DNSProviderAWS.String(), provider.DNSProviderGCP.String(), provider.DNSProviderAzure.String(), provider.DNSProviderCoreDNS.String()})
 	if err != nil {
 		return nil, err
 	}

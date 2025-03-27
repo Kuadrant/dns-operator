@@ -61,6 +61,8 @@ type Config struct {
 	ZoneTypeFilter externaldnsprovider.ZoneTypeFilter
 	// only consider hosted zones ending with this zone id
 	ZoneIDFilter externaldnsprovider.ZoneIDFilter
+	// ClientConfigFile allows a config file to be passed to the provider to configure the client it uses
+	ClientConfigFile string
 }
 
 type ProviderSpecificLabels struct {

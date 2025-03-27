@@ -636,7 +636,7 @@ func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) (
 		localEP.DNSName = fmt.Sprintf("%s.%s", localEP.DNSName, provider.KuadrantTLD)
 		if len(localEP.ProviderSpecific) > 0 {
 			for _, ps := range localEP.ProviderSpecific {
-				nonWildCardRoot := strings.ReplaceAll(rootDomainName, "*.", "")
+				nonWildCardRoot := strings.ReplaceAll(rootDomainName, "*.", "wildcard")
 				if ps.Name == "weight" {
 					// we need a weight >=0 if we can't parse unsigned int then fail
 					if _, err := strconv.ParseUint(ps.Value, 10, 64); err != nil {

@@ -11,19 +11,27 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/miekg/dns"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kubectl/pkg/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 )
 
 type CoreDNSProvider struct {
-	logger         logr.Logger
-	nameservers    []*string
-	availableZones []string
-	DNSQueryFunc   QueryFunc
+	logger          logr.Logger
+	nameservers     []*string
+	availableZones  []string
+	DNSQueryFunc    QueryFunc
+	ConfigFile      string
+	DNSRecordClient client.Client
 }
 
 type QueryFunc func(hosts []string, nameserver string) (map[string]*dns.Msg, error)
@@ -48,6 +56,9 @@ func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.
 	p := &CoreDNSProvider{
 		logger: logger,
 	}
+	if c.ClientConfigFile != "" {
+		p.ConfigFile = c.ClientConfigFile
+	}
 	if _, ok := s.Data[ProviderNameserverKey]; ok {
 		nameservers := []*string{}
 		nservers := strings.Split(strings.TrimSpace(string(s.Data[ProviderNameserverKey])), ",")
@@ -65,6 +76,41 @@ func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.
 	p.availableZones = append(p.availableZones, provider.KuadrantTLD)
 	p.DNSQueryFunc = p.dnsQuery
 	return p, nil
+}
+
+func (p *CoreDNSProvider) getClientConfig() (*rest.Config, error) {
+	if p.ConfigFile != "" {
+		overrides := &clientcmd.ConfigOverrides{}
+		overrides.CurrentContext = k.ConfigContext
+
+		config := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			&clientcmd.ClientConfigLoadingRules{ExplicitPath: p.ConfigFile},
+			overrides,
+		)
+
+		return config.ClientConfig()
+	}
+
+	return rest.InClusterConfig()
+}
+
+func (p *CoreDNSProvider) client() error {
+	config, err := p.getClientConfig()
+	if err != nil {
+		return err
+	}
+
+	err = v1alpha1.AddToScheme(scheme.Scheme)
+	if err != nil {
+		return err
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+
+	if err != nil {
+		return err
+	}
+	p.DNSRecordClient = clientset
+
 }
 
 func validateNSAddress(address string) error {
@@ -124,7 +170,8 @@ func (p *CoreDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 }
 
 func (p *CoreDNSProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
-	// get local m. records and also the host records
+	// return the merged record endpoints
+
 	return []*endpoint.Endpoint{}, fmt.Errorf("no impl for core dns")
 }
 
@@ -132,7 +179,8 @@ func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*e
 	// if host prefix matches our local prefix query nameservers to get other records and return merged endpoints
 	// if host doesn't match prefix get the records from the resource directly.
 	kudrantHost := fmt.Sprintf("%s.%s", host, provider.KuadrantTLD)
-	hosts := []string{kudrantHost, fmt.Sprintf("w.%s", kudrantHost), fmt.Sprintf("g.%s", kudrantHost)}
+	noneWildCardHost := strings.Replace(kudrantHost, "*", "wildcard", -1)
+	hosts := []string{kudrantHost, fmt.Sprintf("w.%s", noneWildCardHost), fmt.Sprintf("g.%s", noneWildCardHost)}
 	var endpoints []*endpoint.Endpoint
 	// do our queries and gather up the answers
 	answers := map[string]map[string]*dns.Msg{}
@@ -296,6 +344,7 @@ func addWeight(rr dns.RR, endpoints []*endpoint.Endpoint) {
 }
 
 func (p *CoreDNSProvider) dnsQuery(hosts []string, nameserver string) (map[string]*dns.Msg, error) {
+	p.logger.Info("doing dns query", "hosts", hosts)
 	queryType := dns.TypeA
 	answers := map[string]*dns.Msg{}
 	key := "dns"
@@ -320,6 +369,7 @@ func (p *CoreDNSProvider) dnsQuery(hosts []string, nameserver string) (map[strin
 		if err != nil {
 			return answers, fmt.Errorf("%w failed to do dns exchange with nameserver %s ", err, nameserver)
 		}
+		p.logger.Info("got answer for dns query ", "fqdn", fqdn, "answer", msg, "err", err)
 		answers[key] = msg
 
 	}
