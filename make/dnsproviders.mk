@@ -64,10 +64,10 @@ $(LOCAL_SETUP_AZURE_CREDS):
 
 .PHONY: local-setup-coredns-credentials
 local-setup-coredns-credentials:
-	echo "local-setup: creating dns provider for coredns in ${TARGET_NAMESPACE} based on lb IP $(COREDNS_NAMESERVERS)";\
-	$(KUBECTL) delete secret dns-provider-core-dns -n ${TARGET_NAMESPACE};\
-	$(KUBECTL) -n ${TARGET_NAMESPACE} create secret generic dns-provider-core-dns --type=kuadrant.io/coredns --from-literal=NAMESERVERS="$(COREDNS_NAMESERVERS):53" --from-literal=ZONES="k.example.com";\
-	$(KUBECTL) label secret dns-provider-core-dns -n ${TARGET_NAMESPACE} app.kubernetes.io/part-of=dns-operator;\
+	echo "local-setup: creating dns provider for coredns in ${TARGET_NAMESPACE} based on lb IP $(COREDNS_NAMESERVERS)"
+	-$(KUBECTL) delete secret dns-provider-core-dns -n ${TARGET_NAMESPACE}
+	$(KUBECTL) -n ${TARGET_NAMESPACE} create secret generic dns-provider-core-dns --type=kuadrant.io/coredns --from-literal=NAMESERVERS="$(COREDNS_NAMESERVERS):53" --from-literal=ZONES="k.example.com"
+	$(KUBECTL) label secret dns-provider-core-dns -n ${TARGET_NAMESPACE} app.kubernetes.io/part-of=dns-operator
 
 .PHONY: local-setup-dns-providers
 local-setup-dns-providers: TARGET_NAMESPACE=dnstest
