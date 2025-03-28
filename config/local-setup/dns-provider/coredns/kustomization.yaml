@@ -1,0 +1,13 @@
+nameSuffix: -coredns
+
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    app.kubernetes.io/part-of: dns-operator
+    app.kubernetes.io/managed-by: kustomize
+
+secretGenerator:
+  - name: dns-provider-credentials
+    envs:
+      - coredns-credentials.env
+    type: "kuadrant.io/coredns"

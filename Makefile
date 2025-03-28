@@ -200,6 +200,7 @@ local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependenci
 	@$(MAKE) -s install-metallb
 	@$(MAKE) -s install-coredns-unmonitored
 	@$(KUBECTL) create namespace ${TEST_NAMESPACE} --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	@$(MAKE) -s local-setup-coredns-generate-from-cluster
 	@$(MAKE) -s local-setup-dns-providers TARGET_NAMESPACE=${TEST_NAMESPACE}
 	@if [ ${DEPLOY} = "true" ]; then\
 		if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
