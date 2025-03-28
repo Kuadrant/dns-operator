@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/miekg/dns"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,6 +18,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
+
+	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
 type CoreDNSProvider struct {
@@ -51,15 +52,6 @@ func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.
 	p := &CoreDNSProvider{
 		logger: logger,
 	}
-	rconfig, err := config.GetConfig()
-	if err != nil {
-		return nil, err
-	}
-	client, err := NewForConfig(rconfig)
-	if err != nil {
-		return nil, err
-	}
-	p.DNSRecordClient = client
 	if _, ok := s.Data[ProviderNameserverKey]; ok {
 		nameservers := []*string{}
 		nservers := strings.Split(strings.TrimSpace(string(s.Data[ProviderNameserverKey])), ",")
@@ -135,11 +127,30 @@ func (p *CoreDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 	return provider.ProviderSpecificLabels{}
 }
 
+func (p *CoreDNSProvider) k8sClient() (DNSRecordInterface, error) {
+	if p.DNSRecordClient == nil {
+		rconfig, err := config.GetConfig()
+		if err != nil {
+			return nil, err
+		}
+		client, err := NewForConfig(rconfig)
+		if err != nil {
+			return nil, err
+		}
+		p.DNSRecordClient = client
+	}
+	return p.DNSRecordClient, nil
+}
+
 func (p *CoreDNSProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 	// return the merged record endpoints from all dns records in cluster
 	endpoints := make([]*endpoint.Endpoint, 0)
+	client, err := p.k8sClient()
+	if err != nil {
+		return endpoints, err
+	}
 
-	records, err := p.DNSRecordClient.DNSRecords("").List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", provider.CoreDNSRecordTypeLabel, "merged")})
+	records, err := client.DNSRecords("").List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", provider.CoreDNSRecordTypeLabel, "merged")})
 	if err != nil {
 		return nil, err
 	}
