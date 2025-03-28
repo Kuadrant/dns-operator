@@ -40,7 +40,7 @@ func ResolverForDomainName(domainName, nameserver string) *net.Resolver {
 		err         error
 	)
 	if nameserver != "" {
-		nameservers = []*net.NS{&net.NS{Host: nameserver}}
+		nameservers = []*net.NS{{Host: nameserver}}
 	} else {
 		nameservers, err = net.LookupNS(domainName)
 	}
