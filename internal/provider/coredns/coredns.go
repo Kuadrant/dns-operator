@@ -11,15 +11,11 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/miekg/dns"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubectl/pkg/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
@@ -30,8 +26,7 @@ type CoreDNSProvider struct {
 	nameservers     []*string
 	availableZones  []string
 	DNSQueryFunc    QueryFunc
-	ConfigFile      string
-	DNSRecordClient client.Client
+	DNSRecordClient DNSRecordInterface
 }
 
 type QueryFunc func(hosts []string, nameserver string) (map[string]*dns.Msg, error)
@@ -56,9 +51,15 @@ func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.
 	p := &CoreDNSProvider{
 		logger: logger,
 	}
-	if c.ClientConfigFile != "" {
-		p.ConfigFile = c.ClientConfigFile
+	rconfig, err := config.GetConfig()
+	if err != nil {
+		return nil, err
 	}
+	client, err := NewForConfig(rconfig)
+	if err != nil {
+		return nil, err
+	}
+	p.DNSRecordClient = client
 	if _, ok := s.Data[ProviderNameserverKey]; ok {
 		nameservers := []*string{}
 		nservers := strings.Split(strings.TrimSpace(string(s.Data[ProviderNameserverKey])), ",")
@@ -76,41 +77,6 @@ func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.
 	p.availableZones = append(p.availableZones, provider.KuadrantTLD)
 	p.DNSQueryFunc = p.dnsQuery
 	return p, nil
-}
-
-func (p *CoreDNSProvider) getClientConfig() (*rest.Config, error) {
-	if p.ConfigFile != "" {
-		overrides := &clientcmd.ConfigOverrides{}
-		overrides.CurrentContext = k.ConfigContext
-
-		config := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-			&clientcmd.ClientConfigLoadingRules{ExplicitPath: p.ConfigFile},
-			overrides,
-		)
-
-		return config.ClientConfig()
-	}
-
-	return rest.InClusterConfig()
-}
-
-func (p *CoreDNSProvider) client() error {
-	config, err := p.getClientConfig()
-	if err != nil {
-		return err
-	}
-
-	err = v1alpha1.AddToScheme(scheme.Scheme)
-	if err != nil {
-		return err
-	}
-	clientset, err := kubernetes.NewForConfig(config)
-
-	if err != nil {
-		return err
-	}
-	p.DNSRecordClient = clientset
-
 }
 
 func validateNSAddress(address string) error {
@@ -170,11 +136,22 @@ func (p *CoreDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 }
 
 func (p *CoreDNSProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
-	// return the merged record endpoints
+	// return the merged record endpoints from all dns records in cluster
+	endpoints := make([]*endpoint.Endpoint, 0)
 
-	return []*endpoint.Endpoint{}, fmt.Errorf("no impl for core dns")
+	records, err := p.DNSRecordClient.DNSRecords("").List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", provider.CoreDNSRecordTypeLabel, "merged")})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, record := range records.Items {
+		endpoints = append(record.Spec.Endpoints, endpoints...)
+	}
+
+	return endpoints, nil
 }
 
+// RecordsForHost returns the records each configured core dns has for a given host
 func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*endpoint.Endpoint, error) {
 	// if host prefix matches our local prefix query nameservers to get other records and return merged endpoints
 	// if host doesn't match prefix get the records from the resource directly.
@@ -215,7 +192,7 @@ func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*e
 		}
 		if _, ok := answer["geo"]; ok && answer["geo"].Answer != nil {
 			for _, rr := range answer["geo"].Answer {
-				if err := populateGEO(rr, endpoints); err != nil {
+				if err := p.populateGEO(rr, endpoints); err != nil {
 					return endpoints, err
 				}
 			}
@@ -251,8 +228,8 @@ func (p *CoreDNSProvider) mergeDNSEndpoints(rr dns.RR, endpoints []*endpoint.End
 	}
 
 	alreadyExists := false
-	for _, exising := range endpoints {
-		if exising.DNSName == ep.DNSName && slices.Equal(exising.Targets, ep.Targets) {
+	for _, existing := range endpoints {
+		if existing.DNSName == ep.DNSName && slices.Equal(existing.Targets, ep.Targets) {
 			alreadyExists = true
 			break
 		}
@@ -264,8 +241,9 @@ func (p *CoreDNSProvider) mergeDNSEndpoints(rr dns.RR, endpoints []*endpoint.End
 	return endpoints
 }
 
-func populateGEO(rr dns.RR, endpoints []*endpoint.Endpoint) error {
+func (p *CoreDNSProvider) populateGEO(rr dns.RR, endpoints []*endpoint.Endpoint) error {
 	txt := rr.(*dns.TXT)
+	p.logger.Info("populateGEO ", "txt ", txt.Txt)
 	if len(txt.Txt) != 3 {
 		// return an error we expect 3 pieces of info
 		return fmt.Errorf("expected 3 lines in the geo txt record but got %d", len(txt.Txt))
@@ -273,7 +251,10 @@ func populateGEO(rr dns.RR, endpoints []*endpoint.Endpoint) error {
 	geo := newGeoData(txt)
 	for _, ep := range endpoints {
 		for _, target := range ep.Targets {
+			fmt.Println("populateGEO looking for geo subdomain", target, geo.subdomain())
+			//todo this is not matching things like us.
 			if strings.HasPrefix(target, geo.subdomain()) {
+				p.logger.Info("populateGEO found geo", "subdomain", geo.subdomain())
 				if geo.Default {
 					ep.SetIdentifier = "default"
 				}
@@ -296,10 +277,9 @@ type geoData struct {
 }
 
 func (g *geoData) subdomain() string {
-	if strings.HasPrefix(g.Code, "GEO-") {
-		return strings.ToLower(g.Code)
-	}
-	return fmt.Sprintf("geo-%s", strings.ToLower(g.Code))
+
+	return strings.ToLower(g.Code)
+
 }
 
 func newGeoData(txt *dns.TXT) geoData {

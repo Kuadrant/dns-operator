@@ -7,13 +7,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kuadrant/dns-operator/internal/provider"
-	"github.com/kuadrant/dns-operator/internal/provider/coredns"
 	"github.com/miekg/dns"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/utils/strings/slices"
 	"sigs.k8s.io/external-dns/endpoint"
+
+	"github.com/kuadrant/dns-operator/internal/provider"
+	"github.com/kuadrant/dns-operator/internal/provider/coredns"
 )
 
 var (

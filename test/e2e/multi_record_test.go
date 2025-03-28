@@ -46,7 +46,9 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		testRecords = []*testDNSRecord{}
-
+		if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+			Skip("skipping multi record for core dns")
+		}
 		if testDNSProvider == provider.DNSProviderGCP.String() {
 			geoCode1 = "us-east1"
 			geoCode2 = "europe-west1"
@@ -80,6 +82,9 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	})
 
 	Context("simple", Labels{"simple"}, func() {
+		if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+			Skip("skipping multi record for core dns")
+		}
 		It("creates and deletes distributed dns records", func(ctx SpecContext) {
 			By(fmt.Sprintf("creating %d simple dnsrecords accross %d clusters", len(testNamespaces)*len(testClusters), len(testClusters)))
 			for ci, tc := range testClusters {
@@ -202,7 +207,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			} else {
 				By("ensuring the authoritative nameserver resolves the hostname")
 				// speed up things by using the authoritative nameserver
-				resolver = ResolverForDomainName(testZoneDomainName)
+				resolver = ResolverForDomainName(testZoneDomainName, "")
 			}
 			Eventually(func(g Gomega, ctx context.Context) {
 				var err error
@@ -311,6 +316,9 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	})
 
 	Context("loadbalanced", Labels{"loadbalanced"}, func() {
+		if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+			Skip("skipping multi record for core dns")
+		}
 		It("creates and deletes distributed dns records", func(ctx SpecContext) {
 			testGeoRecords := map[string][]testDNSRecord{}
 

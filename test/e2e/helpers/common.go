@@ -32,16 +32,30 @@ func GenerateName() string {
 	return namegenerator.NewNameGenerator(nBig.Int64()).Generate()
 }
 
-func ResolverForDomainName(domainName string) *net.Resolver {
-	nameservers, err := net.LookupNS(domainName)
+type NameServerNone string
+
+func ResolverForDomainName(domainName, nameserver string) *net.Resolver {
+	var (
+		nameservers []*net.NS
+		err         error
+	)
+	if nameserver != "" {
+		nameservers = []*net.NS{&net.NS{Host: nameserver}}
+	} else {
+		nameservers, err = net.LookupNS(domainName)
+	}
 	Expect(err).ToNot(HaveOccurred())
+	nameserver = nameservers[0].Host
+	if !strings.Contains(nameserver, ":53") {
+		nameserver = strings.Join([]string{nameservers[0].Host, "53"}, ":")
+	}
 	GinkgoWriter.Printf("[debug] authoritative nameserver used for DNS record resolution: %s\n", nameservers[0].Host)
 
 	authoritativeResolver := &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 			d := net.Dialer{Timeout: 10 * time.Second}
-			return d.DialContext(ctx, network, strings.Join([]string{nameservers[0].Host, "53"}, ":"))
+			return d.DialContext(ctx, network, nameserver)
 		},
 	}
 	return authoritativeResolver
@@ -54,11 +68,7 @@ func EndpointsForHost(ctx context.Context, p provider.Provider, host string) ([]
 		records   []*externaldnsendpoint.Endpoint
 		recordErr error
 	)
-	if p.Name() == provider.DNSProviderCoreDNS {
-		records, recordErr = p.RecordsForHost(ctx, host)
-	} else {
-		records, recordErr = p.Records(ctx)
-	}
+	records, recordErr = p.Records(ctx)
 	if recordErr != nil {
 		return nil, recordErr
 	}

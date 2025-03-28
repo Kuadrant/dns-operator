@@ -628,9 +628,52 @@ type CoreDNSHandler struct {
 
 func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) ([]*externaldnsendpoint.Endpoint, error) {
 	// TODO look to see can we move to using the endpoint builder
+	// TODO clean this mess up
 	var geoContinentPrefix = "GEO-"
 	var localEndpoints []*externaldnsendpoint.Endpoint
 	rootDomainName := original.Spec.RootHost
+	var geoTxtTargets = func() ([]string, error) {
+		var geoEndpoint *externaldnsendpoint.Endpoint
+		var defaultGeo *externaldnsendpoint.Endpoint
+		var geoCodeType = ""
+		for _, originalEP := range original.Spec.Endpoints {
+			if len(originalEP.ProviderSpecific) > 0 {
+				for _, ps := range originalEP.ProviderSpecific {
+					if ps.Name == "geo-code" {
+						if strings.HasPrefix(ps.Value, geoContinentPrefix) {
+							geoCodeType = "continent"
+							continent := strings.Replace(ps.Value, geoContinentPrefix, "", -1)
+							if !provider.IsContinentCode(continent) {
+								return nil, fmt.Errorf("unexpected continent code. %s", continent)
+							}
+						} else if !provider.IsISO3166Alpha2Code(ps.Value) && ps.Value != "*" {
+							return nil, fmt.Errorf("unexpected geo code. Prefix with %s for continents or use ISO_3166 Alpha 2 supported code for countries", geoContinentPrefix)
+						}
+						if ps.Value == "*" {
+							defaultGeo = originalEP
+						} else {
+							geoEndpoint = originalEP
+						}
+
+					}
+				}
+			}
+		}
+		targets := []string{}
+		if geoEndpoint != nil {
+			// making an asumption that it is the only providerspecific property
+			targets = append(targets, fmt.Sprintf("geo=%s", geoEndpoint.ProviderSpecific[0].Value), fmt.Sprintf("type=%s", geoCodeType))
+			defaultGeoTxt := "default=%t"
+			if defaultGeo == nil || defaultGeo.Targets[0] != geoEndpoint.Targets[0] {
+				targets = append(targets, fmt.Sprintf(defaultGeoTxt, false))
+			} else {
+				targets = append(targets, fmt.Sprintf(defaultGeoTxt, true))
+			}
+		}
+		return targets, nil
+
+	}
+
 	for _, originalEP := range original.Spec.Endpoints {
 		localEP := originalEP.DeepCopy()
 		localEP.DNSName = fmt.Sprintf("%s.%s", localEP.DNSName, provider.KuadrantTLD)
@@ -659,42 +702,37 @@ func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) (
 					}
 					localEndpoints = append(localEndpoints, &weightEP)
 				}
-				codeType := ""
 				if ps.Name == "geo-code" {
 					// validate input
-					if strings.HasPrefix(ps.Value, geoContinentPrefix) {
-						codeType = "continent"
-						continent := strings.Replace(ps.Value, geoContinentPrefix, "", -1)
-						if !provider.IsContinentCode(continent) {
-							return nil, fmt.Errorf("unexpected continent code. %s", continent)
-						}
-					} else if !provider.IsISO3166Alpha2Code(ps.Value) && ps.Value != "*" {
-						return nil, fmt.Errorf("unexpected geo code. Prefix with %s for continents or use ISO_3166 Alpha 2 supported code for countries", geoContinentPrefix)
-					}
 
+					geoTargets, err := geoTxtTargets()
+					if err != nil {
+						return nil, err
+					}
 					geoName := "g." + fmt.Sprintf("%s.%s", nonWildCardRoot, provider.KuadrantTLD)
-					isDefault := originalEP.SetIdentifier == "default"
-					geoTxtTargets := []string{fmt.Sprintf("geo=%s", ps.Value), fmt.Sprintf("type=%s", codeType), fmt.Sprintf("default=%t", isDefault)}
+					exists := false
 					for _, lp := range localEndpoints {
 						// endpoint already exists update the target values
 						if lp.DNSName == geoName {
-							lp.Targets = geoTxtTargets
-							break
+							lp.Targets = geoTargets
+							exists = true
 						}
 					}
+					if !exists {
+						geoEP := externaldnsendpoint.Endpoint{
+							DNSName:    "g." + fmt.Sprintf("%s.%s", nonWildCardRoot, provider.KuadrantTLD),
+							RecordType: "TXT",
+							Targets:    geoTargets,
+						}
 
-					geoEP := externaldnsendpoint.Endpoint{
-						DNSName:    "g." + fmt.Sprintf("%s.%s", nonWildCardRoot, provider.KuadrantTLD),
-						RecordType: "TXT",
-						Targets:    []string{fmt.Sprintf("geo=%s", ps.Value), fmt.Sprintf("type=%s", codeType), fmt.Sprintf("default=%t", isDefault)},
+						localEndpoints = append(localEndpoints, &geoEP)
 					}
-
-					localEndpoints = append(localEndpoints, &geoEP)
 				}
 			}
 		}
 		for i, target := range localEP.Targets {
-			if !strings.HasSuffix(target, provider.KuadrantTLD) {
+			// don't update any that have a kdrnt or are not targeting the root host
+			if !strings.HasSuffix(target, provider.KuadrantTLD) || !strings.HasSuffix(target, original.Spec.RootHost) {
 				// ignore IPs
 				if net.ParseIP(target) == nil {
 					localEP.Targets[i] = fmt.Sprintf("%s.%s", target, provider.KuadrantTLD)
@@ -708,6 +746,7 @@ func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) (
 }
 
 func (r *CoreDNSHandler) computeFullEndpointSet(ctx context.Context, from *v1alpha1.DNSRecord, dnsProvider provider.Provider) ([]*externaldnsendpoint.Endpoint, error) {
+	//TODO we don't account for multiple disconnected hosts in a single record yet we just expect everything is connected to the rootHost. This is the case for Kuadrant records but doesn't have to be the case for a straight DNSRecord
 	remoteEndpoints, err := dnsProvider.RecordsForHost(ctx, from.Spec.RootHost)
 	if err != nil {
 		return remoteEndpoints, err
@@ -717,14 +756,11 @@ func (r *CoreDNSHandler) computeFullEndpointSet(ctx context.Context, from *v1alp
 
 // applyLocalChanges is used to apply a set of "discovered" changes locally so that the full record set can be served by a local dns server (IE core dns)
 func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, _ *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
-	// this will create 2 additonal DNSRecords based on the original copy
+	// this will create 2 additional DNSRecords based on the original copy
 	// 1) That is a copy of the original and will form a "merged record" with all other records from the other core dns nameservers
 	// 2) A local.kdrnt copy that has no provider specific properties such as geo or weighting. It is this set of records that will be requested by other core dns instances to form the "merged record". It is the merged record that has the provider specific info and will be processed for a DNS query
 	hadChanges := false
 	logger := log.FromContext(ctx)
-
-	var coreDNSRecordLabel = "kuadrant.io/coredns-zone-name"
-	var coreDNSRecordTypeLabel = "kuadrant.io/type"
 
 	var createUpdateMergeCopy = func(original *v1alpha1.DNSRecord) error {
 		// merge copy contains the records from this and the other configured nameservers, it also has all the provider specific data
@@ -748,7 +784,7 @@ func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alp
 			if apierrors.IsNotFound(err) {
 				mergeCopy.Spec = original.Spec
 				mergeCopy.Spec.Endpoints = endpointSet
-				mergeCopy.Labels = map[string]string{coreDNSRecordTypeLabel: "merged", coreDNSRecordLabel: original.Status.ZoneDomainName}
+				mergeCopy.Labels = map[string]string{provider.CoreDNSRecordTypeLabel: "merged", provider.CoreDNSRecordZoneLabel: original.Status.ZoneDomainName}
 				if err := controllerutil.SetOwnerReference(dnsRecord, mergeCopy, r.Scheme); err != nil {
 					return err
 				}
@@ -785,7 +821,7 @@ func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alp
 				// create
 				logger.Info("coredns no dns record found creating local copy")
 				kdrntLocalCopy.Spec = original.Spec
-				kdrntLocalCopy.Labels = map[string]string{coreDNSRecordTypeLabel: "local", coreDNSRecordLabel: provider.KuadrantTLD}
+				kdrntLocalCopy.Labels = map[string]string{provider.CoreDNSRecordTypeLabel: "local", provider.CoreDNSRecordZoneLabel: provider.KuadrantTLD}
 				kdrntLocalCopy.Spec.RootHost = fmt.Sprintf("%s.%s", original.Spec.RootHost, provider.KuadrantTLD)
 				var computedEndpoints, err = r.computeLocalEndpointSet(original)
 				if err != nil {
