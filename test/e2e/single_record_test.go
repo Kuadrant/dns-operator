@@ -20,6 +20,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/provider"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
@@ -47,9 +48,9 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		k8sClient = testClusters[0].k8sClient
 		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
-		if testDNSProvider == "google" {
+		if testDNSProvider == provider.DNSProviderGCP.String() {
 			geoCode = "us-east1"
-		} else if testDNSProvider == "azure" {
+		} else if testDNSProvider == provider.DNSProviderAzure.String() {
 			geoCode = "GEO-NA"
 		} else {
 			geoCode = "US"
@@ -117,7 +118,8 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		By("creating dnsrecord " + dnsRecord.Name)
 		err := k8sClient.Create(ctx, dnsRecord)
 		Expect(err).ToNot(HaveOccurred())
-
+		testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
+		Expect(err).ToNot(HaveOccurred())
 		By("checking " + dnsRecord.Name + " becomes ready")
 		Eventually(func(g Gomega, ctx context.Context) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
@@ -128,21 +130,18 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					"Status": Equal(metav1.ConditionTrue),
 				})),
 			)
-			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 		}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
+
+		zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
+		Expect(err).NotTo(HaveOccurred())
+
 		By("checking " + dnsRecord.Name + " ownerID is set correctly")
 		Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
 		Expect(dnsRecord.Status.OwnerID).ToNot(BeEmpty())
 		Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
-
-		By("ensuring zone records are created as expected")
-		testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
-		Expect(err).NotTo(HaveOccurred())
-		zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(zoneEndpoints).To(HaveLen(4))
-		Expect(zoneEndpoints).To(ContainElements(
+		expectedEndpointLen := 4
+		expectedDomainOwners := ConsistOf(dnsRecord.GetUIDHash())
+		expectedEndpoints := ContainElements(
 			PointTo(MatchFields(IgnoreExtras, Fields{
 				"DNSName":       Equal(testWCHostname),
 				"Targets":       ConsistOf(testTargetIP),
@@ -171,7 +170,26 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				"SetIdentifier": Equal(""),
 				"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 			})),
-		))
+		)
+
+		if testProvider.Name() == provider.DNSProviderCoreDNS {
+			expectedEndpoints = ContainElements(
+				PointTo(MatchFields(IgnoreExtras, Fields{
+					"DNSName":       Equal(testWCHostname),
+					"Targets":       ConsistOf(testTargetIP),
+					"RecordType":    Equal("A"),
+					"SetIdentifier": Equal(""),
+					"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+				})))
+			expectedEndpointLen = 1
+			expectedDomainOwners = BeEmpty()
+		}
+
+		By("ensuring zone records are created as expected and owners set as expected")
+		Expect(zoneEndpoints).To(HaveLen(expectedEndpointLen))
+		Expect(zoneEndpoints).To(expectedEndpoints)
+		Expect(dnsRecord.Status.DomainOwners).To(expectedDomainOwners)
+
 	})
 
 	Context("simple", Labels{"simple"}, func() {
@@ -214,7 +232,6 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
-				g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 			}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
 
 			By("checking " + dnsRecord.Name + " ownerID is set correctly")
@@ -227,9 +244,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
-
-			Expect(zoneEndpoints).To(HaveLen(2))
-			Expect(zoneEndpoints).To(ContainElements(
+			containEndpoints := ContainElements(
 				PointTo(MatchFields(IgnoreExtras, Fields{
 					"DNSName":       Equal(testHostname),
 					"Targets":       ConsistOf(testTargetIP),
@@ -244,11 +259,35 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					"SetIdentifier": Equal(""),
 					"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 				})),
-			))
+			)
+			expectedLength := 2
+			nameServer := ""
+			ownerMatcher := ConsistOf(dnsRecord.GetUIDHash())
+			if testProvider.Name() == provider.DNSProviderCoreDNS {
 
-			By("ensuring the authoritative nameserver resolves the hostname")
+				coreDNSNS := testDNSProviderSecret.Data["NAMESERVERS"]
+				Expect(coreDNSNS).NotTo(BeEmpty())
+				nameServer = strings.Split(string(coreDNSNS), ",")[0]
+				fmt.Println("using nameserver for core dns ", nameServer)
+				By("zone records should be created as expected for core dns")
+				containEndpoints = ContainElements(PointTo(MatchFields(IgnoreExtras, Fields{
+					"DNSName":       Equal(testHostname),
+					"Targets":       ConsistOf(testTargetIP),
+					"RecordType":    Equal("A"),
+					"SetIdentifier": Equal(""),
+					"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+				})))
+				expectedLength = 1
+				ownerMatcher = BeEmpty()
+			}
+
+			Expect(zoneEndpoints).To(HaveLen(expectedLength))
+			Expect(zoneEndpoints).To(containEndpoints)
+			Expect(dnsRecord.Status.DomainOwners).To(ownerMatcher)
+
+			By("ensuring the authoritative nameserver " + nameServer + " resolves the hostname")
 			// speed up things by using the authoritative nameserver
-			authoritativeResolver := ResolverForDomainName(testZoneDomainName)
+			authoritativeResolver := ResolverForDomainName(testZoneDomainName, nameServer)
 			Eventually(func(g Gomega, ctx context.Context) {
 				ips, err := authoritativeResolver.LookupHost(ctx, testHostname)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -264,6 +303,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			klbHostName := "klb." + testHostname
 			geo1KlbHostName := strings.ToLower(geoCode) + "." + klbHostName
 			cluster1KlbHostName := "cluster1." + klbHostName
+			nameServer := ""
 
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
@@ -355,20 +395,22 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
-				g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 			}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
-
+			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
+			Expect(err).NotTo(HaveOccurred())
 			By("checking " + dnsRecord.Name + " ownerID is set correctly")
 			Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
 			Expect(dnsRecord.Status.OwnerID).ToNot(BeEmpty())
-			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
+
+			if testProvider.Name() != provider.DNSProviderCoreDNS {
+				Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
+			}
 
 			By("ensuring zone records are created as expected")
-			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
-			Expect(err).NotTo(HaveOccurred())
+
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
-			if testDNSProvider == "google" {
+			if testProvider.Name() == provider.DNSProviderGCP {
 				Expect(zoneEndpoints).To(HaveLen(8))
 				Expect(zoneEndpoints).To(ContainElements(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -437,7 +479,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					})),
 				))
 			}
-			if testDNSProvider == "azure" {
+			if testProvider.Name() == provider.DNSProviderAzure {
 				Expect(zoneEndpoints).To(HaveLen(8))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -512,7 +554,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 			}
-			if testDNSProvider == "aws" {
+			if testProvider.Name() == provider.DNSProviderAWS {
 				Expect(zoneEndpoints).To(HaveLen(10))
 				Expect(zoneEndpoints).To(ContainElements(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -609,6 +651,46 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				))
 			}
 
+			if testProvider.Name() == provider.DNSProviderCoreDNS {
+				Expect(zoneEndpoints).To(ContainElements(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(cluster1KlbHostName),
+						"Targets":       ConsistOf(testTargetIP),
+						"RecordType":    Equal("A"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(testHostname),
+						"Targets":       ConsistOf(klbHostName),
+						"RecordType":    Equal("CNAME"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":    Equal(geo1KlbHostName),
+						"Targets":    ConsistOf(cluster1KlbHostName),
+						"RecordType": Equal("CNAME"),
+						"RecordTTL":  Equal(externaldnsendpoint.TTL(60)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "weight", Value: "200"},
+						}),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":    Equal(klbHostName),
+						"Targets":    ConsistOf(geo1KlbHostName),
+						"RecordType": Equal("CNAME"),
+						"RecordTTL":  Equal(externaldnsendpoint.TTL(300)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "geo-code", Value: "US"},
+						}),
+					})),
+				))
+				coreDNSNS := testDNSProviderSecret.Data["NAMESERVERS"]
+				Expect(coreDNSNS).NotTo(BeEmpty())
+				nameServer = strings.Split(string(coreDNSNS), ",")[0]
+			}
+
 			By("ensuring the authoritative nameserver resolves the hostname")
 			var resolver *net.Resolver
 			if testDNSProvider == "azure" {
@@ -619,9 +701,10 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					g.Expect(true).To(BeTrue())
 				}, 1*time.Minute, 1*time.Minute, ctx).Should(Succeed())
 			} else {
+
 				By("ensuring the authoritative nameserver resolves the hostname")
 				// speed up things by using the authoritative nameserver
-				resolver = ResolverForDomainName(testZoneDomainName)
+				resolver = ResolverForDomainName(testZoneDomainName, nameServer)
 			}
 			Eventually(func(g Gomega, ctx context.Context) {
 				var err error
@@ -641,9 +724,9 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			By("creating " + strconv.Itoa(testConcurrentRecords) + " DNS Records")
 			SetTestEnv("testNamespace", testDNSProviderSecret.Namespace)
 
-			if testDNSProvider == "google" {
+			if testDNSProvider == provider.DNSProviderGCP.String() {
 				SetTestEnv("testGeoCode", "europe-west1")
-			} else if testDNSProvider == "azure" {
+			} else if testDNSProvider == provider.DNSProviderAzure.String() {
 				SetTestEnv("testGeoCode", "GEO-EU")
 			} else {
 				SetTestEnv("testGeoCode", "GEO-EU")
