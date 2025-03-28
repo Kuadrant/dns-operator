@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/miekg/dns"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/utils/strings/slices"
