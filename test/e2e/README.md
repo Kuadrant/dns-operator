@@ -57,6 +57,7 @@ dns-operator-2   dns-provider-credentials-gcp        kuadrant.io/gcp            
 dns-operator-2   dns-provider-credentials-inmemory   kuadrant.io/inmemory            0      21s
 dnstest          dns-provider-credentials-aws        kuadrant.io/aws                 5      68s
 dnstest          dns-provider-credentials-azure      kuadrant.io/azure               3      68s
+dnstest          dns-provider-credentials-coredns    kuadrant.io/coredns             5      68s
 dnstest          dns-provider-credentials-gcp        kuadrant.io/gcp                 4      68s
 dnstest          dns-provider-credentials-inmemory   kuadrant.io/inmemory            0      68s
 ```
