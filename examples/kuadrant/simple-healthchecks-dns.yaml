@@ -4,7 +4,7 @@ metadata:
   name: simple-dns
 spec:
   healthCheck:
-    endpoint: "/"
+    path: "/health"
     port: 80
     protocol: "HTTPS"
     failureThreshold: 3
@@ -15,5 +15,5 @@ spec:
       targets:
         - 172.32.200.17
   providerRef:
-    name: dns-provider-credentials-azure
+    name: ${KUADRANT_DNS_PROVIDER_REF}
   rootHost: ${KUADRANT_SUB_DOMAIN}
