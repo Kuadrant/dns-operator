@@ -6,7 +6,7 @@ metadata:
     'provider': 'kuadrant'
 spec:
   providerRef:
-    name: dns-provider-core-dns
+    name: dns-provider-credentials-coredns
   rootHost: k.example.com
   endpoints:
     - dnsName: k.example.com

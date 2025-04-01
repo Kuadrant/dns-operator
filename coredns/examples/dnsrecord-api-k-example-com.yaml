@@ -2,8 +2,6 @@ apiVersion: kuadrant.io/v1alpha1
 kind: DNSRecord
 metadata:
   name: api-k-example-com
-  labels:
-    kuadrant.io/coredns-zone-name: k.example.com
 spec:
   rootHost: api.k.example.com
   endpoints:

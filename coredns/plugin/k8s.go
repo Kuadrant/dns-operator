@@ -42,7 +42,7 @@ func (zi *zoneInformers) refreshZone() {
 		for _, obj := range informer.GetStore().List() {
 			rec := obj.(*v1alpha1.DNSRecord)
 			for _, ep := range rec.Spec.Endpoints {
-				log.Debugf("adding %s record endpoints %s to zone %s", ep.RecordType, ep.DNSName, zi.zoneOrigin)
+				log.Debugf("adding %s record endpoint %s to zone %s from %s/%s", ep.RecordType, ep.DNSName, zi.zoneOrigin, rec.Namespace, rec.Name)
 				err := newZ.InsertEndpoint(ep)
 				if err != nil {
 					log.Error(err)
