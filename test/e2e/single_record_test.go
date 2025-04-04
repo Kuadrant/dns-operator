@@ -5,7 +5,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -276,21 +275,10 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(dnsRecord.Status.DomainOwners).To(expectedDomainOwnersMatcher)
 
 			By("ensuring the authoritative nameserver resolves the hostname")
-			var nameServers []string
-			if testProvider.Name() == provider.DNSProviderAzure {
-				// cannot use authoritative nameserver in Azure due to how traffic managers use CNAMEs on trafficmanager.net
-			} else if testProvider.Name() == provider.DNSProviderCoreDNS {
-				coreDNSNS := testDNSProviderSecret.Data["NAMESERVERS"]
-				Expect(coreDNSNS).NotTo(BeEmpty())
-				nameServers = strings.Split(string(coreDNSNS), ",")
-			} else {
-				// speed up things by using an authoritative nameserver
-				nss, err := net.LookupNS(testZoneDomainName)
-				Expect(err).ToNot(HaveOccurred())
-				nameServers = append(nameServers, strings.Join([]string{nss[0].Host, "53"}, ":"))
-			}
+			resolvers, authoritative := ResolversForDomainNameAndProvider(testZoneDomainName, testDNSProviderSecret)
+			Expect(resolvers).To(Not(BeEmpty()))
 
-			if nameServers == nil {
+			if !authoritative {
 				//we need to wait a minute to allow the records to propagate if not using an authoritative nameserver
 				Consistently(func(g Gomega, ctx context.Context) {
 					g.Expect(true).To(BeTrue())
@@ -300,15 +288,10 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Eventually(func(g Gomega, ctx context.Context) {
 				var err error
 				var ips []string
-				if nameServers == nil {
-					ips, err = net.LookupHost(testHostname)
-				} else {
-					for _, nameServer := range nameServers {
-						resolver := ResolverForNameServer(nameServer)
-						ips, err = resolver.LookupHost(ctx, testHostname)
-						if err == nil {
-							break
-						}
+				for _, resolver := range resolvers {
+					ips, err = resolver.LookupHost(ctx, testHostname)
+					if err == nil {
+						break
 					}
 				}
 				g.Expect(err).NotTo(HaveOccurred())
@@ -706,21 +689,10 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			}
 
 			By("ensuring the authoritative nameserver resolves the hostname")
-			var nameServers []string
-			if testProvider.Name() == provider.DNSProviderAzure {
-				// cannot use authoritative nameserver in Azure due to how traffic managers use CNAMEs on trafficmanager.net
-			} else if testProvider.Name() == provider.DNSProviderCoreDNS {
-				coreDNSNS := testDNSProviderSecret.Data["NAMESERVERS"]
-				Expect(coreDNSNS).NotTo(BeEmpty())
-				nameServers = strings.Split(string(coreDNSNS), ",")
-			} else {
-				// speed up things by using an authoritative nameserver
-				nss, err := net.LookupNS(testZoneDomainName)
-				Expect(err).ToNot(HaveOccurred())
-				nameServers = append(nameServers, strings.Join([]string{nss[0].Host, "53"}, ":"))
-			}
+			resolvers, authoritative := ResolversForDomainNameAndProvider(testZoneDomainName, testDNSProviderSecret)
+			Expect(resolvers).To(Not(BeEmpty()))
 
-			if nameServers == nil {
+			if !authoritative {
 				//we need to wait a minute to allow the records to propagate if not using an authoritative nameserver
 				Consistently(func(g Gomega, ctx context.Context) {
 					g.Expect(true).To(BeTrue())
@@ -730,15 +702,10 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Eventually(func(g Gomega, ctx context.Context) {
 				var err error
 				var ips []string
-				if nameServers == nil {
-					ips, err = net.LookupHost(testHostname)
-				} else {
-					for _, nameServer := range nameServers {
-						resolver := ResolverForNameServer(nameServer)
-						ips, err = resolver.LookupHost(ctx, testHostname)
-						if err == nil {
-							break
-						}
+				for _, resolver := range resolvers {
+					ips, err = resolver.LookupHost(ctx, testHostname)
+					if err == nil {
+						break
 					}
 				}
 				g.Expect(err).NotTo(HaveOccurred())
