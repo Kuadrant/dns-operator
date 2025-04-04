@@ -32,28 +32,34 @@ func GenerateName() string {
 	return namegenerator.NewNameGenerator(nBig.Int64()).Generate()
 }
 
+type NameServerNone string
+
 func ResolverForDomainName(domainName string) *net.Resolver {
 	nameservers, err := net.LookupNS(domainName)
 	Expect(err).ToNot(HaveOccurred())
 	GinkgoWriter.Printf("[debug] authoritative nameserver used for DNS record resolution: %s\n", nameservers[0].Host)
+	return ResolverForNameServer(strings.Join([]string{nameservers[0].Host, "53"}, ":"))
+}
 
-	authoritativeResolver := &net.Resolver{
+func ResolverForNameServer(nameserver string) *net.Resolver {
+	return &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 			d := net.Dialer{Timeout: 10 * time.Second}
-			return d.DialContext(ctx, network, strings.Join([]string{nameservers[0].Host, "53"}, ":"))
+			return d.DialContext(ctx, network, nameserver)
 		},
 	}
-	return authoritativeResolver
 }
 
-func EndpointsForHost(ctx context.Context, provider provider.Provider, host string) ([]*externaldnsendpoint.Endpoint, error) {
+func EndpointsForHost(ctx context.Context, p provider.Provider, host string) ([]*externaldnsendpoint.Endpoint, error) {
 	filtered := []*externaldnsendpoint.Endpoint{}
 
-	records, err := provider.Records(ctx)
+	records, err := p.Records(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	GinkgoWriter.Printf("[debug] records from zone count: %d\n", len(records))
 
 	hostRegexp, err := regexp.Compile(host)
 	if err != nil {
@@ -73,14 +79,15 @@ func EndpointsForHost(ctx context.Context, provider provider.Provider, host stri
 }
 
 func ProviderForDNSRecord(ctx context.Context, record *v1alpha1.DNSRecord, c client.Client) (provider.Provider, error) {
-	providerFactory, err := provider.NewFactory(c, []string{"aws", "google", "azure"})
+	providerFactory, err := provider.NewFactory(c, []string{provider.DNSProviderAWS.String(), provider.DNSProviderGCP.String(), provider.DNSProviderAzure.String(), provider.DNSProviderCoreDNS.String()})
 	if err != nil {
 		return nil, err
 	}
 	providerConfig := provider.Config{
-		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{record.Status.ZoneDomainName}),
-		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),
-		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{record.Status.ZoneID}),
+		HostDomainFilter: externaldnsendpoint.NewDomainFilter([]string{record.Spec.RootHost}),
+		DomainFilter:     externaldnsendpoint.NewDomainFilter([]string{record.Status.ZoneDomainName}),
+		ZoneTypeFilter:   externaldnsprovider.NewZoneTypeFilter(""),
+		ZoneIDFilter:     externaldnsprovider.NewZoneIDFilter([]string{record.Status.ZoneID}),
 	}
 	//Disable provider logging in test output
 	return providerFactory.ProviderFor(logr.NewContext(ctx, logr.Discard()), record, providerConfig)

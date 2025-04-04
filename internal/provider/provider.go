@@ -15,13 +15,30 @@ import (
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 )
 
+type DNSProviderName string
+
 var (
 	statusCodeRegexp        = regexp.MustCompile(`status code: [^\s]+`)
 	requestIDRegexp         = regexp.MustCompile(`request id: [^\s]+`)
 	saxParseExceptionRegexp = regexp.MustCompile(`Invalid XML ; javax.xml.stream.XMLStreamException: org.xml.sax.SAXParseException; lineNumber: [^\s]+; columnNumber: [^\s]+`)
 
 	ErrNoZoneForHost = fmt.Errorf("no zone for host")
+
+	DNSProviderCoreDNS DNSProviderName = "coredns"
+	DNSProviderAWS     DNSProviderName = "aws"
+	DNSProviderAzure   DNSProviderName = "azure"
+	DNSProviderGCP     DNSProviderName = "google"
+	DNSProviderInMem   DNSProviderName = "inmemory"
+
+	CoreDNSRecordZoneLabel = "kuadrant.io/coredns-zone-name"
+	CoreDNSRecordTypeLabel = "kuadrant.io/type"
+
+	KuadrantTLD = "kdrnt"
 )
+
+func (dp DNSProviderName) String() string {
+	return string(dp)
+}
 
 // Provider knows how to manage DNS zones only as pertains to routing.
 type Provider interface {
@@ -34,9 +51,13 @@ type Provider interface {
 	DNSZoneForHost(ctx context.Context, host string) (*DNSZone, error)
 
 	ProviderSpecific() ProviderSpecificLabels
+
+	Name() DNSProviderName
 }
 
 type Config struct {
+	// filter for specifying a host domain for providers that require it
+	HostDomainFilter externaldnsendpoint.DomainFilter
 	// only consider hosted zones managing domains ending in this suffix
 	DomainFilter externaldnsendpoint.DomainFilter
 	// filter for zones based on visibility
@@ -77,13 +98,17 @@ func FindDNSZoneForHost(ctx context.Context, host string, zones []DNSZone) (*DNS
 	return z, err
 }
 
-func isApexDomain(host string, zones []DNSZone) (string, bool) {
+func IsApexDomain(host string, zones []DNSZone) (string, bool) {
 	for _, z := range zones {
 		if z.DNSName == host {
 			return z.ID, true
 		}
 	}
 	return "", false
+}
+
+func IsWildCardHost(host string) bool {
+	return strings.HasPrefix(host, "*.")
 }
 
 // findDNSZoneForHost will take a host and look for a zone that patches the immediate parent of that host and will continue to step through parents until it either finds a zone  or fails. Example *.example.com will look for example.com and other.domain.example.com will step through each subdomain until it hits example.com.
@@ -101,7 +126,7 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone) (*DNSZone, s
 	}
 
 	// We do not currently support creating records for Apex domains, and a DNSZone represents an Apex domain we cannot setup dns for the host
-	if id, is := isApexDomain(originalHost, zones); is {
+	if id, is := IsApexDomain(originalHost, zones); is {
 		return nil, "", fmt.Errorf("host %s is an apex domain with zone id %s. Cannot configure DNS for apex domain as apex domains only support A records", originalHost, id)
 	}
 

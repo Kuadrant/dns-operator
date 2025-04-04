@@ -46,12 +46,11 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		testRecords = []*testDNSRecord{}
-
-		if testDNSProvider == "google" {
+		if testDNSProvider == provider.DNSProviderGCP.String() {
 			geoCode1 = "us-east1"
 			geoCode2 = "europe-west1"
 			weighted = "weighted"
-		} else if testDNSProvider == "azure" {
+		} else if testDNSProvider == provider.DNSProviderAzure.String() {
 			geoCode1 = "GEO-NA"
 			geoCode2 = "GEO-EU"
 			weighted = "Weighted"
@@ -142,34 +141,37 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					)
 					allOwners = append(allOwners, tr.record.GetUIDHash())
 					allTargetIps = append(allTargetIps, tr.config.testTargetIP)
-					g.Expect(tr.record.Status.DomainOwners).NotTo(BeEmpty())
-					g.Expect(tr.record.Status.DomainOwners).To(ContainElement(tr.record.GetUIDHash()))
+					if txtRegistryEnabled {
+						g.Expect(tr.record.Status.DomainOwners).NotTo(BeEmpty())
+						g.Expect(tr.record.Status.DomainOwners).To(ContainElement(tr.record.GetUIDHash()))
+					} else {
+						g.Expect(tr.record.Status.DomainOwners).To(BeEmpty())
+					}
 				}
 				g.Expect(len(allOwners)).To(Equal(len(testRecords)))
 			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
 			GinkgoWriter.Printf("[debug] all records became ready in %v\n", time.Since(checkStarted))
 
-			By("checking provider zone records are created as expected")
+			if txtRegistryEnabled {
+				By(fmt.Sprintf("checking each record has all(%v) domain owners present within %s", len(allOwners), recordsReadyMaxDuration))
+				checkStarted = time.Now()
+				Eventually(func(g Gomega, ctx context.Context) {
+					for _, tr := range testRecords {
+						err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
+						g.Expect(err).NotTo(HaveOccurred())
+						g.Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
+					}
+				}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
+				GinkgoWriter.Printf("[debug] all records updated in %v\n", time.Since(checkStarted))
+			}
+
+			By("ensuring zone records are created as expected")
 			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient)
 			Expect(err).NotTo(HaveOccurred())
-
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(zoneEndpoints).To(HaveLen(2))
 
-			By(fmt.Sprintf("checking each record has all(%v) domain owners present within %s", len(allOwners), recordsReadyMaxDuration))
-			checkStarted = time.Now()
-			Eventually(func(g Gomega, ctx context.Context) {
-				for _, tr := range testRecords {
-					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
-				}
-			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
-			GinkgoWriter.Printf("[debug] all records updated in %v\n", time.Since(checkStarted))
-
-			By("checking all target ips are present")
-			Expect(zoneEndpoints).To(ContainElements(
+			expectedElementMatchers := []types.GomegaMatcher{
 				PointTo(MatchFields(IgnoreExtras, Fields{
 					"DNSName":       Equal(testHostname),
 					"Targets":       ConsistOf(allTargetIps),
@@ -177,45 +179,69 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					"SetIdentifier": Equal(""),
 					"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
 				})),
-			))
+			}
 
-			By("checking all owner references are present")
-			for _, owner := range allOwners {
-				Expect(zoneEndpoints).To(ContainElements(
+			if txtRegistryEnabled {
+				var allOwnerMatcher = []types.GomegaMatcher{
+					ContainSubstring("heritage=external-dns,external-dns/owner="),
+				}
+				for _, owner := range allOwners {
+					allOwnerMatcher = append(allOwnerMatcher, ContainSubstring(owner))
+				}
+				expectedElementMatchers = append(expectedElementMatchers,
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-a-" + testHostname),
-						"Targets":       ContainElement(ContainSubstring(owner)),
+						"Targets":       ContainElement(And(allOwnerMatcher...)),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
-				))
+				)
 			}
-			var resolver *net.Resolver
-			if testDNSProvider == "azure" {
-				// cannot use authoratitive nameserver in Azure due to how traffic managers use CNAMEs on trafficmanager.net
-				By("ensuring the hostname resolves")
-				//we need to wait a minute to allow the records to propagate
+
+			Expect(zoneEndpoints).To(HaveLen(len(expectedElementMatchers)))
+			Expect(zoneEndpoints).To(ContainElements(expectedElementMatchers))
+
+			By("ensuring the authoritative nameserver resolves the hostname")
+			var nameServers []string
+			if testProvider.Name() == provider.DNSProviderAzure {
+				// cannot use authoritative nameserver in Azure due to how traffic managers use CNAMEs on trafficmanager.net
+			} else if testProvider.Name() == provider.DNSProviderCoreDNS {
+				coreDNSNS := testRecords[0].dnsProviderSecret.Data["NAMESERVERS"]
+				Expect(coreDNSNS).NotTo(BeEmpty())
+				nameServers = strings.Split(string(coreDNSNS), ",")
+			} else {
+				// speed up things by using an authoritative nameserver
+				nss, err := net.LookupNS(testZoneDomainName)
+				Expect(err).ToNot(HaveOccurred())
+				nameServers = append(nameServers, strings.Join([]string{nss[0].Host, "53"}, ":"))
+			}
+
+			if nameServers == nil {
+				//we need to wait a minute to allow the records to propagate if not using an authoritative nameserver
 				Consistently(func(g Gomega, ctx context.Context) {
 					g.Expect(true).To(BeTrue())
 				}, 1*time.Minute, 1*time.Minute, ctx).Should(Succeed())
-			} else {
-				By("ensuring the authoritative nameserver resolves the hostname")
-				// speed up things by using the authoritative nameserver
-				resolver = ResolverForDomainName(testZoneDomainName)
 			}
+
 			Eventually(func(g Gomega, ctx context.Context) {
 				var err error
 				var ips []string
-				if resolver == nil {
+				if nameServers == nil {
 					ips, err = net.LookupHost(testHostname)
 				} else {
-					ips, err = resolver.LookupHost(ctx, testHostname)
+					for _, nameServer := range nameServers {
+						resolver := ResolverForNameServer(nameServer)
+						ips, err = resolver.LookupHost(ctx, testHostname)
+						if err == nil {
+							break
+						}
+					}
 				}
 				g.Expect(err).NotTo(HaveOccurred())
 				GinkgoWriter.Printf("[debug] ips: %v\n", ips)
 				g.Expect(ips).To(Or(ContainElements(allTargetIps)))
-			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+			}, 300*time.Second, 10*time.Second, ctx).WithArguments().Should(Succeed())
 
 			//Test Deletion of one of the records
 			recordToDelete := testRecords[0]
@@ -235,30 +261,35 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			GinkgoWriter.Printf("[debug] record removed in %v\n", time.Since(checkStarted))
 
 			By("checking provider zone records are updated as expected")
+			expectedElementMatchers = []types.GomegaMatcher{
+				PointTo(MatchFields(IgnoreExtras, Fields{
+					"DNSName":       Equal(testHostname),
+					"Targets":       Not(ContainElement(recordToDelete.config.testTargetIP)),
+					"RecordType":    Equal("A"),
+					"SetIdentifier": Equal(""),
+					"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+				})),
+			}
+			if txtRegistryEnabled {
+				expectedElementMatchers = append(expectedElementMatchers,
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-a-" + testHostname),
+						"Targets":       Not(ContainElement(ContainSubstring(recordToDelete.record.Status.OwnerID))),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					})))
+			}
+
 			Eventually(func(g Gomega, ctx context.Context) {
 				zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 				g.Expect(err).NotTo(HaveOccurred())
 				if lastRecord {
 					g.Expect(zoneEndpoints).To(HaveLen(0))
 				} else {
-					g.Expect(zoneEndpoints).To(HaveLen(2))
+					g.Expect(zoneEndpoints).To(HaveLen(len(expectedElementMatchers)))
 					By(fmt.Sprintf("checking ip `%s` and owner `%s` are removed", recordToDelete.config.testTargetIP, recordToDelete.record.Status.OwnerID))
-					g.Expect(zoneEndpoints).To(ContainElements(
-						PointTo(MatchFields(IgnoreExtras, Fields{
-							"DNSName":       Equal(testHostname),
-							"Targets":       Not(ContainElement(recordToDelete.config.testTargetIP)),
-							"RecordType":    Equal("A"),
-							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
-						})),
-						PointTo(MatchFields(IgnoreExtras, Fields{
-							"DNSName":       Equal("kuadrant-a-" + testHostname),
-							"Targets":       Not(ContainElement(ContainSubstring(recordToDelete.record.Status.OwnerID))),
-							"RecordType":    Equal("TXT"),
-							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
-						})),
-					))
+					g.Expect(zoneEndpoints).To(ContainElements(expectedElementMatchers))
 				}
 			}, 5*time.Second, time.Second, ctx).Should(Succeed())
 
@@ -271,16 +302,18 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				return tr.record.Status.OwnerID == recordToDelete.record.Status.OwnerID
 			})
 
-			By(fmt.Sprintf("checking remaining records have all(%v) domain owners updated within %s", len(allOwners), recordsReadyMaxDuration))
-			checkStarted = time.Now()
-			Eventually(func(g Gomega, ctx context.Context) {
-				for _, tr := range testRecords {
-					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
-				}
-			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
-			GinkgoWriter.Printf("[debug] records updated in %v\n", time.Since(checkStarted))
+			if txtRegistryEnabled {
+				By(fmt.Sprintf("checking remaining records have all(%v) domain owners updated within %s", len(allOwners), recordsReadyMaxDuration))
+				checkStarted = time.Now()
+				Eventually(func(g Gomega, ctx context.Context) {
+					for _, tr := range testRecords {
+						err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
+						g.Expect(err).NotTo(HaveOccurred())
+						g.Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
+					}
+				}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
+				GinkgoWriter.Printf("[debug] records updated in %v\n", time.Since(checkStarted))
+			}
 
 			By("deleting all remaining dns records")
 			for _, tr := range testRecords {
@@ -305,9 +338,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(zoneEndpoints).To(HaveLen(0))
 			}, 5*time.Second, time.Second, ctx).Should(Succeed())
-
 		})
-
 	})
 
 	Context("loadbalanced", Labels{"loadbalanced"}, func() {
@@ -448,7 +479,12 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						})),
 					)
 					allOwners = append(allOwners, tr.record.GetUIDHash())
-					g.Expect(tr.record.Status.DomainOwners).To(Not(BeEmpty()))
+					if txtRegistryEnabled {
+						g.Expect(tr.record.Status.DomainOwners).NotTo(BeEmpty())
+						g.Expect(tr.record.Status.DomainOwners).To(ContainElement(tr.record.GetUIDHash()))
+					} else {
+						g.Expect(tr.record.Status.DomainOwners).To(BeEmpty())
+					}
 				}
 				g.Expect(len(allOwners)).To(Equal(len(testRecords)))
 			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
@@ -461,27 +497,32 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
 			var expectedEndpointsLen int
-			if testDNSProvider == "google" {
+			if testDNSProvider == provider.DNSProviderGCP.String() {
 				expectedEndpointsLen = (2 + len(testGeoRecords) + len(testRecords)) * 2
 				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
-			} else if testDNSProvider == "azure" {
+			} else if testDNSProvider == provider.DNSProviderAzure.String() {
 				expectedEndpointsLen = (2 + len(testGeoRecords) + len(testRecords)) * 2
 				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
-			} else if testDNSProvider == "aws" {
+			} else if testDNSProvider == provider.DNSProviderAWS.String() {
 				expectedEndpointsLen = (2 + len(testGeoRecords) + (len(testRecords) * 2)) * 2
+				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
+			} else if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+				expectedEndpointsLen = 1 + len(testGeoRecords) + (len(testRecords) * 2)
 				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
 			}
 
-			By(fmt.Sprintf("checking each record has all(%v) domain owners present within %s", len(allOwners), recordsReadyMaxDuration))
-			checkStarted = time.Now()
-			Eventually(func(g Gomega, ctx context.Context) {
-				for _, tr := range testRecords {
-					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
-				}
-			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
-			GinkgoWriter.Printf("[debug] all records updated in %v\n", time.Since(checkStarted))
+			if txtRegistryEnabled {
+				By(fmt.Sprintf("checking each record has all(%v) domain owners present within %s", len(allOwners), recordsReadyMaxDuration))
+				checkStarted = time.Now()
+				Eventually(func(g Gomega, ctx context.Context) {
+					for _, tr := range testRecords {
+						err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
+						g.Expect(err).NotTo(HaveOccurred())
+						g.Expect(tr.record.Status.DomainOwners).To(ConsistOf(allOwners))
+					}
+				}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
+				GinkgoWriter.Printf("[debug] all records updated in %v\n", time.Since(checkStarted))
+			}
 
 			var totalEndpointsChecked = 0
 
@@ -517,19 +558,21 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 			}))))
 			totalEndpointsChecked++
-			By("[Common] checking " + testHostname + " TXT owner endpoint")
-			Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
-				"DNSName":       Equal("kuadrant-cname-" + testHostname),
-				"Targets":       ContainElement(And(allOwnerMatcher...)),
-				"RecordType":    Equal("TXT"),
-				"SetIdentifier": Equal(""),
-				"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
-			}))))
-			totalEndpointsChecked++
+			if txtRegistryEnabled {
+				By("[Common] checking " + testHostname + " TXT owner endpoint")
+				Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
+					"DNSName":       Equal("kuadrant-cname-" + testHostname),
+					"Targets":       ContainElement(And(allOwnerMatcher...)),
+					"RecordType":    Equal("TXT"),
+					"SetIdentifier": Equal(""),
+					"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+				}))))
+				totalEndpointsChecked++
+			}
 
 			By("[Geo] checking geo endpoints")
 
-			if testDNSProvider == "azure" {
+			if testDNSProvider == provider.DNSProviderAzure.String() {
 
 				defaultTarget := FindDefaultTarget(zoneEndpoints)
 				// A CNAME record for klbHostName should always exist, be owned by all endpoints and target all geo hostnames
@@ -567,7 +610,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				}))))
 				totalEndpointsChecked++
 			}
-			if testDNSProvider == "google" {
+			if testDNSProvider == provider.DNSProviderGCP.String() {
 				// A CNAME record for klbHostName should always exist, be owned by all endpoints and target all geo hostnames
 				klbHostName := testRecords[0].config.hostnames.klb
 
@@ -600,7 +643,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				}))))
 				totalEndpointsChecked++
 			}
-			if testDNSProvider == "aws" {
+			if testDNSProvider == provider.DNSProviderAWS.String() {
 				// A CNAME record for klbHostName should exist for each geo and be owned by all endpoints in that geo
 				klbHostName := testRecords[0].config.hostnames.klb
 				for geoCode, geoRecords := range testGeoRecords {
@@ -669,9 +712,36 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				}))))
 				totalEndpointsChecked++
 			}
+			if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+				// A CNAME record for klbHostName should exist for each geo with a setIdentifier of "default" on the default
+				klbHostName := testRecords[0].config.hostnames.klb
+				for geoCode, geoRecords := range testGeoRecords {
+					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
+					defaultGeoCode := testRecords[0].config.testDefaultGeoCode
+
+					By("[Geo] checking " + klbHostName + " -> " + geoCode + " -> " + geoKlbHostName + " - endpoint")
+
+					setIdentifier := ""
+					if defaultGeoCode == geoCode {
+						setIdentifier = "default"
+					}
+
+					Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(klbHostName),
+						"Targets":       ConsistOf(geoKlbHostName),
+						"RecordType":    Equal("CNAME"),
+						"SetIdentifier": Equal(setIdentifier),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "geo-code", Value: geoCode},
+						}),
+					}))))
+					totalEndpointsChecked++
+				}
+			}
 
 			By("[Weight] checking weighted endpoints")
-			if testDNSProvider == "azure" {
+			if testDNSProvider == provider.DNSProviderAzure.String() {
 				// A weighted CNAME record should exist for each geo, be owned by all endpoints in that geo, and target the hostname of all clusters in that geo
 				for geoCode, geoRecords := range testGeoRecords {
 					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
@@ -707,7 +777,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					totalEndpointsChecked++
 				}
 			}
-			if testDNSProvider == "google" {
+			if testDNSProvider == provider.DNSProviderGCP.String() {
 				// A weighted CNAME record should exist for each geo, be owned by all endpoints in that geo, and target the hostname of all clusters in that geo
 				for geoCode, geoRecords := range testGeoRecords {
 					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
@@ -743,7 +813,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					totalEndpointsChecked++
 				}
 			}
-			if testDNSProvider == "aws" {
+			if testDNSProvider == provider.DNSProviderAWS.String() {
 				// A weighted CNAME record should exist for each dns record in each geo and be owned only by that endpoint
 				for _, geoRecords := range testGeoRecords {
 					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
@@ -778,6 +848,27 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					}
 				}
 			}
+			if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+				// A weighted CNAME record should exist for each dns record in each geo
+				for _, geoRecords := range testGeoRecords {
+					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
+					for i := range geoRecords {
+						clusterKlbHostName := geoRecords[i].config.hostnames.clusterKlb
+						By("[Weight] checking " + geoKlbHostName + " -> " + clusterKlbHostName + " - endpoint")
+						Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":       Equal(geoKlbHostName),
+							"Targets":       ConsistOf(clusterKlbHostName),
+							"RecordType":    Equal("CNAME"),
+							"SetIdentifier": Equal(""),
+							"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+							"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+								{Name: "weight", Value: "200"},
+							}),
+						}))))
+						totalEndpointsChecked++
+					}
+				}
+			}
 
 			By("[Cluster] checking cluster endpoints")
 			// An A record with the cluster target IP should exist for each dns record and owned only by that endpoint
@@ -794,15 +885,17 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
 				}))))
 				totalEndpointsChecked++
-				By("[Cluster] checking " + clusterKlbHostName + " TXT owner endpoint")
-				Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
-					"DNSName":       Equal("kuadrant-a-" + clusterKlbHostName),
-					"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + ownerID + "\""),
-					"RecordType":    Equal("TXT"),
-					"SetIdentifier": Equal(""),
-					"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
-				}))))
-				totalEndpointsChecked++
+				if txtRegistryEnabled {
+					By("[Cluster] checking " + clusterKlbHostName + " TXT owner endpoint")
+					Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-a-" + clusterKlbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + ownerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					}))))
+					totalEndpointsChecked++
+				}
 			}
 
 			By("checking all endpoints were validated")

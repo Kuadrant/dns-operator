@@ -26,6 +26,7 @@ import (
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
+	_ "github.com/kuadrant/dns-operator/internal/provider/coredns"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
@@ -53,19 +54,21 @@ var (
 	testDNSProvider        string
 	testClusters           []testCluster
 
-	supportedHealthCheckProviders = []string{"aws"}
+	supportedHealthCheckProviders = []string{provider.DNSProviderAWS.String()}
 
 	defaultRecordsReadyTimeout = time.Minute
 	customRecordsReadyTimeout  = map[string]time.Duration{
-		"azure": 5 * time.Minute,
+		provider.DNSProviderAzure.String(): 5 * time.Minute,
 	}
 
 	defaultRecordsDeletedTimeout = time.Second * 90
 	customRecordsDeletedTimeout  = map[string]time.Duration{
-		"azure": 5 * time.Minute,
+		provider.DNSProviderAzure.String(): 5 * time.Minute,
 	}
 	recordsReadyMaxDuration   time.Duration
 	recordsRemovedMaxDuration time.Duration
+
+	txtRegistryEnabled = true
 )
 
 // testCluster represents a cluster under test and contains a reference to a configured k8client and all it's dns provider secrets.
@@ -126,9 +129,14 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	testSuiteID = "dns-op-e2e-" + GenerateName()
 
 	geoCode := "GEO-EU"
-	if testDNSProvider == "google" {
+	if testDNSProvider == provider.DNSProviderGCP.String() {
 		geoCode = "europe-west1"
 	}
+
+	if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+		txtRegistryEnabled = false
+	}
+
 	SetTestEnv("testGeoCode", geoCode)
 })
 

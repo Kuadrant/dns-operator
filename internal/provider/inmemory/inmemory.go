@@ -34,7 +34,11 @@ type InMemoryDNSProvider struct {
 
 var client *inmemory.InMemoryClient
 
-var _ provider.Provider = &InMemoryDNSProvider{}
+var p provider.Provider = &InMemoryDNSProvider{}
+
+func (p *InMemoryDNSProvider) Name() provider.DNSProviderName {
+	return provider.DNSProviderInMem
+}
 
 func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	logger := log.FromContext(ctx).WithName("inmemory-dns")
@@ -97,5 +101,5 @@ func (i *InMemoryDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels
 // Register this Provider with the provider factory
 func init() {
 	client = inmemory.NewInMemoryClient()
-	provider.RegisterProvider("inmemory", NewProviderFromSecret, false)
+	provider.RegisterProvider(p.Name().String(), NewProviderFromSecret, false)
 }

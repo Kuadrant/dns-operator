@@ -59,6 +59,8 @@ const (
 
 	// InmemInitZonesKey is the key of the optional comma separated list of zone names to initialise in the SecretTypeKuadrantInmemory provider secrets
 	InmemInitZonesKey = "INMEM_INIT_ZONES"
+
+	SecretTypeKuadrantCoreDNS corev1.SecretType = "kuadrant.io/coredns"
 )
 
 type ProviderRef struct {

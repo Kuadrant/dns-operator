@@ -148,9 +148,10 @@ Run Kuadrant build of CoreDNS locally:
 make run
 ```
 
-Create a DNSRecord resource:
+Create a DNSRecord resource and label it with the correct zone name:
 ```shell
 kubectl apply -f ../examples/dnsrecord-api-k-example-com_geo_weight.yaml
+kubectl label dnsrecord/api-k-example-com kuadrant.io/coredns-zone-name=k.example.com
 ```
 
 Verify you can access the server:

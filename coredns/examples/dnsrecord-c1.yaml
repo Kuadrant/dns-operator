@@ -2,12 +2,11 @@ apiVersion: kuadrant.io/v1alpha1
 kind: DNSRecord
 metadata:
   name: c1-loadbalanced-dns
-  namespace: kuadrant-coredns-1
   labels:
     'provider': 'kuadrant'
 spec:
   providerRef:
-    name: core-dns
+    name: dns-provider-credentials-coredns
   rootHost: k.example.com
   endpoints:
     - dnsName: k.example.com
@@ -18,13 +17,13 @@ spec:
     - dnsName: klb.k.example.com
       providerSpecific:
         - name: geo-code
-          value: GEO-US
+          value: GEO-NA
       recordTTL: 300
       recordType: CNAME
-      setIdentifier: GEO-US
+      setIdentifier: GEO-NA
       targets:
-        - geo-us.klb.k.example.com
-    - dnsName: geo-us.klb.k.example.com
+        - geo-na.klb.k.example.com
+    - dnsName: geo-na.klb.k.example.com
       providerSpecific:
         - name: weight
           value: '200'

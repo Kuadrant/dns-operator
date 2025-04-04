@@ -20,6 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -451,10 +454,11 @@ func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alp
 // returns if it had changes, if record is healthy and an error. If had no changes - the healthy bool can be ignored
 func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider) (bool, []string, error) {
 	logger := log.FromContext(ctx)
-
-	if prematurely, _ := recordReceivedPrematurely(dnsRecord, probes); prematurely {
-		logger.V(1).Info("Skipping DNSRecord - is still valid")
-		return false, []string{}, nil
+	if dnsProvider.Name() != "coredns" {
+		if prematurely, _ := recordReceivedPrematurely(dnsRecord, probes); prematurely {
+			logger.V(1).Info("Skipping DNSRecord - is still valid")
+			return false, []string{}, nil
+		}
 	}
 
 	hadChanges, notHealthyProbes, err := r.applyChanges(ctx, dnsRecord, probes, dnsProvider, false)
@@ -546,7 +550,7 @@ func setStatusConditions(record *v1alpha1.DNSRecord, hadChanges bool, notHealthy
 	}
 
 	// if we haven't published because of the health failure, we won't have changes but the spec endpoints will be empty
-	if record.Status.Endpoints == nil || len(record.Status.Endpoints) == 0 {
+	if len(record.Status.Endpoints) == 0 {
 		setDNSRecordCondition(record, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Not publishing unhealthy records")
 	}
 
@@ -600,16 +604,309 @@ func (r *DNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord *v1a
 		return nil, err
 	}
 	providerConfig := provider.Config{
-		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName}),
-		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),
-		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{dnsRecord.Status.ZoneID}),
+		HostDomainFilter: externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Spec.RootHost}),
+		DomainFilter:     externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName}),
+		ZoneTypeFilter:   externaldnsprovider.NewZoneTypeFilter(""),
+		ZoneIDFilter:     externaldnsprovider.NewZoneIDFilter([]string{dnsRecord.Status.ZoneID}),
 	}
 	return r.ProviderFactory.ProviderFor(ctx, dnsRecord, providerConfig)
 }
 
-// applyChanges creates the Plan and applies it to the registry. Returns true only if the Plan had no errors and there were changes to apply.
-// The error is nil only if the changes were successfully applied or there were no changes to be made.
 func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
+	logger := log.FromContext(ctx)
+	if dnsProvider.Name() == provider.DNSProviderCoreDNS {
+		logger.Info("core dns provider. Applying local changes")
+		ch := &CoreDNSHandler{DNSRecordReconciler: r}
+		return ch.applyLocalChanges(ctx, dnsRecord, probes, dnsProvider, isDelete)
+	}
+	return r.applyExternalDNSChanges(ctx, dnsRecord, probes, dnsProvider, isDelete)
+}
+
+// CoreDNSHandler has code used only for core dns
+type CoreDNSHandler struct {
+	*DNSRecordReconciler
+}
+
+func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) ([]*externaldnsendpoint.Endpoint, error) {
+	// TODO look to see can we move to using the endpoint builder
+	// TODO clean this mess up
+	var geoContinentPrefix = "GEO-"
+	var localEndpoints []*externaldnsendpoint.Endpoint
+	rootDomainName := original.Spec.RootHost
+	var geoTxtTargets = func() ([]string, error) {
+		var geoEndpoint *externaldnsendpoint.Endpoint
+		var defaultGeo *externaldnsendpoint.Endpoint
+		var geoCodeType = ""
+		for _, originalEP := range original.Spec.Endpoints {
+			if len(originalEP.ProviderSpecific) > 0 {
+				for _, ps := range originalEP.ProviderSpecific {
+					if ps.Name == "geo-code" {
+						if strings.HasPrefix(ps.Value, geoContinentPrefix) {
+							geoCodeType = "continent"
+							continent := strings.Replace(ps.Value, geoContinentPrefix, "", -1)
+							if !provider.IsContinentCode(continent) {
+								return nil, fmt.Errorf("unexpected continent code. %s", continent)
+							}
+						} else if !provider.IsISO3166Alpha2Code(ps.Value) && ps.Value != "*" {
+							return nil, fmt.Errorf("unexpected geo code. Prefix with %s for continents or use ISO_3166 Alpha 2 supported code for countries", geoContinentPrefix)
+						}
+						if ps.Value == "*" {
+							defaultGeo = originalEP
+						} else {
+							geoEndpoint = originalEP
+						}
+
+					}
+				}
+			}
+		}
+		targets := []string{}
+		if geoEndpoint != nil {
+			// making an asumption that it is the only providerspecific property
+			targets = append(targets, fmt.Sprintf("geo=%s", geoEndpoint.ProviderSpecific[0].Value), fmt.Sprintf("type=%s", geoCodeType))
+			defaultGeoTxt := "default=%t"
+			if defaultGeo == nil || defaultGeo.Targets[0] != geoEndpoint.Targets[0] {
+				targets = append(targets, fmt.Sprintf(defaultGeoTxt, false))
+			} else {
+				targets = append(targets, fmt.Sprintf(defaultGeoTxt, true))
+			}
+		}
+		return targets, nil
+
+	}
+
+	for _, originalEP := range original.Spec.Endpoints {
+		localEP := originalEP.DeepCopy()
+		localEP.DNSName = fmt.Sprintf("%s.%s", localEP.DNSName, provider.KuadrantTLD)
+		if len(localEP.ProviderSpecific) > 0 {
+			for _, ps := range localEP.ProviderSpecific {
+				nonWildCardRoot := strings.ReplaceAll(rootDomainName, "*.", "wildcard")
+				if ps.Name == "weight" {
+					// we need a weight >=0 if we can't parse unsigned int then fail
+					if _, err := strconv.ParseUint(ps.Value, 10, 64); err != nil {
+						return nil, fmt.Errorf("invalid weight expected a value >= 0")
+					}
+					weightTargets := []string{fmt.Sprintf("%s,%s", ps.Value, localEP.DNSName)}
+					weightName := "w." + fmt.Sprintf("%s.%s", nonWildCardRoot, provider.KuadrantTLD)
+					for _, lp := range localEndpoints {
+						// endpoint already exists update the target values
+						if lp.DNSName == weightName {
+							lp.Targets = weightTargets
+							break
+						}
+					}
+					// TODO move weight to multi value response
+					weightEP := externaldnsendpoint.Endpoint{
+						DNSName:    weightName,
+						Targets:    weightTargets,
+						RecordType: "TXT",
+					}
+					localEndpoints = append(localEndpoints, &weightEP)
+				}
+				if ps.Name == "geo-code" {
+					// validate input
+
+					geoTargets, err := geoTxtTargets()
+					if err != nil {
+						return nil, err
+					}
+					geoName := "g." + fmt.Sprintf("%s.%s", nonWildCardRoot, provider.KuadrantTLD)
+					exists := false
+					for _, lp := range localEndpoints {
+						// endpoint already exists update the target values
+						if lp.DNSName == geoName {
+							lp.Targets = geoTargets
+							exists = true
+						}
+					}
+					if !exists {
+						geoEP := externaldnsendpoint.Endpoint{
+							DNSName:    "g." + fmt.Sprintf("%s.%s", nonWildCardRoot, provider.KuadrantTLD),
+							RecordType: "TXT",
+							Targets:    geoTargets,
+						}
+
+						localEndpoints = append(localEndpoints, &geoEP)
+					}
+				}
+			}
+		}
+		for i, target := range localEP.Targets {
+			// don't update any that have a kdrnt or are not targeting the root host
+			if !strings.HasSuffix(target, provider.KuadrantTLD) || !strings.HasSuffix(target, original.Spec.RootHost) {
+				// ignore IPs
+				if net.ParseIP(target) == nil {
+					localEP.Targets[i] = fmt.Sprintf("%s.%s", target, provider.KuadrantTLD)
+				}
+			}
+		}
+		localEP.ProviderSpecific = []externaldnsendpoint.ProviderSpecificProperty{}
+		localEndpoints = append(localEndpoints, localEP)
+	}
+	return localEndpoints, nil
+}
+
+func (r *CoreDNSHandler) computeFullEndpointSet(ctx context.Context, from *v1alpha1.DNSRecord, dnsProvider provider.Provider) ([]*externaldnsendpoint.Endpoint, error) {
+	//TODO we don't account for multiple disconnected hosts in a single record yet we just expect everything is connected to the rootHost. This is the case for Kuadrant records but doesn't have to be the case for a straight DNSRecord
+	remoteEndpoints, err := dnsProvider.Records(ctx)
+	if err != nil {
+		return remoteEndpoints, err
+	}
+	return remoteEndpoints, err
+}
+
+// applyLocalChanges is used to apply a set of "discovered" changes locally so that the full record set can be served by a local dns server (IE core dns)
+func (r *CoreDNSHandler) applyLocalChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, _ *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
+	// this will create 2 additional DNSRecords based on the original copy
+	// 1) That is a copy of the original and will form a "merged record" with all other records from the other core dns nameservers
+	// 2) A local.kdrnt copy that has no provider specific properties such as geo or weighting. It is this set of records that will be requested by other core dns instances to form the "merged record". It is the merged record that has the provider specific info and will be processed for a DNS query
+	hadChanges := false
+	logger := log.FromContext(ctx)
+
+	var createUpdateMergeCopy = func(original *v1alpha1.DNSRecord) error {
+		// merge copy contains the records from this and the other configured nameservers, it also has all the provider specific data
+		logger.Info("coredns creating or updating merged record")
+		localName := fmt.Sprintf("%s-%s", "merged", original.Name)
+		mergeCopy := &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      localName,
+				Namespace: original.Namespace,
+			},
+		}
+		endpointSet, err := r.computeFullEndpointSet(ctx, original, dnsProvider)
+		if err != nil {
+			return err
+		}
+		if len(endpointSet) == 0 {
+			return fmt.Errorf("no endpoints discovered for %s ", dnsRecord.Spec.RootHost)
+		}
+
+		if err := r.Client.Get(ctx, client.ObjectKeyFromObject(mergeCopy), mergeCopy); err != nil {
+			if apierrors.IsNotFound(err) {
+				mergeCopy.Spec = original.Spec
+				mergeCopy.Spec.Endpoints = endpointSet
+				mergeCopy.Labels = map[string]string{provider.CoreDNSRecordTypeLabel: "merged", provider.CoreDNSRecordZoneLabel: original.Status.ZoneDomainName}
+				if err := controllerutil.SetOwnerReference(dnsRecord, mergeCopy, r.Scheme); err != nil {
+					return err
+				}
+				if err := r.Client.Create(ctx, mergeCopy, &client.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to create core dns merge copy %w", err)
+				}
+				return nil
+			}
+
+		}
+		if !endPointsEqual(mergeCopy.Spec.Endpoints, endpointSet) {
+			logger.Info("updating merged copy with new endpoints" + mergeCopy.Name)
+			mergeCopy.Spec.Endpoints = endpointSet
+			if err := r.Client.Update(ctx, mergeCopy, &client.UpdateOptions{}); err != nil {
+				return fmt.Errorf("failed to update core dns merged copy %w", err)
+			}
+		}
+		return nil
+	}
+
+	var createUpdateLocalCopy = func(original *v1alpha1.DNSRecord) error {
+		// if we get to this point we are handling an original copy
+		logger.Info("coredns creating or updating local record")
+		localName := fmt.Sprintf("%s-%s", "local", original.Name)
+		kdrntLocalCopy := &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      localName,
+				Namespace: original.Namespace,
+			},
+		}
+		logger.Info("coredns looking for local record", "record ", kdrntLocalCopy)
+		if err := r.Client.Get(ctx, client.ObjectKeyFromObject(kdrntLocalCopy), kdrntLocalCopy); err != nil {
+			if apierrors.IsNotFound(err) {
+				// create
+				logger.Info("coredns no dns record found creating local copy")
+				kdrntLocalCopy.Spec = original.Spec
+				kdrntLocalCopy.Labels = map[string]string{provider.CoreDNSRecordTypeLabel: "local", provider.CoreDNSRecordZoneLabel: provider.KuadrantTLD}
+				kdrntLocalCopy.Spec.RootHost = fmt.Sprintf("%s.%s", original.Spec.RootHost, provider.KuadrantTLD)
+				var computedEndpoints, err = r.computeLocalEndpointSet(original)
+				if err != nil {
+					return err
+				}
+				kdrntLocalCopy.Spec.Endpoints = computedEndpoints
+				if err := controllerutil.SetOwnerReference(dnsRecord, kdrntLocalCopy, r.Scheme); err != nil {
+					return err
+				}
+				if err := r.Client.Create(ctx, kdrntLocalCopy, &client.CreateOptions{}); err != nil {
+					return fmt.Errorf("failed to create kuadrant local copy %w", err)
+				}
+				return nil
+			}
+			return err
+		}
+		logger.Info("coredns dns record found updating local copy")
+		//update endpoints only
+		computedEndpoints, err := r.computeLocalEndpointSet(original)
+		if err != nil {
+			return err
+		}
+		if !endPointsEqual(kdrntLocalCopy.Spec.Endpoints, computedEndpoints) {
+			logger.Info("updating local endpoints for record " + kdrntLocalCopy.Name)
+			kdrntLocalCopy.Spec.Endpoints = computedEndpoints
+			if err := r.Client.Update(ctx, kdrntLocalCopy, &client.UpdateOptions{}); err != nil {
+				return fmt.Errorf("failed to update kuadrant local copy %w", err)
+			}
+		}
+
+		return nil
+	}
+
+	if dnsRecord.Labels == nil {
+		dnsRecord.Labels = map[string]string{}
+	}
+
+	if isDelete {
+		logger.Info(" delete of " + dnsRecord.Name)
+		//If we are deleting set the expected endpoints to an empty array
+		// notthing reallt to do here as the records will be removed when the resource is removed.
+		return hadChanges, []string{}, nil
+	}
+	var isOriginal = func(record *v1alpha1.DNSRecord) bool {
+		if record.Labels == nil {
+			return true
+		}
+		if _, ok := record.Labels["kuadrant.io/type"]; ok {
+			return false
+		}
+		return true
+	}
+	// handle core dns merged record updates
+	if isOriginal(dnsRecord) {
+		if err := createUpdateLocalCopy(dnsRecord); err != nil {
+			return hadChanges, []string{}, err
+		}
+		if err := createUpdateMergeCopy(dnsRecord); err != nil {
+			return hadChanges, []string{}, err
+		}
+	}
+	return hadChanges, []string{}, nil
+}
+
+func endPointsEqual(eps1, eps2 []*externaldnsendpoint.Endpoint) bool {
+	return slices.EqualFunc(eps1, eps2, func(e1, e2 *externaldnsendpoint.Endpoint) bool {
+		if e1.DNSName != e2.DNSName {
+			return false
+		}
+
+		if !e1.Targets.Same(e2.Targets) {
+			return false
+		}
+		if !slices.Equal(e1.ProviderSpecific, e2.ProviderSpecific) {
+			return false
+		}
+
+		return true
+	})
+}
+
+// applyExternalDNSChanges creates the Plan and applies it to the registry. This is used only for external cloud provider DNS. Returns true only if the Plan had no errors and there were changes to apply.
+// The error is nil only if the changes were successfully applied or there were no changes to be made.
+func (r *DNSRecordReconciler) applyExternalDNSChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
 	logger := log.FromContext(ctx)
 	rootDomainName := dnsRecord.Spec.RootHost
 	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName})
