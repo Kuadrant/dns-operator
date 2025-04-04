@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
@@ -34,11 +35,33 @@ func GenerateName() string {
 
 type NameServerNone string
 
-func ResolverForDomainName(domainName string) *net.Resolver {
-	nameservers, err := net.LookupNS(domainName)
-	Expect(err).ToNot(HaveOccurred())
-	GinkgoWriter.Printf("[debug] authoritative nameserver used for DNS record resolution: %s\n", nameservers[0].Host)
-	return ResolverForNameServer(strings.Join([]string{nameservers[0].Host, "53"}, ":"))
+// ResolversForDomainNameAndProvider returns a list of resolvers for the given domain and provider secret and if they
+// are configured with authoritative nameservers or not.
+func ResolversForDomainNameAndProvider(domainName string, providerSecret *v1.Secret) (resolvers []*net.Resolver, authoritative bool) {
+	var nameServers []string
+	authoritative = true
+
+	if providerSecret.Type == v1alpha1.SecretTypeKuadrantCoreDNS {
+		coreDNSNS := providerSecret.Data["NAMESERVERS"]
+		Expect(coreDNSNS).NotTo(BeEmpty())
+		nameServers = strings.Split(string(coreDNSNS), ",")
+	} else if providerSecret.Type != v1alpha1.SecretTypeKuadrantAzure {
+		// speed up things by using an authoritative nameserver
+		nss, err := net.LookupNS(domainName)
+		Expect(err).ToNot(HaveOccurred())
+		nameServers = append(nameServers, strings.Join([]string{nss[0].Host, "53"}, ":"))
+	}
+
+	if nameServers == nil {
+		resolvers = append(resolvers, net.DefaultResolver)
+		authoritative = false
+	} else {
+		for _, nameServer := range nameServers {
+			resolvers = append(resolvers, ResolverForNameServer(nameServer))
+		}
+	}
+
+	return resolvers, authoritative
 }
 
 func ResolverForNameServer(nameserver string) *net.Resolver {

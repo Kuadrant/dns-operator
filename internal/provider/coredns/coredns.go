@@ -159,7 +159,7 @@ func (p *CoreDNSProvider) recordsForHost(host string) ([]*endpoint.Endpoint, err
 		nsAnswer, err := p.DNSQueryFunc(hosts, *nServer)
 		if err != nil {
 			//TODO prob need to handle dns errors better here
-			continue
+			return endpoints, err
 		}
 		answers[*nServer] = nsAnswer
 	}
@@ -348,7 +348,7 @@ func (p *CoreDNSProvider) dnsQuery(hosts []string, nameserver string) (map[strin
 		if err != nil {
 			return answers, fmt.Errorf("%w failed to do dns exchange with nameserver %s ", err, nameserver)
 		}
-		p.logger.Info("got answer for dns query ", "fqdn", fqdn, "answer", msg, "err", err)
+		p.logger.Info("got answer for dns query ", "fqdn", fqdn, "nameserver", nameserver, "answer", msg, "err", err)
 		answers[key] = msg
 
 	}
