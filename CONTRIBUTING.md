@@ -42,3 +42,9 @@ When contributing code to DNS Operator, please adhere to the following coding st
 DNS Operator relies on comprehensive testing to maintain stability and reliability. We utilize both unit tests and integration tests to verify functionality. When new changes or features are added it is expected that existing tests will be modified to both continue passing and also adequately test the new changes.
 
 For more information on how to run the tests locally, see the Testing section of the [readme](README.md).
+
+## Reporting bugs / submitting feature requests
+
+If a bug is found, or a feature you would like to see is absent, please submit an issue to the github project [here](https://github.com/Kuadrant/dns-operator/issues), after checking that an existing bug report or feature request does not already exist.
+
+You can also reach out to us on zulip, to discuss technical issues or features with us directly, we typically discuss the DNS Operator [here](https://kuadrant.zulipchat.com/#narrow/channel/493518-DNS).
