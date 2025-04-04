@@ -5,11 +5,13 @@
 
 .PHONY: install-metallb
 install-metallb: SUBNET_OFFSET=1
+install-metallb: CIDR=28
+install-metallb: NUM_IPS=16
 install-metallb: yq ## Install the metallb load balancer allowing use of a LoadBalancer type service
 	kubectl apply --server-side -k config/metallb
 	kubectl -n metallb-system wait --for=condition=Available=True deployments controller --timeout=300s
 	kubectl -n metallb-system wait --for=condition=ready pod --selector=app=metallb --timeout=60s
-	curl -s https://raw.githubusercontent.com/Kuadrant/kuadrant-operator/refs/heads/main/utils/docker-network-ipaddresspool.sh | bash -s kind $(YQ) ${SUBNET_OFFSET} | kubectl apply -n metallb-system -f -
+	curl -s https://raw.githubusercontent.com/Kuadrant/kuadrant-operator/refs/heads/main/utils/docker-network-ipaddresspool.sh | bash -s kind $(YQ) ${SUBNET_OFFSET} ${CIDR} ${NUM_IPS} | kubectl apply -n metallb-system -f -
 
 .PHONY: install-observability
 install-observability: ## Install the kuadrant observability stack

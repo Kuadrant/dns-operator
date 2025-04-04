@@ -190,18 +190,18 @@ test-scale: kube-burner
 
 .PHONY: local-setup-cluster
 local-setup-cluster: DEPLOY=false
-local-setup-cluster: TEST_NAMESPACE=dnstest
 local-setup-cluster: DEPLOYMENT_SCOPE=cluster
 local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependencies and optionally deploy the dns operator DEPLOY=false|true
-	@echo "local-setup: KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOY=${DEPLOY} DEPLOYMENT_SCOPE=${DEPLOYMENT_SCOPE} TEST_NAMESPACE=${TEST_NAMESPACE}"
+	@echo "local-setup: creating cluster KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOY=${DEPLOY} DEPLOYMENT_SCOPE=${DEPLOYMENT_SCOPE}"
 	@$(MAKE) -s kind-delete-cluster
 	@$(MAKE) -s kind-create-cluster
 	@$(MAKE) -s install
 	@$(MAKE) -s install-metallb
-	@$(MAKE) -s install-coredns-unmonitored
-	@$(KUBECTL) create namespace ${TEST_NAMESPACE} --dry-run=client -o yaml | $(KUBECTL) apply -f -
-	@$(MAKE) -s local-setup-coredns-generate-from-cluster
-	@$(MAKE) -s local-setup-dns-providers TARGET_NAMESPACE=${TEST_NAMESPACE}
+
+	if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
+    	$(MAKE) -s install-coredns-unmonitored ;\
+    fi ;\
+
 	@if [ ${DEPLOY} = "true" ]; then\
 		if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
 			echo "local-setup: deploying operator (cluster scoped) to ${KIND_CLUSTER_NAME}" ;\
@@ -216,17 +216,40 @@ local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependenci
 
 	@echo "local-setup: Check dns operator deployments"
 	$(KUBECTL) get deployments -l app.kubernetes.io/part-of=dns-operator -A
+
+.PHONY: local-setup-cluster-dns-providers
+local-setup-cluster-dns-providers: DEPLOYMENT_SCOPE=cluster
+local-setup-cluster-dns-providers: TEST_NAMESPACE=dnstest
+local-setup-cluster-dns-providers:
+	@echo "local-setup: creating dns providers KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOYMENT_SCOPE=${DEPLOYMENT_SCOPE} TEST_NAMESPACE=${TEST_NAMESPACE}"
+	$(KUBECTL) config use-context kind-$(KIND_CLUSTER_NAME)
+	@if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
+		$(KUBECTL) create namespace ${TEST_NAMESPACE} --dry-run=client -o yaml | $(KUBECTL) apply -f - ;\
+		$(MAKE) -s local-setup-dns-providers TARGET_NAMESPACE=${TEST_NAMESPACE} ;\
+	else\
+		$(MAKE) -s generate-common-dns-provider-kustomization ;\
+		$(KUSTOMIZE) build --enable-helm $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f - ;\
+	fi ;\
+
 	@echo "local-setup: Check dns providers"
 	$(KUBECTL) get secrets -l app.kubernetes.io/part-of=dns-operator -A
-	@echo "local-setup: Complete!!"
 
 .PHONY: local-setup
 local-setup: CLUSTER_COUNT=1
 local-setup: ## Setup local development kind cluster(s)
+	@echo "local-setup: CLUSTER_COUNT=${CLUSTER_COUNT}"
 	@n=1 ; while [[ $$n -le $(CLUSTER_COUNT) ]] ; do \
-		$(MAKE) -s local-setup-cluster KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME_PREFIX}-$$n;\
+		$(MAKE) -s local-setup-cluster KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME_PREFIX}-$$n SUBNET_OFFSET=$$n;\
 		((n = n + 1)) ;\
 	done ;\
+
+	$(MAKE) local-setup-coredns-generate-from-clusters
+	@n=1 ; while [[ $$n -le $(CLUSTER_COUNT) ]] ; do \
+		$(MAKE) -s local-setup-cluster-dns-providers KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME_PREFIX}-$$n ;\
+		((n = n + 1)) ;\
+	done ;\
+
+	@echo "local-setup: Complete!!"
 
 .PHONY: local-cleanup
 local-cleanup: ## Delete local clusters
@@ -313,9 +336,9 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 	$(KUSTOMIZE) build config/deploy/local | $(KUBECTL) apply -f -
 
 .PHONY: deploy-namespaced
-deploy-namespaced: manifests kustomize generate-cluster-overlay ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+deploy-namespaced: manifests kustomize remove-cluster-overlay generate-cluster-overlay ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f -
+	$(KUSTOMIZE) build --enable-helm $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.

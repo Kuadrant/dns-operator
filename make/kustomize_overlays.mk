@@ -13,6 +13,7 @@ DEPLOYMENT_WATCH_NAMESPACES ?=
 GCP_CREDENTIALS_FILE ?= config/local-setup/dns-provider/gcp/gcp-credentials.env
 AWS_CREDENTIALS_FILE ?= config/local-setup/dns-provider/aws/aws-credentials.env
 AZURE_CREDENTIALS_FILE ?= config/local-setup/dns-provider/azure/azure-credentials.env
+COREDNS_CREDENTIALS_FILE ?= config/local-setup/dns-provider/coredns/coredns-credentials.env
 
 ## Location to generate cluster overlays
 CLUSTER_OVERLAY_DIR ?= $(shell pwd)/tmp/overlays
@@ -32,28 +33,7 @@ generate-cluster-overlay: ## Generate a cluster overlay with namespaced deployme
 	touch kustomization.yaml && \
 	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/crd",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME))
 
-	# Generate common dns provider kustomization
-	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers
-	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
-	touch kustomization.yaml && \
-	$(KUSTOMIZE) edit add secret dns-provider-credentials-inmemory --disableNameSuffixHash --from-literal=INMEM_INIT_ZONES=kuadrant.local --type "kuadrant.io/inmemory"
-
-	# Add dns providers that require credentials if credential files exist
-	@if [[ -f $(GCP_CREDENTIALS_FILE) ]]; then\
-		cp config/local-setup/dns-provider/gcp/gcp-credentials.env $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\
-		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
-		$(KUSTOMIZE) edit add secret dns-provider-credentials-gcp --disableNameSuffixHash --from-env-file=gcp-credentials.env --type "kuadrant.io/gcp" ;\
-	fi
-	@if [[ -f $(AWS_CREDENTIALS_FILE) ]]; then\
-		cp config/local-setup/dns-provider/aws/aws-credentials.env $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\
-		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
-		$(KUSTOMIZE) edit add secret dns-provider-credentials-aws --disableNameSuffixHash --from-env-file=aws-credentials.env --type "kuadrant.io/aws" ;\
-	fi
-	@if [[ -f $(AZURE_CREDENTIALS_FILE) ]]; then\
-		cp config/local-setup/dns-provider/azure/azure-credentials.env $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\
-		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
-		$(KUSTOMIZE) edit add secret dns-provider-credentials-azure --disableNameSuffixHash --from-env-file=azure-credentials.env --type "kuadrant.io/azure" ;\
-	fi
+	$(MAKE) generate-common-dns-provider-kustomization
 
 	# Add dns operator deployments based on the number of deployments requested
 	@n=1 ; while [[ $$n -le $(DEPLOYMENT_COUNT) ]] ; do \
@@ -79,6 +59,14 @@ generate-operator-deployment-overlay: ## Generate a DNS Operator deployment over
 	touch kustomization.yaml && \
 	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/local-setup/dns-operator",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator)
 
+	# Generate coredns deployment overlay
+	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/coredns
+	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/coredns && \
+	touch kustomization.yaml && \
+	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/coredns-unmonitored",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator) && \
+	echo -e '$$patch: delete\napiVersion: v1\nkind: Namespace\nmetadata:\n  name: kuadrant-coredns' > delete-ns.yaml && \
+	$(KUSTOMIZE) edit add patch --path delete-ns.yaml
+
 	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/dns-operator
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/dns-operator && \
 	touch kustomization.yaml && \
@@ -86,6 +74,13 @@ generate-operator-deployment-overlay: ## Generate a DNS Operator deployment over
 	$(KUSTOMIZE) edit set namesuffix -- -$(DEPLOYMENT_NAME_SUFFIX)  && \
 	$(KUSTOMIZE) edit add patch --kind Deployment --patch '[{"op": "replace", "path": "/spec/template/spec/containers/0/env/0", "value": {"name": "WATCH_NAMESPACES", "value": "$(DEPLOYMENT_WATCH_NAMESPACES)"}}]' && \
 	$(KUSTOMIZE) edit add patch --kind Deployment --patch '[{"op": "replace", "path": "/spec/replicas", "value": ${DEPLOYMENT_REPLICAS}}]'
+
+	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/coredns
+	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/coredns && \
+	touch kustomization.yaml && \
+	$(KUSTOMIZE) edit add resource "../../coredns" && \
+	$(KUSTOMIZE) edit set namesuffix -- -$(DEPLOYMENT_NAME_SUFFIX)  && \
+	$(KUSTOMIZE) edit add patch --kind Deployment --patch '[{"op": "replace", "path": "/spec/template/spec/containers/0/env/0", "value": {"name": "WATCH_NAMESPACES", "value": "$(DEPLOYMENT_WATCH_NAMESPACES)"}}]'
 
 	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/dns-providers
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE)/dns-providers && \
@@ -95,7 +90,42 @@ generate-operator-deployment-overlay: ## Generate a DNS Operator deployment over
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/$(DEPLOYMENT_NAMESPACE) && \
 	touch kustomization.yaml && \
 	$(KUSTOMIZE) edit set namespace $(DEPLOYMENT_NAMESPACE)  && \
-	$(KUSTOMIZE) edit add resource "./dns-operator" && \
-	$(KUSTOMIZE) edit add resource "./dns-providers" && \
 	$(KUSTOMIZE) edit add label -f app.kubernetes.io/part-of:dns-operator && \
-	$(KUSTOMIZE) edit fix
+    $(KUSTOMIZE) edit fix  && \
+	$(KUSTOMIZE) edit add resource "./dns-operator" && \
+	$(KUSTOMIZE) edit add resource "./coredns" && \
+	$(KUSTOMIZE) edit add resource "./dns-providers"
+
+.PHONY: generate-common-dns-provider-kustomization
+generate-common-dns-provider-kustomization: ## Generate common dns provider kustomization
+	# Remove kustomization if it already exists
+	@if [[ -f $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/kustomization.yaml ]]; then\
+		rm $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/kustomization.yaml ;\
+	fi
+
+	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers
+	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
+	touch kustomization.yaml && \
+	$(KUSTOMIZE) edit add secret dns-provider-credentials-inmemory --disableNameSuffixHash --from-literal=INMEM_INIT_ZONES=kuadrant.local --type "kuadrant.io/inmemory"
+
+	# Add dns providers that require credentials if credential files exist
+	@if [[ -f $(GCP_CREDENTIALS_FILE) ]]; then\
+		cp config/local-setup/dns-provider/gcp/gcp-credentials.env $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\
+		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
+		$(KUSTOMIZE) edit add secret dns-provider-credentials-gcp --disableNameSuffixHash --from-env-file=gcp-credentials.env --type "kuadrant.io/gcp" ;\
+	fi
+	@if [[ -f $(AWS_CREDENTIALS_FILE) ]]; then\
+		cp config/local-setup/dns-provider/aws/aws-credentials.env $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\
+		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
+		$(KUSTOMIZE) edit add secret dns-provider-credentials-aws --disableNameSuffixHash --from-env-file=aws-credentials.env --type "kuadrant.io/aws" ;\
+	fi
+	@if [[ -f $(AZURE_CREDENTIALS_FILE) ]]; then\
+		cp config/local-setup/dns-provider/azure/azure-credentials.env $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\
+		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
+		$(KUSTOMIZE) edit add secret dns-provider-credentials-azure --disableNameSuffixHash --from-env-file=azure-credentials.env --type "kuadrant.io/azure" ;\
+	fi
+	@if [[ -f $(COREDNS_CREDENTIALS_FILE) ]]; then\
+		cp $(COREDNS_CREDENTIALS_FILE) $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\
+		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
+        $(KUSTOMIZE) edit add secret dns-provider-credentials-coredns --disableNameSuffixHash --from-env-file=coredns-credentials.env --type "kuadrant.io/coredns" ;\
+	fi

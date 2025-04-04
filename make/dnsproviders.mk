@@ -62,10 +62,10 @@ $(LOCAL_SETUP_AZURE_CREDS):
 	$(call ndef,KUADRANT_AZURE_CREDENTIALS)
 	$(call patch-config,${LOCAL_SETUP_AZURE_CREDS}.template,${LOCAL_SETUP_AZURE_CREDS})
 
-.PHONY: local-setup-coredns-generate-from-cluster
-local-setup-coredns-generate-from-cluster: export COREDNS_NAMESERVERS=$(shell $(KUBECTL) get service kuadrant-coredns -n kuadrant-coredns -o=jsonpath={.status.loadBalancer.ingress[0].ip}):53
-local-setup-coredns-generate-from-cluster: export COREDNS_ZONES=k.example.com
-local-setup-coredns-generate-from-cluster: local-setup-coredns-clean local-setup-coredns-generate ## Generate CoreDNS DNS Provider credentials for local-setup from the running coredns service on cluster(kuadrant-coredns)
+.PHONY: local-setup-coredns-generate-from-clusters
+local-setup-coredns-generate-from-clusters: export COREDNS_NAMESERVERS=$(shell hack/coredns-server-list.sh kind-${KIND_CLUSTER_NAME_PREFIX} ${CLUSTER_COUNT} || echo "")
+local-setup-coredns-generate-from-clusters: export COREDNS_ZONES=k.example.com
+local-setup-coredns-generate-from-clusters: local-setup-coredns-clean local-setup-coredns-generate ## Generate CoreDNS DNS Provider credentials for local-setup from the running coredns services on local kind clusters
 
 .PHONY: local-setup-coredns-generate
 local-setup-coredns-generate: local-setup-coredns-credentials ## Generate CoreDNS DNS Provider credentials for local-setup
