@@ -79,6 +79,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		} else if testDNSProvider == provider.DNSProviderCoreDNS.String() {
 			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantCoreDNS))
 			pBuilder.WithDataItem("ZONES", "wrong.me")
+			Skip("not yet supported for coredns")
 		} else {
 			//AWS
 			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantAWS))

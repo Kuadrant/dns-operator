@@ -67,6 +67,8 @@ var (
 	}
 	recordsReadyMaxDuration   time.Duration
 	recordsRemovedMaxDuration time.Duration
+
+	txtRegistryEnabled = true
 )
 
 // testCluster represents a cluster under test and contains a reference to a configured k8client and all it's dns provider secrets.
@@ -130,6 +132,11 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	if testDNSProvider == provider.DNSProviderGCP.String() {
 		geoCode = "europe-west1"
 	}
+
+	if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+		txtRegistryEnabled = false
+	}
+
 	SetTestEnv("testGeoCode", geoCode)
 })
 
