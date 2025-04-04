@@ -18,12 +18,10 @@ package inmemory
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/external-dns/provider/inmemory"
@@ -40,10 +38,6 @@ var p provider.Provider = &InMemoryDNSProvider{}
 
 func (p *InMemoryDNSProvider) Name() provider.DNSProviderName {
 	return provider.DNSProviderInMem
-}
-
-func (*InMemoryDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*endpoint.Endpoint, error) {
-	return []*endpoint.Endpoint{}, fmt.Errorf("not impl")
 }
 
 func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {

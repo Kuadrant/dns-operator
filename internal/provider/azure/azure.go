@@ -39,10 +39,6 @@ func (*AzureProvider) Name() provider.DNSProviderName {
 	return provider.DNSProviderAzure
 }
 
-func (*AzureProvider) RecordsForHost(ctx context.Context, host string) ([]*externaldnsendpoint.Endpoint, error) {
-	return []*externaldnsendpoint.Endpoint{}, fmt.Errorf("not impl")
-}
-
 func NewAzureProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	if string(s.Data[v1alpha1.AzureJsonKey]) == "" {
 		return nil, fmt.Errorf("the Azure provider credentials is empty")

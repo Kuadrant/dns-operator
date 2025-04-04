@@ -604,9 +604,10 @@ func (r *DNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord *v1a
 		return nil, err
 	}
 	providerConfig := provider.Config{
-		DomainFilter:   externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName}),
-		ZoneTypeFilter: externaldnsprovider.NewZoneTypeFilter(""),
-		ZoneIDFilter:   externaldnsprovider.NewZoneIDFilter([]string{dnsRecord.Status.ZoneID}),
+		HostDomainFilter: externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Spec.RootHost}),
+		DomainFilter:     externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName}),
+		ZoneTypeFilter:   externaldnsprovider.NewZoneTypeFilter(""),
+		ZoneIDFilter:     externaldnsprovider.NewZoneIDFilter([]string{dnsRecord.Status.ZoneID}),
 	}
 	return r.ProviderFactory.ProviderFor(ctx, dnsRecord, providerConfig)
 }
@@ -747,7 +748,7 @@ func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) (
 
 func (r *CoreDNSHandler) computeFullEndpointSet(ctx context.Context, from *v1alpha1.DNSRecord, dnsProvider provider.Provider) ([]*externaldnsendpoint.Endpoint, error) {
 	//TODO we don't account for multiple disconnected hosts in a single record yet we just expect everything is connected to the rootHost. This is the case for Kuadrant records but doesn't have to be the case for a straight DNSRecord
-	remoteEndpoints, err := dnsProvider.RecordsForHost(ctx, from.Spec.RootHost)
+	remoteEndpoints, err := dnsProvider.Records(ctx)
 	if err != nil {
 		return remoteEndpoints, err
 	}

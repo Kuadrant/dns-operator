@@ -53,11 +53,11 @@ type Provider interface {
 	ProviderSpecific() ProviderSpecificLabels
 
 	Name() DNSProviderName
-
-	RecordsForHost(ctx context.Context, host string) ([]*externaldnsendpoint.Endpoint, error)
 }
 
 type Config struct {
+	// filter for specifying a host domain for providers that require it
+	HostDomainFilter externaldnsendpoint.DomainFilter
 	// only consider hosted zones managing domains ending in this suffix
 	DomainFilter externaldnsendpoint.DomainFilter
 	// filter for zones based on visibility

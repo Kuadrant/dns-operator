@@ -32,7 +32,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/external-dns/endpoint"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -121,10 +120,6 @@ var p provider.Provider = &GoogleDNSProvider{}
 
 func (p *GoogleDNSProvider) Name() provider.DNSProviderName {
 	return provider.DNSProviderGCP
-}
-
-func (p *GoogleDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*endpoint.Endpoint, error) {
-	return nil, fmt.Errorf("not impl")
 }
 
 func NewProviderFromSecret(ctx context.Context, s *corev1.Secret, c provider.Config) (provider.Provider, error) {

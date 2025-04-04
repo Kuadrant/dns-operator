@@ -27,7 +27,7 @@ var (
 	gateway2Name = "gateway2"
 )
 
-func TestRecordsForHost(t *testing.T) {
+func TestCoreDNSProvider_Records(t *testing.T) {
 
 	testCases := []struct {
 		Name              string
@@ -131,13 +131,15 @@ func TestRecordsForHost(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			p, err := coredns.NewCoreDNSProviderFromSecret(context.Background(), testCase.Secret, provider.Config{})
+			p, err := coredns.NewCoreDNSProviderFromSecret(context.Background(), testCase.Secret, provider.Config{
+				HostDomainFilter: endpoint.NewDomainFilter([]string{testCase.Host}),
+			})
 			if err != nil {
 				t.Fatalf("failed to create new core dns provider %s", err)
 			}
 			p.(*coredns.CoreDNSProvider).DNSQueryFunc = testCase.QueryResponse
 
-			endpoints, _ := p.RecordsForHost(context.Background(), testCase.Host)
+			endpoints, _ := p.Records(context.Background())
 
 			equal := endpointsEqual(endpoints, testCase.ExpectedEndPoints)
 			if !equal {
@@ -172,7 +174,7 @@ func endpointsEqual(eps1, eps2 []*endpoint.Endpoint) bool {
 	return true
 }
 
-func TestDNSZoneForHost(t *testing.T) {
+func TestCoreDNSProvider_DNSZoneForHost(t *testing.T) {
 	testCases := []struct {
 		Name             string
 		Secret           *v1.Secret

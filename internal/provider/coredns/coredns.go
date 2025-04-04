@@ -14,8 +14,6 @@ import (
 	"github.com/miekg/dns"
 
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
@@ -24,11 +22,11 @@ import (
 )
 
 type CoreDNSProvider struct {
-	logger          logr.Logger
-	nameservers     []*string
-	availableZones  []string
-	DNSQueryFunc    QueryFunc
-	DNSRecordClient DNSRecordInterface
+	logger         logr.Logger
+	nameservers    []*string
+	availableZones []string
+	DNSQueryFunc   QueryFunc
+	hostFilter     endpoint.DomainFilter
 }
 
 type QueryFunc func(hosts []string, nameserver string) (map[string]*dns.Msg, error)
@@ -50,8 +48,18 @@ func init() {
 
 func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	logger := log.FromContext(ctx).WithName(p.Name().String())
+
+	if string(s.Data[ProviderNameserverKey]) == "" {
+		return nil, fmt.Errorf("CoreDNS Provider credentials does not contain %s", ProviderNameserverKey)
+	}
+
+	if string(s.Data[ProviderZonesKey]) == "" {
+		return nil, fmt.Errorf("CoreDNS Provider credentials does not contain %s", ProviderZonesKey)
+	}
+
 	p := &CoreDNSProvider{
-		logger: logger,
+		logger:     logger,
+		hostFilter: c.HostDomainFilter,
 	}
 	if _, ok := s.Data[ProviderNameserverKey]; ok {
 		nameservers := []*string{}
@@ -128,43 +136,15 @@ func (p *CoreDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 	return provider.ProviderSpecificLabels{}
 }
 
-func (p *CoreDNSProvider) k8sClient() (DNSRecordInterface, error) {
-	if p.DNSRecordClient == nil {
-		rconfig, err := config.GetConfig()
-		if err != nil {
-			return nil, err
-		}
-		client, err := NewForConfig(rconfig)
-		if err != nil {
-			return nil, err
-		}
-		p.DNSRecordClient = client
+func (p *CoreDNSProvider) Records(_ context.Context) ([]*endpoint.Endpoint, error) {
+	if !p.hostFilter.IsConfigured() {
+		return nil, fmt.Errorf("no host domain filter specified for CoreDNS Provider")
 	}
-	return p.DNSRecordClient, nil
+	return p.recordsForHost(p.hostFilter.Filters[0])
 }
 
-func (p *CoreDNSProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
-	// return the merged record endpoints from all dns records in cluster
-	endpoints := make([]*endpoint.Endpoint, 0)
-	client, err := p.k8sClient()
-	if err != nil {
-		return endpoints, err
-	}
-
-	records, err := client.DNSRecords("").List(ctx, metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", provider.CoreDNSRecordTypeLabel, "merged")})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, record := range records.Items {
-		endpoints = append(record.Spec.Endpoints, endpoints...)
-	}
-
-	return endpoints, nil
-}
-
-// RecordsForHost returns the records each configured core dns has for a given host
-func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*endpoint.Endpoint, error) {
+// recordsForHost returns the records each configured core dns has for a given host
+func (p *CoreDNSProvider) recordsForHost(host string) ([]*endpoint.Endpoint, error) {
 	// if host prefix matches our local prefix query nameservers to get other records and return merged endpoints
 	// if host doesn't match prefix get the records from the resource directly.
 	kudrantHost := fmt.Sprintf("%s.%s", host, provider.KuadrantTLD)
@@ -173,13 +153,13 @@ func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*e
 	var endpoints []*endpoint.Endpoint
 	// do our queries and gather up the answers
 	answers := map[string]map[string]*dns.Msg{}
-	p.logger.Info("RecordsForHost", "total nameservers", len(p.nameservers), "hosts", hosts)
+	p.logger.Info("recordsForHost", "total nameservers", len(p.nameservers), "hosts", hosts)
 	for _, nServer := range p.nameservers {
 		p.logger.Info("checking nameserver ", "address", *nServer)
 		nsAnswer, err := p.DNSQueryFunc(hosts, *nServer)
 		if err != nil {
 			//TODO prob need to handle dns errors better here
-			return endpoints, err
+			continue
 		}
 		answers[*nServer] = nsAnswer
 	}
@@ -190,7 +170,7 @@ func (p *CoreDNSProvider) RecordsForHost(ctx context.Context, host string) ([]*e
 		if dns == nil {
 			return nil, fmt.Errorf("expected a dns response but got none from  %s", server)
 		}
-		if _, ok := answer["weight"]; ok && answer["dns"].Answer != nil {
+		if _, ok := answer["dns"]; ok && answer["dns"].Answer != nil {
 			for _, rr := range answer["dns"].Answer {
 				//need to remove duplicates where the dns name is the same and the targets are the same but keep duplicates where the targets are different
 				endpoints = p.mergeDNSEndpoints(rr, endpoints)
@@ -228,7 +208,7 @@ func (p *CoreDNSProvider) mergeDNSEndpoints(rr dns.RR, endpoints []*endpoint.End
 	case *dns.A:
 		ep.RecordType = "A"
 		ep.RecordTTL = endpoint.TTL(rec.Header().Ttl)
-		ep.Targets = append(ep.Targets, string(rec.A.String()))
+		ep.Targets = append(ep.Targets, rec.A.String())
 	case *dns.CNAME:
 		ep.RecordType = "CNAME"
 		ep.Targets = append(ep.Targets, sanitize(rec.Target))
@@ -241,9 +221,16 @@ func (p *CoreDNSProvider) mergeDNSEndpoints(rr dns.RR, endpoints []*endpoint.End
 
 	alreadyExists := false
 	for _, existing := range endpoints {
-		if existing.DNSName == ep.DNSName && slices.Equal(existing.Targets, ep.Targets) {
-			alreadyExists = true
-			break
+		if existing.DNSName == ep.DNSName && existing.RecordType == ep.RecordType {
+			if ep.RecordType == endpoint.RecordTypeA {
+				alreadyExists = true
+				existing.Targets = append(existing.Targets, ep.Targets...)
+				break
+			}
+			if slices.Equal(existing.Targets, ep.Targets) {
+				alreadyExists = true
+				break
+			}
 		}
 	}
 	if !alreadyExists {
@@ -263,7 +250,7 @@ func (p *CoreDNSProvider) populateGEO(rr dns.RR, endpoints []*endpoint.Endpoint)
 	geo := newGeoData(txt)
 	for _, ep := range endpoints {
 		for _, target := range ep.Targets {
-			fmt.Println("populateGEO looking for geo subdomain", target, geo.subdomain())
+			p.logger.V(1).Info(fmt.Sprintf("populateGEO looking for geo subdomain %s %s", target, geo.subdomain()))
 			//todo this is not matching things like us.
 			if strings.HasPrefix(target, geo.subdomain()) {
 				p.logger.Info("populateGEO found geo", "subdomain", geo.subdomain())
