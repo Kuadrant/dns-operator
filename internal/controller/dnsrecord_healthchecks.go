@@ -144,7 +144,7 @@ func removeUnhealthyEndpoints(specEndpoints []*endpoint.Endpoint, dnsRecord *v1a
 
 		// if unhealthy or we haven't probed yet
 		//delete bad endpoint from all endpoints targets
-		tree.RemoveNode(&common.DNSTreeNode{
+		common.RemoveNode(tree, &common.DNSTreeNode{
 			Name: probe.Spec.Address,
 		})
 		unhealthyAddresses = append(unhealthyAddresses, probe.Spec.Address)
