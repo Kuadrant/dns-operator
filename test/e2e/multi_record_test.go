@@ -5,7 +5,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"net"
 	"slices"
 	"strings"
 	"time"
@@ -203,21 +202,10 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			Expect(zoneEndpoints).To(ContainElements(expectedElementMatchers))
 
 			By("ensuring the authoritative nameserver resolves the hostname")
-			var nameServers []string
-			if testProvider.Name() == provider.DNSProviderAzure {
-				// cannot use authoritative nameserver in Azure due to how traffic managers use CNAMEs on trafficmanager.net
-			} else if testProvider.Name() == provider.DNSProviderCoreDNS {
-				coreDNSNS := testRecords[0].dnsProviderSecret.Data["NAMESERVERS"]
-				Expect(coreDNSNS).NotTo(BeEmpty())
-				nameServers = strings.Split(string(coreDNSNS), ",")
-			} else {
-				// speed up things by using an authoritative nameserver
-				nss, err := net.LookupNS(testZoneDomainName)
-				Expect(err).ToNot(HaveOccurred())
-				nameServers = append(nameServers, strings.Join([]string{nss[0].Host, "53"}, ":"))
-			}
+			resolvers, authoritative := ResolversForDomainNameAndProvider(testZoneDomainName, testRecords[0].dnsProviderSecret)
+			Expect(resolvers).To(Not(BeEmpty()))
 
-			if nameServers == nil {
+			if !authoritative {
 				//we need to wait a minute to allow the records to propagate if not using an authoritative nameserver
 				Consistently(func(g Gomega, ctx context.Context) {
 					g.Expect(true).To(BeTrue())
@@ -227,21 +215,16 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			Eventually(func(g Gomega, ctx context.Context) {
 				var err error
 				var ips []string
-				if nameServers == nil {
-					ips, err = net.LookupHost(testHostname)
-				} else {
-					for _, nameServer := range nameServers {
-						resolver := ResolverForNameServer(nameServer)
-						ips, err = resolver.LookupHost(ctx, testHostname)
-						if err == nil {
-							break
-						}
+				for _, resolver := range resolvers {
+					ips, err = resolver.LookupHost(ctx, testHostname)
+					if err == nil {
+						break
 					}
 				}
 				g.Expect(err).NotTo(HaveOccurred())
 				GinkgoWriter.Printf("[debug] ips: %v\n", ips)
 				g.Expect(ips).To(Or(ContainElements(allTargetIps)))
-			}, 300*time.Second, 10*time.Second, ctx).WithArguments().Should(Succeed())
+			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 
 			//Test Deletion of one of the records
 			recordToDelete := testRecords[0]
