@@ -26,43 +26,66 @@ Deploy the operator on a single kind cluster with one operator instance watching
 make local-setup DEPLOY=true
 ```
 
-### Namespace scoped on single cluster
+The above will create a single dns operator and CoreDNS deployment on the kind cluster configured to watch all namespaces, with the development provider secrets (Assuming you have configured them locally) created in the "dnstest" namespace.
 
-> Note currently doesn't work with core dns
+DNS Operator Deployments:
+```shell
+kubectl get deployments -l app.kubernetes.io/part-of=dns-operator -l app.kubernetes.io/name=coredns -A
+NAMESPACE             NAME                              READY   UP-TO-DATE   AVAILABLE   AGE
+dns-operator-system   dns-operator-controller-manager   1/1     1            1           17s
+```
+
+CoreDNS Deployments:
+```shell
+kubectl get deployments -l app.kubernetes.io/name=coredns -A
+NAMESPACE          NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+kuadrant-coredns   kuadrant-coredns   1/1     1            1           96s
+```
+
+DNS Provider Secrets:
+```shell
+kubectl get secrets -l app.kubernetes.io/part-of=dns-operator -A
+NAMESPACE   NAME                                TYPE                   DATA   AGE
+dnstest     dns-provider-credentials-aws        kuadrant.io/aws        3      115s
+dnstest     dns-provider-credentials-azure      kuadrant.io/azure      1      114s
+dnstest     dns-provider-credentials-coredns    kuadrant.io/coredns    2      114s
+dnstest     dns-provider-credentials-gcp        kuadrant.io/gcp        2      115s
+dnstest     dns-provider-credentials-inmemory   kuadrant.io/inmemory   1      114s
+```
+
+### Namespace scoped on single cluster
 
 Deploy the operator on a single kind cluster with two operator instances in two namespaces watching their own namespace only:
 ```shell
 make local-setup DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2
 ```
 
-
-The above will create two dns operator deployments on the kind cluster, each configured to watch its own namespace, with the development provider secrets (Assuming you have configured them locally) created in each deployment namespace.
+The above will create two dns operator and CoreDNS deployments on the kind cluster, each configured to watch its own namespace, with the development provider secrets (Assuming you have configured them locally) created in each deployment namespace.
 
 DNS Operator Deployments:
 ```shell
 kubectl get deployments -l app.kubernetes.io/part-of=dns-operator -A
-NAMESPACE        NAME                                READY   UP-TO-DATE   AVAILABLE   AGE
-dns-operator-1   dns-operator-controller-manager-1   1/1     1            1           21s
-dns-operator-2   dns-operator-controller-manager-2   1/1     1            1           21s
+NAMESPACE                 NAME                                READY   UP-TO-DATE   AVAILABLE   AGE
+kuadrant-dns-operator-1   dns-operator-controller-manager-1   1/1     1            1           3m35s
+kuadrant-dns-operator-1   kuadrant-coredns-1                  1/1     1            1           3m35s
+kuadrant-dns-operator-2   dns-operator-controller-manager-2   1/1     1            1           3m35s
+kuadrant-dns-operator-2   kuadrant-coredns-2                  1/1     1            1           3m35s
 ```
 
 DNS Provider Secrets:
 ```shell
 kubectl get secrets -l app.kubernetes.io/part-of=dns-operator -A
-NAMESPACE        NAME                                TYPE                            DATA   AGE
-dns-operator-1   dns-provider-credentials-aws        kuadrant.io/aws                 5      21s
-dns-operator-1   dns-provider-credentials-azure      kuadrant.io/azure               3      21s
-dns-operator-1   dns-provider-credentials-gcp        kuadrant.io/gcp                 4      21s
-dns-operator-1   dns-provider-credentials-inmemory   kuadrant.io/inmemory            0      21s
-dns-operator-2   dns-provider-credentials-aws        kuadrant.io/aws                 5      21s
-dns-operator-2   dns-provider-credentials-azure      kuadrant.io/azure               3      21s
-dns-operator-2   dns-provider-credentials-gcp        kuadrant.io/gcp                 4      21s
-dns-operator-2   dns-provider-credentials-inmemory   kuadrant.io/inmemory            0      21s
-dnstest          dns-provider-core-dns               kuadrant.io/coredns             5      68s
-dnstest          dns-provider-credentials-aws        kuadrant.io/aws                 5      68s
-dnstest          dns-provider-credentials-azure      kuadrant.io/azure               3      68s
-dnstest          dns-provider-credentials-gcp        kuadrant.io/gcp                 4      68s
-dnstest          dns-provider-credentials-inmemory   kuadrant.io/inmemory            0      68s
+NAMESPACE                 NAME                                TYPE                   DATA   AGE
+kuadrant-dns-operator-1   dns-provider-credentials-aws        kuadrant.io/aws        3      3m57s
+kuadrant-dns-operator-1   dns-provider-credentials-azure      kuadrant.io/azure      1      3m57s
+kuadrant-dns-operator-1   dns-provider-credentials-coredns    kuadrant.io/coredns    2      3m57s
+kuadrant-dns-operator-1   dns-provider-credentials-gcp        kuadrant.io/gcp        2      3m57s
+kuadrant-dns-operator-1   dns-provider-credentials-inmemory   kuadrant.io/inmemory   1      3m57s
+kuadrant-dns-operator-2   dns-provider-credentials-aws        kuadrant.io/aws        3      3m57s
+kuadrant-dns-operator-2   dns-provider-credentials-azure      kuadrant.io/azure      1      3m57s
+kuadrant-dns-operator-2   dns-provider-credentials-coredns    kuadrant.io/coredns    2      3m57s
+kuadrant-dns-operator-2   dns-provider-credentials-gcp        kuadrant.io/gcp        2      3m57s
+kuadrant-dns-operator-2   dns-provider-credentials-inmemory   kuadrant.io/inmemory   1      3m57s
 ```
 
 ### Cluster scoped on multiple clusters
@@ -71,8 +94,6 @@ Deploy the operator on two kind clusters each with one operator instance watchin
 ```shell
 make local-setup DEPLOY=true CLUSTER_COUNT=2
 ```
-
->Note for coredns, you will need to run the `make local-setup-coredns-credentials TARGET_NAMESPACE=dnstest COREDNS_NAMESERVERS="coredns-service-ip1,corends-ip2"`
 
 ### Namespace scoped on multiple clusters
 
