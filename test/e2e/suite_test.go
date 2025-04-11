@@ -36,7 +36,7 @@ const (
 	dnsZoneDomainNameEnvvar     = "TEST_DNS_ZONE_DOMAIN_NAME"
 	dnsProviderSecretNameEnvvar = "TEST_DNS_PROVIDER_SECRET_NAME"
 	dnsNamespacesEnvvar         = "TEST_DNS_NAMESPACES"
-	dnsConcurrentRecords        = "TEST_DNS_CONCURRENT_RECORDS"
+	dnsConcurrentRecordsEnvVar  = "TEST_DNS_CONCURRENT_RECORDS"
 	dnsClusterContextsEnvvar    = "TEST_DNS_CLUSTER_CONTEXTS"
 	deploymentCountEnvvar       = "DEPLOYMENT_COUNT"
 	clusterCountEnvvar          = "CLUSTER_COUNT"
@@ -135,6 +135,8 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 
 	if testDNSProvider == provider.DNSProviderCoreDNS.String() {
 		txtRegistryEnabled = false
+		//CoreDNS does not support creating multiple records with a common dnsName targeting the same CoreDNS instance currently.
+		Expect(testConcurrentRecords).To(Equal(1))
 	}
 
 	SetTestEnv("testGeoCode", geoCode)
@@ -144,7 +146,8 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 //
 // dnsProviderSecretNameEnvvar dns provider secret name expected to exist in each test namespace (i.e. dns-provider-credentials-aws).
 // dnsZoneDomainNameEnvvar zone domain name accessible via the provider secret to use for testing (i.e. mn.hcpapps.net).
-// dnsNamespacesEnvvar test namespaces, comma seperated list (i.e. dns-operator-1,dns-operator-2)
+// dnsNamespacesEnvvar test namespaces, comma seperated list (i.e. dns-operator-1,dns-operator-2).
+// dnsConcurrentRecordsEnvVar number of DNSRecords to create in each test namespace, default is 1.
 // deploymentCountEnvvar number of test namespaces expected. Appends an index suffix to the dnsNamespacesEnvvar, only used if dnsNamespacesEnvvar is a single length array.
 //
 // Examples:
@@ -183,7 +186,7 @@ func setConfigFromEnvVars() error {
 		}
 	}
 
-	concurrentRecordsStr := os.Getenv(dnsConcurrentRecords)
+	concurrentRecordsStr := os.Getenv(dnsConcurrentRecordsEnvVar)
 	if concurrentRecordsStr == "" {
 		//picking a default that won't have the PR e2e tests taking forever with Azure
 		concurrentRecordsStr = "1"
@@ -191,7 +194,7 @@ func setConfigFromEnvVars() error {
 
 	numConcurrentRecords, err := strconv.Atoi(concurrentRecordsStr)
 	if err != nil {
-		return fmt.Errorf("expected numerical value for env variable '%s', got: '%s'", dnsConcurrentRecords, concurrentRecordsStr)
+		return fmt.Errorf("expected numerical value for env variable '%s', got: '%s'", dnsConcurrentRecordsEnvVar, concurrentRecordsStr)
 	}
 
 	testConcurrentRecords = numConcurrentRecords

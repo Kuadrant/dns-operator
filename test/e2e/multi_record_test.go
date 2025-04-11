@@ -79,46 +79,49 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 	Context("simple", Labels{"simple"}, func() {
 		It("creates and deletes distributed dns records", func(ctx SpecContext) {
-			By(fmt.Sprintf("creating %d simple dnsrecords accross %d clusters", len(testNamespaces)*len(testClusters), len(testClusters)))
+			totalRecords := len(testNamespaces) * len(testClusters) * testConcurrentRecords
+			By(fmt.Sprintf("creating %d simple dnsrecords accross %d clusters each with %d namespaces containing %d records", totalRecords, len(testClusters), len(testNamespaces), testConcurrentRecords))
 			for ci, tc := range testClusters {
 				for si, s := range tc.testDNSProviderSecrets {
-					config := testConfig{
-						testTargetIP: fmt.Sprintf("127.0.%d.%d", ci+1, si+1),
-					}
-					record := &v1alpha1.DNSRecord{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      testID,
-							Namespace: s.Namespace,
-						},
-						Spec: v1alpha1.DNSRecordSpec{
-							RootHost: testHostname,
-							ProviderRef: v1alpha1.ProviderRef{
-								Name: s.Name,
+					for ri := 0; ri < testConcurrentRecords; ri++ {
+						config := testConfig{
+							testTargetIP: fmt.Sprintf("127.%d.%d.%d", ci+1, si+1, ri+1),
+						}
+						record := &v1alpha1.DNSRecord{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      fmt.Sprintf("%s-%d", testID, ri+1),
+								Namespace: s.Namespace,
 							},
-							Endpoints: []*externaldnsendpoint.Endpoint{
-								{
-									DNSName: testHostname,
-									Targets: []string{
-										config.testTargetIP,
-									},
-									RecordType: "A",
-									RecordTTL:  60,
+							Spec: v1alpha1.DNSRecordSpec{
+								RootHost: testHostname,
+								ProviderRef: v1alpha1.ProviderRef{
+									Name: s.Name,
 								},
+								Endpoints: []*externaldnsendpoint.Endpoint{
+									{
+										DNSName: testHostname,
+										Targets: []string{
+											config.testTargetIP,
+										},
+										RecordType: "A",
+										RecordTTL:  60,
+									},
+								},
+								HealthCheck: nil,
 							},
-							HealthCheck: nil,
-						},
+						}
+
+						By(fmt.Sprintf("creating dns record [name: `%s`, namespace: `%s`, secret: `%s`, endpoint: [dnsname: `%s`, target: `%s`]] on cluster [name: `%s`]", record.Name, record.Namespace, s.Name, testHostname, config.testTargetIP, tc.name))
+						err := tc.k8sClient.Create(ctx, record)
+						Expect(err).ToNot(HaveOccurred())
+
+						testRecords = append(testRecords, &testDNSRecord{
+							cluster:           &testClusters[ci],
+							dnsProviderSecret: s,
+							record:            record,
+							config:            config,
+						})
 					}
-
-					By(fmt.Sprintf("creating dns record [name: `%s`, namespace: `%s`, secret: `%s`, endpoint: [dnsname: `%s`, target: `%s`]] on cluster [name: `%s`]", record.Name, record.Namespace, s.Name, testHostname, config.testTargetIP, tc.name))
-					err := tc.k8sClient.Create(ctx, record)
-					Expect(err).ToNot(HaveOccurred())
-
-					testRecords = append(testRecords, &testDNSRecord{
-						cluster:           &testClusters[ci],
-						dnsProviderSecret: s,
-						record:            record,
-						config:            config,
-					})
 				}
 			}
 
@@ -327,123 +330,124 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	Context("loadbalanced", Labels{"loadbalanced"}, func() {
 		It("creates and deletes distributed dns records", func(ctx SpecContext) {
 			testGeoRecords := map[string][]testDNSRecord{}
-
-			By(fmt.Sprintf("creating %d loadbalanced dnsrecords accross %d clusters", len(testNamespaces)*len(testClusters), len(testClusters)))
+			totalRecords := len(testNamespaces) * len(testClusters) * testConcurrentRecords
+			By(fmt.Sprintf("creating %d loadbalanced dnsrecords accross %d clusters each with %d namespaces containing %d records", totalRecords, len(testClusters), len(testNamespaces), testConcurrentRecords))
 			for ci, tc := range testClusters {
-				for mi, s := range tc.testDNSProviderSecrets {
+				for si, s := range tc.testDNSProviderSecrets {
+					for ri := 0; ri < testConcurrentRecords; ri++ {
+						var geoCode string
+						if (ci+si+ri)%2 == 0 {
+							geoCode = geoCode1
+						} else {
+							geoCode = geoCode2
+						}
 
-					var geoCode string
-					if (ci+mi)%2 == 0 {
-						geoCode = geoCode1
-					} else {
-						geoCode = geoCode2
-					}
+						klbHostName := "klb." + testHostname
+						geoKlbHostName := strings.ToLower(geoCode) + "." + klbHostName
+						defaultGeoKlbHostName := strings.ToLower(geoCode1) + "." + klbHostName
+						clusterKlbHostName := fmt.Sprintf("cluster%d-%d-%d.%s", ci+1, si+1, ri+1, klbHostName)
 
-					klbHostName := "klb." + testHostname
-					geoKlbHostName := strings.ToLower(geoCode) + "." + klbHostName
-					defaultGeoKlbHostName := strings.ToLower(geoCode1) + "." + klbHostName
-					clusterKlbHostName := fmt.Sprintf("cluster%d-%d.%s", ci+1, mi+1, klbHostName)
-
-					config := testConfig{
-						testTargetIP:       fmt.Sprintf("127.0.%d.%d", ci+1, mi+1),
-						testGeoCode:        geoCode,
-						testDefaultGeoCode: geoCode1,
-						hostnames: testHostnames{
-							klb:           klbHostName,
-							geoKlb:        geoKlbHostName,
-							defaultGeoKlb: defaultGeoKlbHostName,
-							clusterKlb:    clusterKlbHostName,
-						},
-					}
-
-					record := &v1alpha1.DNSRecord{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      testID,
-							Namespace: s.Namespace,
-						},
-						Spec: v1alpha1.DNSRecordSpec{
-							RootHost: testHostname,
-							ProviderRef: v1alpha1.ProviderRef{
-								Name: s.Name,
+						config := testConfig{
+							testTargetIP:       fmt.Sprintf("127.%d.%d.%d", ci+1, si+1, ri+1),
+							testGeoCode:        geoCode,
+							testDefaultGeoCode: geoCode1,
+							hostnames: testHostnames{
+								klb:           klbHostName,
+								geoKlb:        geoKlbHostName,
+								defaultGeoKlb: defaultGeoKlbHostName,
+								clusterKlb:    clusterKlbHostName,
 							},
-							Endpoints: []*externaldnsendpoint.Endpoint{
-								{
-									DNSName: clusterKlbHostName,
-									Targets: []string{
-										config.testTargetIP,
-									},
-									RecordType: "A",
-									RecordTTL:  60,
-								},
-								{
-									DNSName: testHostname,
-									Targets: []string{
-										klbHostName,
-									},
-									RecordType: "CNAME",
-									RecordTTL:  300,
-								},
-								{
-									DNSName: geoKlbHostName,
-									Targets: []string{
-										clusterKlbHostName,
-									},
-									RecordType:    "CNAME",
-									RecordTTL:     60,
-									SetIdentifier: clusterKlbHostName,
-									ProviderSpecific: externaldnsendpoint.ProviderSpecific{
-										{
-											Name:  "weight",
-											Value: "200",
-										},
-									},
-								},
-								{
-									DNSName: klbHostName,
-									Targets: []string{
-										geoKlbHostName,
-									},
-									RecordType:    "CNAME",
-									RecordTTL:     300,
-									SetIdentifier: config.testGeoCode,
-									ProviderSpecific: externaldnsendpoint.ProviderSpecific{
-										{
-											Name:  "geo-code",
-											Value: config.testGeoCode,
-										},
-									},
-								},
-								{
-									DNSName: klbHostName,
-									Targets: []string{
-										defaultGeoKlbHostName,
-									},
-									RecordType:    "CNAME",
-									RecordTTL:     300,
-									SetIdentifier: "default",
-									ProviderSpecific: externaldnsendpoint.ProviderSpecific{
-										{
-											Name:  "geo-code",
-											Value: "*",
-										},
-									},
-								},
-							},
-							HealthCheck: nil,
-						},
-					}
+						}
 
-					By(fmt.Sprintf("creating dns record [name: `%s`, namespace: `%s`, secret: `%s`, endpoint: [dnsname: `%s`, target: `%s`, geoCode: `%s`]] on cluster [name: `%s`]", record.Name, record.Namespace, s.Name, testHostname, config.testTargetIP, config.testGeoCode, tc.name))
-					err := tc.k8sClient.Create(ctx, record)
-					Expect(err).ToNot(HaveOccurred())
-					tr := &testDNSRecord{
-						cluster:           &testClusters[ci],
-						dnsProviderSecret: s,
-						record:            record,
-						config:            config,
+						record := &v1alpha1.DNSRecord{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      fmt.Sprintf("%s-%d", testID, ri+1),
+								Namespace: s.Namespace,
+							},
+							Spec: v1alpha1.DNSRecordSpec{
+								RootHost: testHostname,
+								ProviderRef: v1alpha1.ProviderRef{
+									Name: s.Name,
+								},
+								Endpoints: []*externaldnsendpoint.Endpoint{
+									{
+										DNSName: clusterKlbHostName,
+										Targets: []string{
+											config.testTargetIP,
+										},
+										RecordType: "A",
+										RecordTTL:  60,
+									},
+									{
+										DNSName: testHostname,
+										Targets: []string{
+											klbHostName,
+										},
+										RecordType: "CNAME",
+										RecordTTL:  300,
+									},
+									{
+										DNSName: geoKlbHostName,
+										Targets: []string{
+											clusterKlbHostName,
+										},
+										RecordType:    "CNAME",
+										RecordTTL:     60,
+										SetIdentifier: clusterKlbHostName,
+										ProviderSpecific: externaldnsendpoint.ProviderSpecific{
+											{
+												Name:  "weight",
+												Value: "200",
+											},
+										},
+									},
+									{
+										DNSName: klbHostName,
+										Targets: []string{
+											geoKlbHostName,
+										},
+										RecordType:    "CNAME",
+										RecordTTL:     300,
+										SetIdentifier: config.testGeoCode,
+										ProviderSpecific: externaldnsendpoint.ProviderSpecific{
+											{
+												Name:  "geo-code",
+												Value: config.testGeoCode,
+											},
+										},
+									},
+									{
+										DNSName: klbHostName,
+										Targets: []string{
+											defaultGeoKlbHostName,
+										},
+										RecordType:    "CNAME",
+										RecordTTL:     300,
+										SetIdentifier: "default",
+										ProviderSpecific: externaldnsendpoint.ProviderSpecific{
+											{
+												Name:  "geo-code",
+												Value: "*",
+											},
+										},
+									},
+								},
+								HealthCheck: nil,
+							},
+						}
+
+						By(fmt.Sprintf("creating dns record [name: `%s`, namespace: `%s`, secret: `%s`, endpoint: [dnsname: `%s`, target: `%s`, geoCode: `%s`]] on cluster [name: `%s`]", record.Name, record.Namespace, s.Name, testHostname, config.testTargetIP, config.testGeoCode, tc.name))
+						err := tc.k8sClient.Create(ctx, record)
+						Expect(err).ToNot(HaveOccurred())
+						tr := &testDNSRecord{
+							cluster:           &testClusters[ci],
+							dnsProviderSecret: s,
+							record:            record,
+							config:            config,
+						}
+						testRecords = append(testRecords, tr)
+						testGeoRecords[config.testGeoCode] = append(testGeoRecords[config.testGeoCode], *tr)
 					}
-					testRecords = append(testRecords, tr)
-					testGeoRecords[config.testGeoCode] = append(testGeoRecords[config.testGeoCode], *tr)
 				}
 			}
 
