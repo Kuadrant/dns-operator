@@ -14,6 +14,10 @@ on:
       - "release-*"
   workflow_dispatch:
     inputs:
+      testRecordsCount:
+        description: Number of test records to create in each namespace
+        default: 2
+        type: number
       ginkgoParallel:
         description: Run tests in parallel
         default: false
@@ -27,13 +31,14 @@ on:
         default: "-v"
         type: string
   merge_group:
-    types: [checks_requested]
+    types: [ checks_requested ]
 
 env:
   TEST_NAMESPACE: e2e-test
+  TEST_RECORDS_COUNT: ${{ inputs.testRecordsCount || '2' }}
   GINKGO_PARALLEL: ${{ inputs.ginkgoParallel || 'false' }}
   GINKGO_DRYRUN: ${{ inputs.ginkgoDryRun || 'false' }}
-  GINKGO_FLAGS:  ${{ inputs.ginkgoFlags || '-v' }}
+  GINKGO_FLAGS: ${{ inputs.ginkgoFlags || '-v' }}
 
 jobs:
   pre-job:
@@ -83,12 +88,14 @@ jobs:
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-aws
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.hcpapps.net
           export TEST_DNS_NAMESPACE=${{ env.TEST_NAMESPACE }}
+          export TEST_DNS_CONCURRENT_RECORDS=${{ env.TEST_RECORDS_COUNT }}
           make test-e2e
       - name: Run suite GCP
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-gcp
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.google.hcpapps.net
           export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
+          export TEST_DNS_CONCURRENT_RECORDS=${{ env.TEST_RECORDS_COUNT }}
           make test-e2e
       - name: Run suite Azure
         if: (github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'release-')) || github.event_name == 'workflow_dispatch')
@@ -96,12 +103,14 @@ jobs:
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-azure
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.azure.hcpapps.net
           export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
+          export TEST_DNS_CONCURRENT_RECORDS=${{ env.TEST_RECORDS_COUNT }}
           make test-e2e
       - name: Run suite CoreDNS
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-coredns
           export TEST_DNS_ZONE_DOMAIN_NAME=k.example.com
           export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
+          export TEST_DNS_CONCURRENT_RECORDS=1
           make test-e2e
       - name: Dump Controller logs
         if: ${{ failure() && !inputs.ginkgoDryRun }}
