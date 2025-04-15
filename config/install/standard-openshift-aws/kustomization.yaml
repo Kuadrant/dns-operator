@@ -1,0 +1,17 @@
+
+resources:
+  - ../standard
+
+patches:
+  - target:
+      kind: Service
+      name: kuadrant-coredns
+    patch: |
+      - op: remove
+        path: /spec/externalTrafficPolicy
+      - op: add
+        path: /metadata/annotations
+        value:
+          service.beta.kubernetes.io/aws-load-balancer-type: nlb
+      - op: remove
+        path: /spec/ports/1
