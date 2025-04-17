@@ -1,0 +1,21 @@
+# Bind9 Edge setup
+
+namespace: kuadrant-bind9
+
+resources:
+  - ./namespace.yaml
+  - ./service.yaml
+  - ./zone.yaml
+  - ./deployment.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: bind9
+    includeTemplates: true
+
+secretGenerator:
+  - name: ddns-key
+    files:
+      - ddns.key
+    options:
+      disableNameSuffixHash: true

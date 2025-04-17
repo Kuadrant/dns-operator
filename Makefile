@@ -197,6 +197,7 @@ local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependenci
 	@$(MAKE) -s kind-create-cluster
 	@$(MAKE) -s install
 	@$(MAKE) -s install-metallb
+	@$(MAKE) -s install-bind9
 
 	if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
     	$(MAKE) -s install-coredns-unmonitored ;\

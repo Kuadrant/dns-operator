@@ -32,3 +32,14 @@ install-coredns-unmonitored: kustomize ## Install CoreDNS without ServiceMonitor
 .PHONY: install-coredns-multi
 install-coredns-multi: kustomize ## Install CoreDNS Multi POC Setup
 	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-multi
+
+.PHONY: install-bind9
+install-bind9: BIND9_KUSTOMIZATION=config/bind9
+install-bind9: kustomize ## Install Bind9
+	${KUSTOMIZE} build ${BIND9_KUSTOMIZATION} | kubectl apply -f -
+	kubectl wait --timeout=90s --for=condition=Ready=True pods -A -l app.kubernetes.io/name=bind9
+
+.PHONY: delete-bind9
+delete-bind9: BIND9_KUSTOMIZATION=config/bind9
+delete-bind9: kustomize ## Install Bind9
+	${KUSTOMIZE} build ${BIND9_KUSTOMIZATION} | kubectl delete -f -
