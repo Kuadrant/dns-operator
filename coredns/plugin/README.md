@@ -49,6 +49,8 @@ kuadrant [ZONES...] {
 * `kubeconfig` **KUBECONFIG [CONTEXT]** authenticates the connection to a remote k8s cluster using a kubeconfig file.
   **[CONTEXT]** is optional, if not set, then the current context specified in kubeconfig will be used.
 
+For enabling zone transfers look at the *transfer* plugin.
+
 ## Examples
 
 Load the `example.org` zone from DNSRecord resources on cluster with the label `kuadrant.io/coredns-zone-name: example.org`

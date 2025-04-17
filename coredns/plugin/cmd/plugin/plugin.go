@@ -5,6 +5,7 @@ package plugin
 // Note: Any plugin removed here should have it's Directive removed also.
 
 import (
+	_ "github.com/coredns/coredns/plugin/acl"
 	_ "github.com/coredns/coredns/plugin/cache"
 	_ "github.com/coredns/coredns/plugin/cancel"
 	_ "github.com/coredns/coredns/plugin/debug"
@@ -27,8 +28,10 @@ import (
 	_ "github.com/coredns/coredns/plugin/reload"
 	_ "github.com/coredns/coredns/plugin/rewrite"
 	_ "github.com/coredns/coredns/plugin/root"
+	_ "github.com/coredns/coredns/plugin/secondary"
 	_ "github.com/coredns/coredns/plugin/timeouts"
 	_ "github.com/coredns/coredns/plugin/tls"
+	_ "github.com/coredns/coredns/plugin/transfer"
 	_ "github.com/coredns/coredns/plugin/view"
 	_ "github.com/coredns/coredns/plugin/whoami"
 )
@@ -40,6 +43,7 @@ import (
 // feel the effects of all other plugin below
 // (after) them during a request, but they must not
 // care what plugin above them are doing.
+// Cut down version of https://github.com/coredns/coredns/blob/master/core/dnsserver/zdirectives.go
 var Directives = []string{
 	"root",
 	"metadata",
@@ -57,13 +61,16 @@ var Directives = []string{
 	"errors",
 	"log",
 	"local",
+	"acl",
 	"cache",
 	"rewrite",
 	"header",
 	"minimal",
+	"transfer",
 	"hosts",
 	"kuadrant",
 	"file",
+	"secondary",
 	"loop",
 	"forward",
 	"whoami",

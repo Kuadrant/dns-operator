@@ -4,6 +4,9 @@ k.example.com {
    log
    geoip GeoLite2-City-demo.mmdb
    metadata
+   transfer {
+     to *
+   }
    kuadrant
 }
 . {
