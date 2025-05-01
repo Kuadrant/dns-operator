@@ -1,0 +1,8 @@
+server 172.18.0.17
+debug yes
+zone example.com.
+update add k.example.com 300 IN NS ns1.k.example.com
+update delete k.example.com 300 IN NS ns2.k.example.com
+update add ns1.k.example.com 300 IN A 172.18.0.16
+update delete ns2.k.example.com 300 IN A 172.18.0.18
+send
