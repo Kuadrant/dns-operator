@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 
+	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/external-dns/testutils"
 )
 
@@ -112,8 +113,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"v1"},
 		RecordType: "CNAME",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/foo-v1",
-			endpoint.OwnerLabelKey:    "pwner",
+			"pwner111": endpoint.ResourceLabelKey + "=ingress/default/foo-v1",
 		},
 	}
 	// same resource as fooV1Cname, but target is different. It will never be picked because its target lexicographically bigger than "v1"
@@ -122,8 +122,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"v3"},
 		RecordType: "CNAME",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/foo-v1",
-			endpoint.OwnerLabelKey:    "pwner",
+			"pwner111": endpoint.ResourceLabelKey + "=ingress/default/foo-v1",
 		},
 	}
 	suite.fooV2Cname = &endpoint.Endpoint{
@@ -131,7 +130,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"v2"},
 		RecordType: "CNAME",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/foo-v2",
+			"": endpoint.ResourceLabelKey + "=ingress/default/foo-v2",
 		},
 	}
 	suite.fooV2CnameUppercase = &endpoint.Endpoint{
@@ -139,7 +138,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"V2"},
 		RecordType: "CNAME",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/foo-v2",
+			"": endpoint.ResourceLabelKey + "=ingress/default/foo-v2",
 		},
 	}
 	suite.fooV2TXT = &endpoint.Endpoint{
@@ -156,7 +155,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"5.5.5.5"},
 		RecordType: "A",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/foo-5",
+			"": endpoint.ResourceLabelKey + "=ingress/default/foo-5",
 		},
 	}
 	suite.fooAAAA = &endpoint.Endpoint{
@@ -164,7 +163,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"2001:DB8::1"},
 		RecordType: "AAAA",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/foo-AAAA",
+			"": endpoint.ResourceLabelKey + "=ingress/default/foo-AAAA",
 		},
 	}
 	suite.dsA = &endpoint.Endpoint{
@@ -172,7 +171,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"1.1.1.1"},
 		RecordType: "A",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/ds",
+			"": endpoint.ResourceLabelKey + "=ingress/default/ds",
 		},
 	}
 	suite.dsAAAA = &endpoint.Endpoint{
@@ -180,7 +179,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"2001:DB8::1"},
 		RecordType: "AAAA",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/ds-AAAAA",
+			"": endpoint.ResourceLabelKey + "=ingress/default/ds-AAAAA",
 		},
 	}
 	suite.bar127A = &endpoint.Endpoint{
@@ -188,7 +187,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"127.0.0.1"},
 		RecordType: "A",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/bar-127",
+			"": endpoint.ResourceLabelKey + "=ingress/default/bar-127",
 		},
 	}
 	suite.bar127AWithTTL = &endpoint.Endpoint{
@@ -197,7 +196,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		RecordTTL:  300,
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/bar-127",
+			"": endpoint.ResourceLabelKey + "=ingress/default/bar-127",
 		},
 	}
 	suite.bar127AWithProviderSpecificTrue = &endpoint.Endpoint{
@@ -205,7 +204,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"127.0.0.1"},
 		RecordType: "A",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/bar-127",
+			"": endpoint.ResourceLabelKey + "=ingress/default/bar-127",
 		},
 		ProviderSpecific: endpoint.ProviderSpecific{
 			endpoint.ProviderSpecificProperty{
@@ -223,7 +222,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"127.0.0.1"},
 		RecordType: "A",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/bar-127",
+			"": endpoint.ResourceLabelKey + "=ingress/default/bar-127",
 		},
 		ProviderSpecific: endpoint.ProviderSpecific{
 			endpoint.ProviderSpecificProperty{
@@ -241,7 +240,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"127.0.0.1"},
 		RecordType: "A",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/bar-127",
+			"": endpoint.ResourceLabelKey + "=ingress/default/bar-127",
 		},
 		ProviderSpecific: endpoint.ProviderSpecific{
 			endpoint.ProviderSpecificProperty{
@@ -255,7 +254,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"192.168.0.1"},
 		RecordType: "A",
 		Labels: map[string]string{
-			endpoint.ResourceLabelKey: "ingress/default/bar-192",
+			"": endpoint.ResourceLabelKey + "=ingress/default/bar-192",
 		},
 	}
 	suite.multiple1 = &endpoint.Endpoint{
@@ -323,7 +322,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"1.1.1.1"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 	suite.fooA1Owner2 = &endpoint.Endpoint{
@@ -331,7 +330,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"1.1.1.1"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner2",
+			"owner222": "",
 		},
 	}
 	suite.fooA1Owner12 = &endpoint.Endpoint{
@@ -339,7 +338,8 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"1.1.1.1"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1&&owner2",
+			"owner111": "",
+			"owner222": "",
 		},
 	}
 	suite.fooA2Owner1 = &endpoint.Endpoint{
@@ -347,7 +347,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"2.2.2.2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 	suite.fooA2Owner2 = &endpoint.Endpoint{
@@ -355,7 +355,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"2.2.2.2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner2",
+			"owner222": "",
 		},
 	}
 	suite.fooA12Owner12 = &endpoint.Endpoint{
@@ -363,7 +363,8 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"1.1.1.1", "2.2.2.2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1&&owner2",
+			"owner111": "",
+			"owner222": "",
 		},
 	}
 	suite.barA3Owner1 = &endpoint.Endpoint{
@@ -371,7 +372,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"3.3.3.3"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 	suite.barA3Owner2 = &endpoint.Endpoint{
@@ -379,7 +380,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"3.3.3.3"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner2",
+			"owner222": "",
 		},
 	}
 	suite.barA4Owner1 = &endpoint.Endpoint{
@@ -387,7 +388,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"4.4.4.4"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 	suite.barA4Owner2 = &endpoint.Endpoint{
@@ -395,7 +396,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"4.4.4.4"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner2",
+			"owner222": "",
 		},
 	}
 	// A Records with SetIdentifier
@@ -404,7 +405,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"1.1.1.1"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 		SetIdentifier: "1",
 	}
@@ -413,7 +414,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"2.2.2.2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 		SetIdentifier: "1",
 	}
@@ -422,7 +423,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"2.2.2.2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 		SetIdentifier: "2",
 	}
@@ -431,7 +432,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "A",
 		Targets:    endpoint.Targets{"2.2.2.2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner2",
+			"owner222": "",
 		},
 		SetIdentifier: "2",
 	}
@@ -462,7 +463,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v1"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 	suite.fooCNAMEv2Owner1 = &endpoint.Endpoint{
@@ -470,7 +471,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 	suite.fooCNAMEv2Owner2 = &endpoint.Endpoint{
@@ -478,7 +479,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner2",
+			"owner222": "",
 		},
 	}
 	suite.fooCNAMEv12Owner12 = &endpoint.Endpoint{
@@ -486,7 +487,8 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v1", "v2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1&&owner2",
+			"owner111": "",
+			"owner222": "",
 		},
 	}
 	suite.barCNAMEv3Owner1 = &endpoint.Endpoint{
@@ -494,7 +496,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v3"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 	suite.barCNAMEv3Owner2 = &endpoint.Endpoint{
@@ -502,7 +504,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v3"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner2",
+			"owner222": "",
 		},
 	}
 	suite.barCNAMEv4Owner1 = &endpoint.Endpoint{
@@ -510,7 +512,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v4"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 	suite.barCNAMEv4Owner2 = &endpoint.Endpoint{
@@ -518,7 +520,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v4"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner2",
+			"owner222": "",
 		},
 	}
 	suite.barCNAMEv34Owner2 = &endpoint.Endpoint{
@@ -526,7 +528,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v3", "v4"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner2",
+			"owner222": "",
 		},
 	}
 	suite.barCNAMEv34Owner12 = &endpoint.Endpoint{
@@ -534,7 +536,8 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v3", "v4"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1&&owner2",
+			"owner111": "",
+			"owner222": "",
 		},
 	}
 	// CNAME Records with SetIdentifier
@@ -543,7 +546,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v1"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 		SetIdentifier: "1",
 	}
@@ -552,7 +555,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 		SetIdentifier: "1",
 	}
@@ -561,7 +564,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAMEA",
 		Targets:    endpoint.Targets{"v2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 		SetIdentifier: "2",
 	}
@@ -570,7 +573,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"v2"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner2",
+			"owner222": "",
 		},
 		SetIdentifier: "2",
 	}
@@ -594,7 +597,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"foo.example.com"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 	suite.fooecCNAMEbarecOwner1 = &endpoint.Endpoint{
@@ -602,7 +605,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"bar.example.com"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 	suite.barecCNAMEbodoOwner1 = &endpoint.Endpoint{
@@ -610,7 +613,7 @@ func (suite *PlanTestSuite) SetupTest() {
 		RecordType: "CNAME",
 		Targets:    endpoint.Targets{"baz.other.domain.com"},
 		Labels: map[string]string{
-			endpoint.OwnerLabelKey: "owner1",
+			"owner111": "",
 		},
 	}
 }
@@ -630,9 +633,12 @@ func (suite *PlanTestSuite) TestSyncFirstRound() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -656,9 +662,12 @@ func (suite *PlanTestSuite) TestSyncSecondRound() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -683,9 +692,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundMigration() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -709,9 +721,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithTTLChange() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -735,9 +750,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificChange() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -761,9 +779,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificRemoval() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -787,9 +808,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithProviderSpecificAddition() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -811,6 +835,8 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithOwnerInherited() {
 		RecordType: suite.fooV2Cname.RecordType,
 		RecordTTL:  suite.fooV2Cname.RecordTTL,
 		Labels: map[string]string{
+			// TODO once compatable update labels to a new format
+			// ownerID : key=value
 			endpoint.ResourceLabelKey: suite.fooV2Cname.Labels[endpoint.ResourceLabelKey],
 			endpoint.OwnerLabelKey:    suite.fooV1Cname.Labels[endpoint.OwnerLabelKey],
 		},
@@ -824,9 +850,12 @@ func (suite *PlanTestSuite) TestSyncSecondRoundWithOwnerInherited() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -853,6 +882,9 @@ func (suite *PlanTestSuite) TestIdempotency() {
 		Policies: []Policy{&SyncPolicy{}},
 		Current:  current,
 		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 	}
 
 	cp := p.Calculate()
@@ -966,11 +998,14 @@ func (suite *PlanTestSuite) TestExistingOwnerNotMatchingDualStackDesired() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
-		OwnerID:        "pwner",
+		OwnerID:        "pwner111",
 	}
 
 	cp := p.Calculate()
@@ -1004,7 +1039,8 @@ func (suite *PlanTestSuite) TestConflictingCurrentNonConflictingDesired() {
 		Current:        current,
 		Desired:        desired,
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
-		OwnerID:        suite.fooV1Cname.Labels[endpoint.OwnerLabelKey],
+		// TODO once compatable extract owner from the key
+		OwnerID: suite.fooV1Cname.Labels[endpoint.OwnerLabelKey],
 	}
 
 	cp := p.Calculate()
@@ -1017,7 +1053,12 @@ func (suite *PlanTestSuite) TestConflictingCurrentNonConflictingDesired() {
 // caching issues. In this case there are no desired enpoint candidates so plan
 // on deleting the records.
 func (suite *PlanTestSuite) TestConflictingCurrentNoDesired() {
-	suite.fooA5.Labels[endpoint.OwnerLabelKey] = suite.fooV1Cname.Labels[endpoint.OwnerLabelKey]
+	var fooV1CnameOwner string
+	for fooV1CnameOwner = range suite.fooV1Cname.Labels {
+		suite.fooA5.Labels[fooV1CnameOwner] = suite.fooA5.Labels[""]
+	}
+	delete(suite.fooA5.Labels, "")
+	//suite.fooA5.Labels[endpoint.OwnerLabelKey] = suite.fooV1Cname.Labels[endpoint.OwnerLabelKey]
 	current := []*endpoint.Endpoint{suite.fooV1Cname, suite.fooA5}
 	desired := []*endpoint.Endpoint{}
 	expectedCreate := []*endpoint.Endpoint{}
@@ -1032,11 +1073,14 @@ func (suite *PlanTestSuite) TestConflictingCurrentNoDesired() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
-		OwnerID:        suite.fooV1Cname.Labels[endpoint.OwnerLabelKey],
+		OwnerID:        fooV1CnameOwner,
 	}
 
 	cp := p.Calculate()
@@ -1064,9 +1108,10 @@ func (suite *PlanTestSuite) TestCurrentWithConflictingDesired() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		// TODO once compatible extrat owner from the key
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 		OwnerID:        suite.fooV1Cname.Labels[endpoint.OwnerLabelKey],
 	}
@@ -1094,9 +1139,12 @@ func (suite *PlanTestSuite) TestNoCurrentWithConflictingDesired() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1120,9 +1168,12 @@ func (suite *PlanTestSuite) TestIgnoreTXT() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1146,9 +1197,12 @@ func (suite *PlanTestSuite) TestExcludeTXT() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME, endpoint.RecordTypeTXT},
 		ExcludeRecords: []string{endpoint.RecordTypeTXT},
 	}
@@ -1176,6 +1230,9 @@ func (suite *PlanTestSuite) TestIgnoreTargetCase() {
 		Policies: []Policy{&SyncPolicy{}},
 		Current:  current,
 		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 	}
 
 	cp := p.Calculate()
@@ -1198,9 +1255,12 @@ func (suite *PlanTestSuite) TestRemoveEndpoint() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1225,9 +1285,12 @@ func (suite *PlanTestSuite) TestRemoveEndpointWithUpsert() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&UpsertOnlyPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&UpsertOnlyPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1252,9 +1315,12 @@ func (suite *PlanTestSuite) TestMultipleRecordsSameNameDifferentSetIdentifier() 
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1278,9 +1344,12 @@ func (suite *PlanTestSuite) TestSetIdentifierUpdateCreatesAndDeletes() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1305,9 +1374,12 @@ func (suite *PlanTestSuite) TestDomainFiltersInitial() {
 
 	domainFilter := endpoint.NewDomainFilterWithExclusions([]string{"domain.tld"}, []string{"ex.domain.tld"})
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		DomainFilter:   endpoint.MatchAllDomainFilters{&domainFilter},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
@@ -1333,9 +1405,12 @@ func (suite *PlanTestSuite) TestDomainFiltersUpdate() {
 
 	domainFilter := endpoint.NewDomainFilterWithExclusions([]string{"domain.tld"}, []string{"ex.domain.tld"})
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		DomainFilter:   endpoint.MatchAllDomainFilters{&domainFilter},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeCNAME},
 	}
@@ -1358,9 +1433,12 @@ func (suite *PlanTestSuite) TestAAAARecords() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1382,9 +1460,12 @@ func (suite *PlanTestSuite) TestDualStackRecords() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1406,9 +1487,12 @@ func (suite *PlanTestSuite) TestDualStackRecordsDelete() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1431,9 +1515,12 @@ func (suite *PlanTestSuite) TestDualStackToSingleStack() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1458,10 +1545,13 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordCreate() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner1",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		OwnerID:  "owner111",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1482,10 +1572,13 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordWithSetIdentifierCreate() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1507,11 +1600,14 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateCreate() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Previous:       previous,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Previous: previous,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1535,11 +1631,14 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateSameOwner() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Previous:       previous,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Previous: previous,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1561,11 +1660,14 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateRecordTypeConflict() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Previous:       previous,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Previous: previous,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1587,10 +1689,13 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordUpdateSameOwnerWithSetIdentifie
 	}
 
 	p := &Plan{
-		OwnerID:        "owner1",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		OwnerID:  "owner111",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1611,9 +1716,12 @@ func (suite *PlanTestSuite) TestNoPlanOwnerARecordUpdate() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1635,10 +1743,13 @@ func (suite *PlanTestSuite) TestPlanOwnerARecordUpdateNoOwner() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1660,9 +1771,12 @@ func (suite *PlanTestSuite) TestNoOwnerARecordUpdate() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1684,11 +1798,14 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordDelete() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
-		Previous:       previous,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		Previous: previous,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1710,11 +1827,14 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordDeleteSameAddress() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
-		Previous:       previous,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		Previous: previous,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1737,10 +1857,13 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordCreate() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner1",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		OwnerID:  "owner111",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1761,10 +1884,13 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordWithSetIdentifierCreate() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1785,9 +1911,12 @@ func (suite *PlanTestSuite) TestRootHost() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 	cp := p.Calculate()
@@ -1804,10 +1933,13 @@ func (suite *PlanTestSuite) TestRootHost() {
 	}
 
 	p = &Plan{
-		RootHost:       ptr.To("example.com"),
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		RootHost: ptr.To("example.com"),
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 	cp = p.Calculate()
@@ -1824,11 +1956,14 @@ func (suite *PlanTestSuite) TestRootHost() {
 	}
 
 	p = &Plan{
-		RootHost:       ptr.To("bar.example.com"),
-		DomainFilter:   endpoint.MatchAllDomainFilters{ptr.To(endpoint.NewDomainFilter([]string{"example.com"}))},
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		RootHost:     ptr.To("bar.example.com"),
+		DomainFilter: endpoint.MatchAllDomainFilters{ptr.To(endpoint.NewDomainFilter([]string{"example.com"}))},
+		Policies:     []Policy{&SyncPolicy{}},
+		Current:      current,
+		Desired:      desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 	cp = p.Calculate()
@@ -1854,11 +1989,14 @@ func (suite *PlanTestSuite) TestRootHostCNAMERecordCreateWithMissingManagedTarge
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		RootHost:       ptr.To("example.com"),
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		RootHost: ptr.To("example.com"),
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1882,11 +2020,14 @@ func (suite *PlanTestSuite) TestRootHostCNAMERecordCreateManagedTarget() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		RootHost:       ptr.To("example.com"),
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		RootHost: ptr.To("example.com"),
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1907,10 +2048,13 @@ func (suite *PlanTestSuite) TestNoRootHostCNAMERecordCreateMissingManagedTarget(
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1934,11 +2078,14 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateDifferentOwner() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Previous:       previous,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Previous: previous,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1961,11 +2108,14 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateSameOwner() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Previous:       previous,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Previous: previous,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -1987,11 +2137,14 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateRecordTypeConflict() 
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Previous:       previous,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Previous: previous,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -2014,11 +2167,14 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateSameOwnerWithSetIdent
 	}
 
 	p := &Plan{
-		OwnerID:        "owner1",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Previous:       previous,
-		Desired:        desired,
+		OwnerID:  "owner111",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Previous: previous,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -2039,9 +2195,12 @@ func (suite *PlanTestSuite) TestNoPlanOwnerCNAMERecordUpdate() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -2063,10 +2222,13 @@ func (suite *PlanTestSuite) TestPlanOwnerCNAMERecordUpdateNoOwner() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -2088,9 +2250,12 @@ func (suite *PlanTestSuite) TestNoPlanOwnerCNAMERecordUpdateNoOwner() {
 	}
 
 	p := &Plan{
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
@@ -2113,11 +2278,14 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordDelete() {
 	}
 
 	p := &Plan{
-		OwnerID:        "owner2",
-		Policies:       []Policy{&SyncPolicy{}},
-		Current:        current,
-		Desired:        desired,
-		Previous:       previous,
+		OwnerID:  "owner222",
+		Policies: []Policy{&SyncPolicy{}},
+		Current:  current,
+		Desired:  desired,
+		Previous: previous,
+		registry: &registry.TXTRegistry{
+			LabelsPacker: registry.NewTXTLabelsPacker(),
+		},
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
 	}
 
