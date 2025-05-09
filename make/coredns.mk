@@ -37,3 +37,7 @@ coredns-docker-run: ## Build docker image and run coredns in a container.
 .PHONY: coredns-generate-demo-geo-db
 coredns-generate-demo-geo-db: ## Generate demo geo db embedded in coredns image.
 	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) generate-demo-geo-db
+
+.PHONY: coredns-kind-load-image
+coredns-kind-load-image: ## Load image to kind cluster.
+	$(MAKE) kind-load-image IMG=quay.io/kuadrant/coredns-kuadrant:latest

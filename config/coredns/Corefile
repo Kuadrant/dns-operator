@@ -2,6 +2,9 @@ kdrnt {
     debug
     errors
     log
+    transfer {
+        to *
+    }
     kuadrant
     prometheus 0.0.0.0:9153
 }
@@ -13,6 +16,9 @@ k.example.com {
         edns-subnet
     }
     metadata
+    transfer {
+        to *
+    }
     kuadrant
     prometheus 0.0.0.0:9153
 }
