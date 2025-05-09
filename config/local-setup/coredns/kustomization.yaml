@@ -1,0 +1,5 @@
+resources:
+  - ../../coredns-unmonitored
+
+patches:
+  - path: deployment_config_patch.yaml

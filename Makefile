@@ -200,7 +200,8 @@ local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependenci
 	@$(MAKE) -s install-bind9
 
 	if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
-    	$(MAKE) -s install-coredns-unmonitored ;\
+    	$(MAKE) -s coredns-docker-build coredns-kind-load-image;\
+    	$(MAKE) -s install-coredns COREDNS_KUSTOMIZATION=config/local-setup/coredns ;\
     fi ;\
 
 	@if [ ${DEPLOY} = "true" ]; then\
