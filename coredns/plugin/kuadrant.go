@@ -6,6 +6,7 @@ import (
 
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/file"
+	"github.com/coredns/coredns/plugin/transfer"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 )
@@ -93,6 +94,15 @@ func (k *Kuadrant) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 
 func (k *Kuadrant) Name() string {
 	return pluginName
+}
+
+// Transfer implements the transfer.Transfer interface.
+func (k *Kuadrant) Transfer(zone string, serial uint32) (<-chan []dns.RR, error) {
+	z, ok := k.Z[zone]
+	if !ok || z == nil {
+		return nil, transfer.ErrNotAuthoritative
+	}
+	return z.file.Transfer(serial)
 }
 
 // Strips the closing dot unless it's "."
