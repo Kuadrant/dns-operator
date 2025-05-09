@@ -1,9 +1,22 @@
-# https://golangci-lint.run/usage/linters/
+version: "2"
 linters:
   enable:
-    - gofmt
     - misspell
-
-run:
-  skip-dirs:
-    - internal/external-dns
+  disable:
+    - staticcheck
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - internal/external-dns
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - internal/external-dns
