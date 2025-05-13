@@ -44,5 +44,5 @@ spec:
         - eu.klb.${testHostname}
   providerRef:
     name: ${TEST_DNS_PROVIDER_SECRET_NAME}
-  ownerID: 2bq03i
+  ownerID: 2bq03i12
   rootHost: ${testHostname}
