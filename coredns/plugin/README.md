@@ -140,9 +140,6 @@ k.example.com {
       kubeconfig <path to kubeconfig>/.kube/config
    }
 }
-. {
-   forward . /etc/resolv.conf
-}
 ```
 
 Run Kuadrant build of CoreDNS locally:

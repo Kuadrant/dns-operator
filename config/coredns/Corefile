@@ -1,6 +1,10 @@
 kdrnt {
     debug
     errors
+    health {
+        lameduck 5s
+    }
+    ready
     log
     transfer {
         to *
@@ -21,17 +25,4 @@ k.example.com {
     }
     kuadrant
     prometheus 0.0.0.0:9153
-}
-. {
-    errors
-    health {
-        lameduck 5s
-    }
-    ready
-    prometheus 0.0.0.0:9153
-    forward . /etc/resolv.conf
-    cache 30
-    loop
-    reload
-    log
 }

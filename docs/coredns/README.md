@@ -34,14 +34,6 @@ Tail CoreDNS logs
 kubectl logs -f deployments/kuadrant-coredns -n kuadrant-coredns
 ```
 
-Use DNS Server:
-```shell
-DNS_SRV=`kubectl get service/kuadrant-coredns -n kuadrant-coredns -o yaml | yq '.status.loadBalancer.ingress[0].ip'`
-echo $DNS_SRV
-echo "Dig command: dig @$DNS_SRV google.com"
-dig @$DNS_SRV google.com
-```
-
 #### Enable Monitoring:
 
 Monitoring is not enabled by default, if you configured the observability stack above, the CoreDNS instance can be  updated to enable it with:
@@ -95,8 +87,6 @@ Install CoreDNS Multi POC Setup
 ```shell
 (cd ../.. && make install-coredns-multi)
 ```
-
-[//]: # (ToDo The following won't work until the DNS Operatro chnages are merged!!)
 
 Create coredns provider secrets:
 ```shell
