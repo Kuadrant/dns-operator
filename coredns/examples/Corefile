@@ -9,6 +9,3 @@ k.example.com {
    }
    kuadrant
 }
-. {
-   forward . /etc/resolv.conf
-}
