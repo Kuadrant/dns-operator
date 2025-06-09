@@ -65,7 +65,7 @@ func (*Route53DNSProvider) Name() provider.DNSProviderName {
 	return provider.DNSProviderAWS
 }
 
-func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
+func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (p provider.Provider, err error) {
 	config := aws.NewConfig()
 
 	config.WithHTTPClient(metrics.NewInstrumentedClient(provider.DNSProviderAWS.String(), config.HTTPClient))
@@ -73,18 +73,30 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 	sessionOpts := session.Options{
 		Config: *config,
 	}
-	if string(s.Data[v1alpha1.AWSAccessKeyIDKey]) == "" || string(s.Data[v1alpha1.AWSSecretAccessKeyKey]) == "" {
-		return nil, fmt.Errorf("AWS Provider credentials is empty")
-	}
 
-	sessionOpts.Config.Credentials = credentials.NewStaticCredentials(string(s.Data[v1alpha1.AWSAccessKeyIDKey]), string(s.Data[v1alpha1.AWSSecretAccessKeyKey]), "")
-	sessionOpts.SharedConfigState = session.SharedConfigDisable
-	sess, err := session.NewSessionWithOptions(sessionOpts)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create aws session: %s", err)
-	}
-	if string(s.Data[v1alpha1.AWSRegionKey]) != "" {
-		sess.Config.WithRegion(string(s.Data[v1alpha1.AWSRegionKey]))
+	var sess *session.Session
+	if s != nil {
+		// Error if a secret is provided but credentials are missing
+		if string(s.Data[v1alpha1.AWSAccessKeyIDKey]) == "" || string(s.Data[v1alpha1.AWSSecretAccessKeyKey]) == "" {
+			return nil, fmt.Errorf("AWS Provider credentials is empty")
+		}
+
+		sessionOpts.Config.Credentials = credentials.NewStaticCredentials(string(s.Data[v1alpha1.AWSAccessKeyIDKey]), string(s.Data[v1alpha1.AWSSecretAccessKeyKey]), "")
+		sessionOpts.SharedConfigState = session.SharedConfigDisable
+		sess, err = session.NewSessionWithOptions(sessionOpts)
+		if err != nil {
+			return nil, fmt.Errorf("unable to create aws session: %s", err)
+		}
+		if string(s.Data[v1alpha1.AWSRegionKey]) != "" {
+			sess.Config.WithRegion(string(s.Data[v1alpha1.AWSRegionKey]))
+		}
+	} else {
+		// If a secret is not provided, fall back to default credential chain
+		sessionOpts.SharedConfigState = session.SharedConfigEnable
+		sess, err = session.NewSessionWithOptions(sessionOpts)
+		if err != nil {
+			return nil, fmt.Errorf("unable to create aws session: %s", err)
+		}
 	}
 
 	route53Client := route53.New(sess, config)
@@ -110,13 +122,17 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		return nil, fmt.Errorf("unable to create aws provider: %s", err)
 	}
 
-	p := &Route53DNSProvider{
+	p = &Route53DNSProvider{
 		AWSProvider:   awsProvider,
 		awsConfig:     awsConfig,
 		logger:        logger,
 		route53Client: route53Client,
 	}
 	return p, nil
+}
+
+func NewProvider(ctx context.Context, c provider.Config) (provider.Provider, error) {
+	return NewProviderFromSecret(ctx, nil, c)
 }
 
 // #### External DNS Provider ####
@@ -195,5 +211,6 @@ func (*Route53DNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider(p.Name().String(), NewProviderFromSecret, true)
+	provider.RegisterProviderFromSecret(p.Name().String()+"FromSecret", NewProviderFromSecret, true)
+	provider.RegisterProvider(p.Name().String(), NewProvider, true)
 }

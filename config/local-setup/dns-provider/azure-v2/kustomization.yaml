@@ -7,8 +7,7 @@ generatorOptions:
     app.kubernetes.io/managed-by: kustomize
 
 secretGenerator:
-  - name: dns-provider-credentials
+  - name: dns-provider-credentials-v2
     envs:
-      - azure-credentials.env
-    type: "kuadrant.io/azure"
-
+      - azure-credentials-v2.env
+    type: "generic"
