@@ -104,7 +104,7 @@ type DNSRecordSpec struct {
 	RootHost string `json:"rootHost"`
 
 	// providerRef is a reference to a provider secret.
-	ProviderRef ProviderRef `json:"providerRef"`
+	ProviderRef *ProviderRef `json:"providerRef,omitempty"`
 
 	// endpoints is a list of endpoints that will be published into the dns provider.
 	// +kubebuilder:validation:MinItems=1
@@ -237,7 +237,7 @@ func (s *DNSRecord) GetUIDHash() string {
 }
 
 func (s *DNSRecord) GetProviderRef() ProviderRef {
-	return s.Spec.ProviderRef
+	return *s.Spec.ProviderRef
 }
 
 func (s *DNSRecord) HasDNSZoneAssigned() bool {

@@ -205,7 +205,6 @@ spec:
                 - message: RootHost is immutable
                   rule: self == oldSelf
             required:
-            - providerRef
             - rootHost
             type: object
             x-kubernetes-validations:
