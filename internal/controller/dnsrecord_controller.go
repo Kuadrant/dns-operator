@@ -193,6 +193,13 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 	}
 
+	if dnsRecord.Spec.ProviderRef == nil {
+		logger.Info("No DNS Provider Configured for record")
+		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue,
+			"NoProvider", fmt.Sprintf("no dns provider ref configured for dnsrecord"))
+		return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, nil)
+	}
+
 	// Ensure a DNS Zone has been assigned to the record (ZoneID and ZoneDomainName are set in the status)
 	if !dnsRecord.HasDNSZoneAssigned() {
 		logger.Info(fmt.Sprintf("provider zone not assigned for root host %s, finding suitable zone", dnsRecord.Spec.RootHost))
