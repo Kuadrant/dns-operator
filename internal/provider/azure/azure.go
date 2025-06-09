@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,12 +41,13 @@ func (*AzureProvider) Name() provider.DNSProviderName {
 }
 
 func NewAzureProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
+	var azureConfig externaldnsproviderazure.Config
+
 	if string(s.Data[v1alpha1.AzureJsonKey]) == "" {
 		return nil, fmt.Errorf("the Azure provider credentials is empty")
 	}
 
 	configString := string(s.Data[v1alpha1.AzureJsonKey])
-	var azureConfig externaldnsproviderazure.Config
 	err := yaml.Unmarshal([]byte(configString), &azureConfig)
 	if err != nil {
 		return nil, err
@@ -79,6 +81,39 @@ func NewAzureProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Co
 
 }
 
+func NewAzureProvider(ctx context.Context, c provider.Config) (provider.Provider, error) {
+	azureConfig := externaldnsproviderazure.Config{
+		ResourceGroup:            os.Getenv("AZURE_RESOURCE_GROUP"),
+		SubscriptionID:           os.Getenv("AZURE_SUBSCRIPTION_ID"),
+		UseEnvironmentCredential: true, // could expand to support other credential options
+	}
+	logger := crlog.FromContext(ctx).
+		WithName("azure-dns").
+		WithValues("tenantId", azureConfig.TenantID, "resourceGroup", azureConfig.ResourceGroup)
+	ctx = crlog.IntoContext(ctx, logger)
+
+	azureConfig.DomainFilter = c.DomainFilter
+	azureConfig.ZoneNameFilter = c.DomainFilter
+	azureConfig.IDFilter = c.ZoneIDFilter
+	azureConfig.DryRun = false
+
+	azureConfig.Transporter = metrics.NewInstrumentedClient(provider.DNSProviderAzure.String(), nil)
+
+	azureProvider, err := externaldnsproviderazure.NewAzureProviderFromConfig(ctx, azureConfig)
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to create azure provider: %s", err)
+	}
+
+	p := &AzureProvider{
+		AzureProvider: azureProvider,
+		azureConfig:   azureConfig,
+		logger:        logger,
+	}
+
+	return p, nil
+}
+
 func (p *AzureProvider) DNSZones(ctx context.Context) ([]provider.DNSZone, error) {
 	var hzs []provider.DNSZone
 	zones, err := p.Zones(ctx)
@@ -110,7 +145,8 @@ func (p *AzureProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider(p.Name().String(), NewAzureProviderFromSecret, true)
+	provider.RegisterProviderFromSecret(p.Name().String()+"FromSecret", NewAzureProviderFromSecret, true)
+	provider.RegisterProvider(p.Name().String(), NewAzureProvider, true)
 }
 
 // Records gets the current records.

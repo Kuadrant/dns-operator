@@ -21,13 +21,21 @@ import (
 
 var errUnsupportedProvider = fmt.Errorf("provider type given is not supported")
 
-// ProviderConstructor constructs a provider given a Secret resource and a Context.
+// ProviderConstructor constructs a provider given a Context.
 // An error will be returned if the appropriate provider is not registered.
-type ProviderConstructor func(context.Context, *v1.Secret, Config) (Provider, error)
+type ProviderConstructor func(context.Context, Config) (Provider, error)
+
+// ProviderConstructorFromSecret constructs a provider given a Context.
+// An error will be returned if the appropriate provider is not registered.
+type ProviderConstructorFromSecret func(context.Context, *v1.Secret, Config) (Provider, error)
 
 var (
 	constructors     = make(map[string]ProviderConstructor)
 	constructorsLock sync.RWMutex
+
+	constructorsFromSecret     = make(map[string]ProviderConstructorFromSecret)
+	constructorsFromSecretLock sync.RWMutex
+
 	defaultProviders []string
 )
 
@@ -38,6 +46,18 @@ func RegisterProvider(name string, c ProviderConstructor, asDefault bool) {
 	constructorsLock.Lock()
 	defer constructorsLock.Unlock()
 	constructors[name] = c
+	if asDefault {
+		defaultProviders = append(defaultProviders, name)
+	}
+}
+
+// RegisterProviderFromSecret will register a provider constructor, so it can be used within the application.
+// 'name' should be unique, and should be used to identify this provider
+// `asDefault` indicates if the provider should be added as a default provider and included in the default providers list.
+func RegisterProviderFromSecret(name string, c ProviderConstructorFromSecret, asDefault bool) {
+	constructorsFromSecretLock.Lock()
+	defer constructorsFromSecretLock.Unlock()
+	constructorsFromSecret[name] = c
 	if asDefault {
 		defaultProviders = append(defaultProviders, name)
 	}
@@ -63,7 +83,7 @@ type factory struct {
 // Will return an error if any given provider has no registered provider implementation.
 func NewFactory(c client.Client, p []string) (Factory, error) {
 	var err error
-	registeredProviders := maps.Keys(constructors)
+	registeredProviders := append(maps.Keys(constructors), maps.Keys(constructorsFromSecret)...)
 	for _, provider := range p {
 		if !slices.Contains(registeredProviders, provider) {
 			err = errors.Join(err, fmt.Errorf("provider '%s' not registered", provider))
@@ -76,6 +96,23 @@ func NewFactory(c client.Client, p []string) (Factory, error) {
 // If the requested ProviderAccessor secret does not exist, an error will be returned.
 func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor, c Config) (Provider, error) {
 	logger := log.FromContext(ctx)
+
+	// If the provider accessor has a provider set, we will use that provider & pass nil as the secret
+	provider := pa.GetProvider().Name
+	if provider != "" {
+		if !slices.Contains(f.providers, provider) {
+			return nil, fmt.Errorf("provider '%s' not enabled", provider)
+		}
+		logger.V(1).Info(fmt.Sprintf("initializing %s provider with config", provider), "config", c)
+		constructorsLock.RLock()
+		defer constructorsLock.RUnlock()
+		if constructor, ok := constructors[provider]; ok {
+			return constructor(ctx, c)
+		}
+		return nil, fmt.Errorf("provider '%s' not registered", provider)
+	}
+
+	// Get the provider secret from the accessor
 	providerSecret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pa.GetProviderRef().Name,
@@ -91,9 +128,9 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 		return nil, err
 	}
 
-	constructorsLock.RLock()
-	defer constructorsLock.RUnlock()
-	if constructor, ok := constructors[provider]; ok {
+	constructorsFromSecretLock.RLock()
+	defer constructorsFromSecretLock.RUnlock()
+	if constructor, ok := constructorsFromSecret[provider]; ok {
 		if !slices.Contains(f.providers, provider) {
 			return nil, fmt.Errorf("provider '%s' not enabled", provider)
 		}
@@ -107,15 +144,15 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 func NameForProviderSecret(secret *v1.Secret) (string, error) {
 	switch secret.Type {
 	case v1alpha1.SecretTypeKuadrantAWS:
-		return DNSProviderAWS.String(), nil
+		return DNSProviderFromSecretAWS.String(), nil
 	case v1alpha1.SecretTypeKuadrantAzure:
-		return DNSProviderAzure.String(), nil
+		return DNSProviderFromSecretAzure.String(), nil
 	case v1alpha1.SecretTypeKuadrantGCP:
-		return DNSProviderGCP.String(), nil
+		return DNSProviderFromSecretGCP.String(), nil
 	case v1alpha1.SecretTypeKuadrantInmemory:
-		return DNSProviderInMem.String(), nil
+		return DNSProviderFromSecretInMem.String(), nil
 	case v1alpha1.SecretTypeKuadrantCoreDNS:
-		return DNSProviderCoreDNS.String(), nil
+		return DNSProviderFromSecretCoreDNS.String(), nil
 	}
 	return "", errUnsupportedProvider
 }

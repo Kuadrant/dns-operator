@@ -19,6 +19,7 @@ package google
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -155,6 +156,47 @@ func NewProviderFromSecret(ctx context.Context, s *corev1.Secret, c provider.Con
 	ctx = log.IntoContext(ctx, logger)
 
 	googleProvider, err := externaldnsgoogle.NewGoogleProviderWithService(ctx, googleConfig, dnsClient)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create google provider: %s", err)
+	}
+
+	p := &GoogleDNSProvider{
+		GoogleProvider:           googleProvider,
+		googleConfig:             googleConfig,
+		logger:                   logger,
+		resourceRecordSetsClient: resourceRecordSetsService{dnsClient.ResourceRecordSets},
+		managedZonesClient:       managedZonesService{dnsClient.ManagedZones},
+	}
+
+	return p, nil
+}
+
+func NewProvider(ctx context.Context, c provider.Config) (provider.Provider, error) {
+	googleConfig := externaldnsgoogle.GoogleConfig{
+		Project:             os.Getenv("PROJECT_ID"),
+		DomainFilter:        c.DomainFilter,
+		ZoneIDFilter:        c.ZoneIDFilter,
+		ZoneTypeFilter:      c.ZoneTypeFilter,
+		BatchChangeSize:     GoogleBatchChangeSize,
+		BatchChangeInterval: GoogleBatchChangeInterval,
+		DryRun:              false,
+	}
+
+	// Needed for the "Records" implementation in this file
+	gcloud, err := google.DefaultClient(ctx, dnsv1.NdevClouddnsReadwriteScope)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsClient, err := dnsv1.NewService(ctx, option.WithHTTPClient(gcloud))
+	if err != nil {
+		return nil, err
+	}
+
+	logger := log.FromContext(ctx).WithName("google-dns")
+	ctx = log.IntoContext(ctx, logger)
+
+	googleProvider, err := externaldnsgoogle.NewGoogleProvider(ctx, googleConfig)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create google provider: %s", err)
 	}
@@ -332,5 +374,6 @@ func (p *GoogleDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider(p.Name().String(), NewProviderFromSecret, true)
+	provider.RegisterProviderFromSecret(p.Name().String()+"FromSecret", NewProviderFromSecret, true)
+	provider.RegisterProvider(p.Name().String(), NewProvider, true)
 }

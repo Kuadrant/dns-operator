@@ -3,17 +3,28 @@
 # Set the deployment imagePullPolicy to IfNotPresent. This is required if you are using a local image loaded into kind i.e. make kind-load-image
 #
 
+# TODO: validate azure has the right
+
 resources:
   - ../../default
 
 patches:
   - patch: |-
       - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: --provider=aws,google,inmemory,azure
-      - op: add
-        path: /spec/template/spec/containers/0/args/-
-        value: --zap-log-level=debug
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+        - secretRef:
+            name: dns-provider-credentials-aws
+            optional: true
+        - secretRef:
+            name: dns-provider-credentials-azure
+            optional: true
+        - secretRef:
+            name: dns-provider-credentials-v2-azure
+            optional: true
+        - secretRef:
+            name: dns-provider-credentials-gcp
+            optional: true
     target:
       kind: Deployment
   - path: manager_config_patch.yaml

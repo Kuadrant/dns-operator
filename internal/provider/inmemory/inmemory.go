@@ -40,6 +40,10 @@ func (p *InMemoryDNSProvider) Name() provider.DNSProviderName {
 	return provider.DNSProviderInMem
 }
 
+func NewProvider(ctx context.Context, c provider.Config) (provider.Provider, error) {
+	return NewProviderFromSecret(ctx, &v1.Secret{}, c)
+}
+
 func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	logger := log.FromContext(ctx).WithName("inmemory-dns")
 	ctx = log.IntoContext(ctx, logger)
@@ -101,5 +105,6 @@ func (i *InMemoryDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels
 // Register this Provider with the provider factory
 func init() {
 	client = inmemory.NewInMemoryClient()
-	provider.RegisterProvider(p.Name().String(), NewProviderFromSecret, false)
+	provider.RegisterProviderFromSecret(p.Name().String()+"FromSecret", NewProviderFromSecret, false)
+	provider.RegisterProvider(p.Name().String(), NewProvider, false)
 }

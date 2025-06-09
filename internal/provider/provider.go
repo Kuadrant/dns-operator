@@ -30,6 +30,12 @@ var (
 	DNSProviderGCP     DNSProviderName = "google"
 	DNSProviderInMem   DNSProviderName = "inmemory"
 
+	DNSProviderFromSecretCoreDNS DNSProviderName = "coredns"
+	DNSProviderFromSecretAWS     DNSProviderName = "awsFromSecret"
+	DNSProviderFromSecretAzure   DNSProviderName = "azureFromSecret"
+	DNSProviderFromSecretGCP     DNSProviderName = "googleFromSecret"
+	DNSProviderFromSecretInMem   DNSProviderName = "inmemoryFromSecret"
+
 	CoreDNSRecordZoneLabel = "kuadrant.io/coredns-zone-name"
 	CoreDNSRecordTypeLabel = "kuadrant.io/type"
 

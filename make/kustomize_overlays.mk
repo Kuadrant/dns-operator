@@ -13,6 +13,7 @@ DEPLOYMENT_WATCH_NAMESPACES ?=
 GCP_CREDENTIALS_FILE ?= config/local-setup/dns-provider/gcp/gcp-credentials.env
 AWS_CREDENTIALS_FILE ?= config/local-setup/dns-provider/aws/aws-credentials.env
 AZURE_CREDENTIALS_FILE ?= config/local-setup/dns-provider/azure/azure-credentials.env
+AZURE_CREDENTIALS_V2_FILE ?= config/local-setup/dns-provider/azure/azure-credentials.env
 COREDNS_CREDENTIALS_FILE ?= config/local-setup/dns-provider/coredns/coredns-credentials.env
 
 ## Location to generate cluster overlays
@@ -123,6 +124,11 @@ generate-common-dns-provider-kustomization: ## Generate common dns provider kust
 		cp config/local-setup/dns-provider/azure/azure-credentials.env $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\
 		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
 		$(KUSTOMIZE) edit add secret dns-provider-credentials-azure --disableNameSuffixHash --from-env-file=azure-credentials.env --type "kuadrant.io/azure" ;\
+	fi
+	@if [[ -f $(AZURE_CREDENTIALS_V2_FILE) ]]; then\
+		cp config/local-setup/dns-provider/azure/azure-credentials-v2.env $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\
+		cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers && \
+		$(KUSTOMIZE) edit add secret dns-provider-credentials-azure-v2 --disableNameSuffixHash --from-env-file=azure-credentials-v2.env --type "generic" ;\
 	fi
 	@if [[ -f $(COREDNS_CREDENTIALS_FILE) ]]; then\
 		cp $(COREDNS_CREDENTIALS_FILE) $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-providers/ ;\

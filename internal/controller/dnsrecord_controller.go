@@ -378,7 +378,7 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, val
 				return toReconcile
 			}
 			for _, record := range records.Items {
-				if record.Spec.ProviderRef.Name == o.GetName() {
+				if record.GetProviderRef().Name == o.GetName() {
 					logger.Info("secret updated", "secret", o.GetNamespace()+"/"+o.GetName(), "enqueuing dnsrecord ", record.GetName())
 					toReconcile = append(toReconcile, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&record)})
 				}

@@ -1,3 +1,4 @@
+
 apiVersion: kuadrant.io/v1alpha1
 kind: DNSRecord
 metadata:
@@ -9,6 +10,6 @@ spec:
       recordType: A
       targets:
         - 172.32.200.17
-  provider:
-    name: ${KUADRANT_DNS_PROVIDER_NAME}
+  providerRef:
+    name: ${KUADRANT_DNS_PROVIDER_REF}
   rootHost: ${KUADRANT_SUB_DOMAIN}

@@ -64,5 +64,5 @@ spec:
     port: 80
     protocol: HTTPS
   rootHost: ${KUADRANT_SUB_DOMAIN}
-  providerRef:
-    name: ${KUADRANT_DNS_PROVIDER_REF}
+  provider:
+    name: ${KUADRANT_DNS_PROVIDER_NAME}
