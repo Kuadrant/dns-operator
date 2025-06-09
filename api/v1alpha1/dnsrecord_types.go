@@ -105,7 +105,7 @@ type DNSRecordSpec struct {
 
 	// ProviderRef is a reference to a provider secret.
 	// +optional
-	ProviderRef *ProviderRef `json:"providerRef"`
+	ProviderRef *ProviderRef `json:"providerRef,omitempty"`
 
 	// endpoints is a list of endpoints that will be published into the dns provider.
 	// +kubebuilder:validation:MinItems=1
