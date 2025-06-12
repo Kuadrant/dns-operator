@@ -63,6 +63,6 @@ spec:
     failureThreshold: 3
     port: 80
     protocol: HTTPS
-  providerRef:
-    name: ${KUADRANT_DNS_PROVIDER_REF}
+  provider:
+    name: ${KUADRANT_DNS_PROVIDER_NAME}
   rootHost: ${KUADRANT_SUB_DOMAIN}

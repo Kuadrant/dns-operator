@@ -43,7 +43,7 @@ const (
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider(p.Name().String(), NewCoreDNSProviderFromSecret, true)
+	provider.RegisterProviderFromSecret(p.Name().String()+"FromSecret", NewCoreDNSProviderFromSecret, true)
 }
 
 func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {

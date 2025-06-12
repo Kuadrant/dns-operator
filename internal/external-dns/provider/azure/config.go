@@ -46,6 +46,7 @@ type Config struct {
 	UseManagedIdentityExtension  bool   `json:"useManagedIdentityExtension" yaml:"useManagedIdentityExtension"`
 	UseWorkloadIdentityExtension bool   `json:"useWorkloadIdentityExtension" yaml:"useWorkloadIdentityExtension"`
 	UserAssignedIdentityID       string `json:"userAssignedIdentityID" yaml:"userAssignedIdentityID"`
+	UseEnvironmentCredential     bool   `json:"useEnvironmentCredential" yaml:"useEnvironmentCredential"`
 	DomainFilter                 endpoint.DomainFilter
 	ZoneNameFilter               endpoint.DomainFilter
 	IDFilter                     provider.ZoneIDFilter
@@ -111,6 +112,19 @@ func getCredentials(ctx context.Context, cfg Config) (azcore.TokenCredential, *a
 		cred, err := azidentity.NewClientSecretCredential(cfg.TenantID, cfg.ClientID, cfg.ClientSecret, opts)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create service principal token: %w", err)
+		}
+		return cred, armClientOpts, nil
+	}
+
+	// Try to retrieve credentials from common environment variables
+	if cfg.UseEnvironmentCredential {
+		envOpt := &azidentity.EnvironmentCredentialOptions{
+			ClientOptions: clientOpts,
+		}
+
+		cred, err := azidentity.NewEnvironmentCredential(envOpt)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create credentials from default: %w", err)
 		}
 		return cred, armClientOpts, nil
 	}

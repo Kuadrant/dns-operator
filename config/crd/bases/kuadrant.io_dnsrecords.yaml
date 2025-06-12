@@ -183,10 +183,25 @@ spec:
                 x-kubernetes-validations:
                 - message: OwnerID is immutable
                   rule: self == oldSelf
+              provider:
+                description: provider is the name of the DNS provider to use, credentials
+                  must be available on the environment.
+                properties:
+                  name:
+                    minLength: 1
+                    type: string
+                  resourceGroup:
+                    description: TODO require if Name == azure
+                    type: string
+                required:
+                - name
+                type: object
               providerRef:
                 description: providerRef is a reference to a provider secret.
                 properties:
                   name:
+                    description: make this field required when the parent is not null,
+                      while the parent is optional
                     minLength: 1
                     type: string
                 required:
@@ -205,7 +220,6 @@ spec:
                 - message: RootHost is immutable
                   rule: self == oldSelf
             required:
-            - providerRef
             - rootHost
             type: object
             x-kubernetes-validations:
@@ -213,6 +227,9 @@ spec:
               rule: '!has(oldSelf.ownerID) || has(self.ownerID)'
             - message: OwnerID can't be set if it was previously unset
               rule: has(oldSelf.ownerID) || !has(self.ownerID)
+            - message: exactly one of providerRef or provider must be set
+              rule: (has(self.providerRef) && !has(self.provider)) || (!has(self.providerRef)
+                && has(self.provider))
           status:
             description: DNSRecordStatus defines the observed state of DNSRecord
             properties:

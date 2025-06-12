@@ -85,6 +85,7 @@ type HealthCheckStatusProbe struct {
 // DNSRecordSpec defines the desired state of DNSRecord
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.ownerID) || has(self.ownerID)", message="OwnerID can't be unset if it was previously set"
 // +kubebuilder:validation:XValidation:rule="has(oldSelf.ownerID) || !has(self.ownerID)", message="OwnerID can't be set if it was previously unset"
+// +kubebuilder:validation:XValidation:rule="(has(self.providerRef) && !has(self.provider)) || (!has(self.providerRef) && has(self.provider))", message="exactly one of providerRef or provider must be set"
 type DNSRecordSpec struct {
 	// ownerID is a unique string used to identify the owner of this record.
 	// If unset or set to an empty string the record UID will be used.
@@ -104,7 +105,12 @@ type DNSRecordSpec struct {
 	RootHost string `json:"rootHost"`
 
 	// providerRef is a reference to a provider secret.
-	ProviderRef ProviderRef `json:"providerRef"`
+	// +kubebuilder:validation:Optional
+	ProviderRef *ProviderRef `json:"providerRef,omitempty"`
+
+	// provider is the name of the DNS provider to use, credentials must be available on the environment.
+	// +kubebuilder:validation:Optional
+	Provider *Provider `json:"provider,omitempty"`
 
 	// endpoints is a list of endpoints that will be published into the dns provider.
 	// +kubebuilder:validation:MinItems=1
@@ -237,7 +243,17 @@ func (s *DNSRecord) GetUIDHash() string {
 }
 
 func (s *DNSRecord) GetProviderRef() ProviderRef {
-	return s.Spec.ProviderRef
+	if s.Spec.ProviderRef == nil {
+		return ProviderRef{}
+	}
+	return *s.Spec.ProviderRef
+}
+
+func (s *DNSRecord) GetProvider() Provider {
+	if s.Spec.Provider == nil {
+		return Provider{}
+	}
+	return *s.Spec.Provider
 }
 
 func (s *DNSRecord) HasDNSZoneAssigned() bool {

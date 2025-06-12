@@ -12,5 +12,17 @@ spec:
           args:
             - --metrics-bind-address=:8080
             - --leader-elect
-            - --provider=aws,google,inmemory,azure,coredns
+            - --provider=aws,awsFromSecret,google,googleFromSecret,azure,azureFromSecret,corednsFromSecret
             - --zap-log-level=debug
+          # Google json creds mounted from secret
+          env:
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: "/etc/google-creds/GOOGLE"
+          volumeMounts:
+          - name: google-application-credentials
+            mountPath: /etc/google-creds
+      volumes:
+        - name: google-application-credentials
+          secret:
+            secretName: dns-provider-credentials-gcp
+            optional: true
