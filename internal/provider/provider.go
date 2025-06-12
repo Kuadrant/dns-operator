@@ -22,9 +22,12 @@ var (
 	requestIDRegexp         = regexp.MustCompile(`request id: [^\s]+`)
 	saxParseExceptionRegexp = regexp.MustCompile(`Invalid XML ; javax.xml.stream.XMLStreamException: org.xml.sax.SAXParseException; lineNumber: [^\s]+; columnNumber: [^\s]+`)
 
-	ErrNoZoneForHost = fmt.Errorf("no zone for host")
+	ErrNoZoneForHost         = fmt.Errorf("no zone for host")
+	ErrZoneLookupUnsupported = fmt.Errorf("provider does not support zone lookup")
 
 	DNSProviderCoreDNS DNSProviderName = "coredns"
+	DNSProviderCRD     DNSProviderName = "crd"
+	DNSProviderK8s     DNSProviderName = "k8s"
 	DNSProviderAWS     DNSProviderName = "aws"
 	DNSProviderAzure   DNSProviderName = "azure"
 	DNSProviderGCP     DNSProviderName = "google"

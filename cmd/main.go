@@ -41,6 +41,7 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/coredns"
+	_ "github.com/kuadrant/dns-operator/internal/provider/crd"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
 	//+kubebuilder:scaffold:imports
@@ -136,14 +137,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	if len(providers) == 0 {
-		defaultProviders := provider.RegisteredDefaultProviders()
-		if defaultProviders == nil {
-			setupLog.Error(fmt.Errorf("no default providers registered"), "unable to set providers")
-			os.Exit(1)
-		}
-		providers = defaultProviders
+	//ToDo Revert this
+	//if len(providers) == 0 {
+	defaultProviders := provider.RegisteredDefaultProviders()
+	if defaultProviders == nil {
+		setupLog.Error(fmt.Errorf("no default providers registered"), "unable to set providers")
+		os.Exit(1)
 	}
+	providers = defaultProviders
+	//}
 
 	setupLog.Info("init provider factory", "providers", providers)
 	providerFactory, err := provider.NewFactory(mgr.GetClient(), providers)

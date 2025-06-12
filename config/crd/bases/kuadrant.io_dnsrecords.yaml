@@ -186,6 +186,8 @@ spec:
               providerRef:
                 description: ProviderRef is a reference to a provider secret.
                 properties:
+                  delegation_type:
+                    type: string
                   name:
                     type: string
                 required:
@@ -518,6 +520,8 @@ spec:
                 description: ProviderRef is a reference to a provider secret used
                   to publish endpoints.
                 properties:
+                  delegation_type:
+                    type: string
                   name:
                     type: string
                 required:

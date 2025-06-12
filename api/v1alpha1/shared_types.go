@@ -16,7 +16,12 @@ limitations under the License.
 
 package v1alpha1
 
-import corev1 "k8s.io/api/core/v1"
+import (
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+type DelegationType string
 
 const (
 	// SecretTypeKuadrantAWS contains data needed for aws(route53) authentication and configuration.
@@ -63,14 +68,28 @@ const (
 	SecretTypeKuadrantCoreDNS corev1.SecretType = "kuadrant.io/coredns"
 
 	DefaultProviderSecretLabel = "kuadrant.io/default-provider"
+
+	DelegationTypePrimary DelegationType = "primary"
+	DelegationTypeRemote  DelegationType = "remote"
 )
 
 type ProviderRef struct {
 	Name string `json:"name"`
+
+	DelegationType *DelegationType `json:"delegation_type,omitempty"`
+}
+
+func (p *ProviderRef) IsDelegated() bool {
+	return p.DelegationType != nil
+}
+
+func (p *ProviderRef) IsPrimary() bool {
+	return p.IsDelegated() && *p.DelegationType == DelegationTypePrimary
 }
 
 // +kubebuilder:object:generate=false
 type ProviderAccessor interface {
 	GetNamespace() string
 	GetProviderRef() ProviderRef
+	GetObject() client.Object
 }

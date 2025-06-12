@@ -186,6 +186,8 @@ spec:
               providerRef:
                 description: ProviderRef is a reference to a provider secret.
                 properties:
+                  delegation_type:
+                    type: string
                   name:
                     type: string
                 required:
@@ -204,6 +206,7 @@ spec:
                 - message: RootHost is immutable
                   rule: self == oldSelf
             required:
+            - providerRef
             - rootHost
             type: object
             x-kubernetes-validations:
