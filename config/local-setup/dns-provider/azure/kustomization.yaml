@@ -11,4 +11,3 @@ secretGenerator:
     envs:
       - azure-credentials.env
     type: "kuadrant.io/azure"
-
