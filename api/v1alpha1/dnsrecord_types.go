@@ -28,9 +28,17 @@ import (
 )
 
 type Protocol string
+type DelegationRole string
 
-const HttpProtocol Protocol = "HTTP"
-const HttpsProtocol Protocol = "HTTPS"
+const (
+	DelegationRolePrimary DelegationRole = "primary"
+	DelegationRoleRemote  DelegationRole = "remote"
+
+	AuthoritativeRecordLabel = "kuadrant.io/authoritative-record"
+
+	HttpProtocol  Protocol = "HTTP"
+	HttpsProtocol Protocol = "HTTPS"
+)
 
 // HealthCheckSpec configures health checks in the DNS provider.
 // By default this health check will be applied to each unique DNS A Record for
@@ -115,6 +123,12 @@ type DNSRecordSpec struct {
 
 	// +optional
 	HealthCheck *HealthCheckSpec `json:"healthCheck,omitempty"`
+
+	AuthorityDelegation *AuthorityDelegation `json:"authorityDelegation,omitempty"`
+}
+
+type AuthorityDelegation struct {
+	Role *DelegationRole `json:"role,omitempty"`
 }
 
 // DNSRecordStatus defines the observed state of DNSRecord
@@ -258,6 +272,18 @@ func (s *DNSRecord) HasOwnerIDAssigned() bool {
 }
 
 func (s *DNSRecord) HasProviderSecretAssigned() bool { return s.Status.ProviderRef.Name != "" }
+
+func (s *DNSRecord) IsDelegatingAuthority() bool {
+	return s.Spec.AuthorityDelegation != nil
+}
+
+func (s *DNSRecord) IsPrimary() bool {
+	return s.IsDelegatingAuthority() && *s.Spec.AuthorityDelegation.Role == DelegationRolePrimary
+}
+
+func (s *DNSRecord) IsRemote() bool {
+	return s.IsDelegatingAuthority() && *s.Spec.AuthorityDelegation.Role == DelegationRoleRemote
+}
 
 func init() {
 	SchemeBuilder.Register(&DNSRecord{}, &DNSRecordList{})

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"golang.org/x/exp/maps"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -47,7 +48,6 @@ import (
 	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
-	"github.com/kuadrant/dns-operator/internal/provider/crd"
 )
 
 const (
@@ -242,17 +242,12 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
 		}
 
-		ref := dnsRecord.Spec.ProviderRef
-		switch p.(type) {
-		case *crd.Provider:
-			if ref.IsPrimary() {
-				typedP := p.(*crd.Provider)
-				_, err = typedP.EnsureAuthoritativeRecord(ctx, *dnsRecord)
-				if err != nil {
-					setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-						"DNSProviderError", fmt.Sprintf("Unable to create authoritative record for primary: %v", provider.SanitizeError(err)))
-					return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
-				}
+		if dnsRecord.IsPrimary() {
+			_, err = r.EnsureAuthoritativeRecord(ctx, *dnsRecord)
+			if err != nil {
+				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+					"DNSProviderError", fmt.Sprintf("Unable to create authoritative record for primary: %v", provider.SanitizeError(err)))
+				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
 			}
 		}
 
@@ -505,11 +500,10 @@ func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alp
 // returns if it had changes, if record is healthy and an error. If had no changes - the healthy bool can be ignored
 func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider) (bool, []string, error) {
 	logger := log.FromContext(ctx)
-	if dnsProvider.Name() != "coredns" {
-		if prematurely, _ := recordReceivedPrematurely(dnsRecord, probes); prematurely {
-			logger.V(1).Info("Skipping DNSRecord - is still valid")
-			return false, []string{}, nil
-		}
+
+	if prematurely, _ := recordReceivedPrematurely(dnsRecord, probes); prematurely {
+		logger.V(1).Info("Skipping DNSRecord - is still valid")
+		return false, []string{}, nil
 	}
 
 	hadChanges, notHealthyProbes, err := r.applyChanges(ctx, dnsRecord, probes, dnsProvider, false)
@@ -663,9 +657,46 @@ func (r *DNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord *v1a
 	return r.ProviderFactory.ProviderFor(ctx, dnsRecord, providerConfig)
 }
 
-// applyChanges creates the Plan and applies it to the registry. Returns true only if the Plan had no errors and there were changes to apply.
-// The error is nil only if the changes were successfully applied or there were no changes to be made.
 func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
+	hadChanges, err := r.applyLabels(ctx, dnsRecord, dnsProvider, isDelete)
+	if hadChanges || err != nil {
+		return hadChanges, nil, err
+	}
+	return r.applyPlanChanges(ctx, dnsRecord, probes, dnsProvider, isDelete)
+}
+
+func (r *DNSRecordReconciler) applyLabels(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, dnsProvider provider.Provider, isDelete bool) (bool, error) {
+	if dnsProvider.Name() == provider.DNSProviderCoreDNS && !dnsRecord.IsDelegatingAuthority() {
+		newLabels := map[string]string{}
+		for key, value := range dnsRecord.GetLabels() {
+			newLabels[key] = value
+		}
+
+		if isDelete {
+			_, hasLabel := newLabels[provider.CoreDNSRecordZoneLabel]
+			if hasLabel {
+				delete(newLabels, provider.CoreDNSRecordZoneLabel)
+			}
+		} else {
+			newLabels[provider.CoreDNSRecordZoneLabel] = dnsRecord.Spec.RootHost
+		}
+
+		if !maps.Equal(newLabels, dnsRecord.GetLabels()) {
+			dnsRecord.Labels = newLabels
+			err := r.Update(ctx, dnsRecord)
+			if err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// applyExternalDNSChanges creates the Plan and applies it to the registry. Returns true only if the Plan had no errors and there were changes to apply.
+// The error is nil only if the changes were successfully applied or there were no changes to be made.
+func (r *DNSRecordReconciler) applyPlanChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
+
 	logger := log.FromContext(ctx)
 	rootDomainName := dnsRecord.Spec.RootHost
 	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName})

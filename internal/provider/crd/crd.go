@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"slices"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -13,7 +13,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/external-dns/endpoint"
-	externaldns "sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -21,27 +20,39 @@ import (
 )
 
 const (
-	authoritativeNameLabel = "kuadrant.io/authoritative-name"
+	defaultZoneRecordLabel = "kuadrant.io/crd-provider-zone-record"
 )
 
 var (
 	scheme = runtime.NewScheme()
-
-	ErrLocalRecordNotPrimary         = fmt.Errorf("local record exists but is not primary")
-	ErrLocalRecordDifferentRootHosts = fmt.Errorf("local record exists but has different root host")
 )
 
 type Provider struct {
-	client client.Client
-	config provider.Config
-	object client.Object
+	client          client.Client
+	config          provider.Config
+	object          client.Object
+	zoneRecordLabel string
 }
 
-func NewProvider(_ context.Context, c client.Client, o client.Object, config provider.Config) (provider.Provider, error) {
+func NewProviderFromSecret(_ context.Context, c client.Client, s *v1.Secret, config provider.Config) (provider.Provider, error) {
+	if s == nil {
+		return nil, fmt.Errorf("secret cannot be nil")
+	}
+
+	if s.GetNamespace() == "" {
+		return nil, fmt.Errorf("namespace not set")
+	}
+
+	zoneRecordSelectorLabel := defaultZoneRecordLabel
+	if val, ok := s.Data[v1alpha1.CRDZoneRecordLabelKey]; ok && string(val) != "" {
+		zoneRecordSelectorLabel = string(val)
+	}
+
 	return &Provider{
-		client: client.NewNamespacedClient(c, o.GetNamespace()),
-		config: config,
-		object: o,
+		client:          client.NewNamespacedClient(c, s.GetNamespace()),
+		config:          config,
+		object:          s,
+		zoneRecordLabel: zoneRecordSelectorLabel,
 	}, nil
 }
 
@@ -108,7 +119,7 @@ func (p *Provider) DNSZones(ctx context.Context) ([]provider.DNSZone, error) {
 	var hzs []provider.DNSZone
 
 	aRecords := &v1alpha1.DNSRecordList{}
-	req, err := labels.NewRequirement(authoritativeNameLabel, selection.Exists, []string{})
+	req, err := labels.NewRequirement(p.zoneRecordLabel, selection.Exists, []string{})
 	if err != nil {
 		return nil, err
 	}
@@ -144,19 +155,6 @@ func (p *Provider) DNSZoneForHost(ctx context.Context, host string) (*provider.D
 	return nil, fmt.Errorf("no zone found for host: %s", host)
 }
 
-func (p *Provider) EnsureAuthoritativeRecord(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
-	primaryRecord, err := p.getPrimaryRecordForRecord(ctx, record)
-	if err != nil {
-		return nil, err
-	}
-
-	zr, err := p.getAuthoritativeRecordForPrimary(ctx, *primaryRecord)
-	if err != nil && apierrors.IsNotFound(err) {
-		return p.createAuthoritativeRecordForPrimary(ctx, *primaryRecord)
-	}
-	return zr, err
-}
-
 func (p *Provider) getRecordForZoneIDFilter(ctx context.Context) (*v1alpha1.DNSRecord, error) {
 	if !p.config.ZoneIDFilter.IsConfigured() {
 		return nil, fmt.Errorf("no zone id filter specified for CRD Provider")
@@ -174,79 +172,6 @@ func (p *Provider) getRecordForZoneIDFilter(ctx context.Context) (*v1alpha1.DNSR
 	return aRecord, nil
 }
 
-func (p *Provider) getPrimaryRecordForRecord(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
-	// A primary record must exist on this cluster in the same namespace as the given record, with the same rootHost and have a valid provider
-	primaryRecord := &v1alpha1.DNSRecord{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      record.Name,
-			Namespace: record.Namespace,
-		},
-	}
-	if err := p.client.Get(ctx, client.ObjectKeyFromObject(primaryRecord), primaryRecord); err != nil {
-		return nil, err
-	}
-
-	ref := primaryRecord.GetProviderRef()
-	if !ref.IsPrimary() {
-		return nil, ErrLocalRecordNotPrimary
-	}
-
-	if primaryRecord.Spec.RootHost != record.Spec.RootHost {
-		return nil, ErrLocalRecordDifferentRootHosts
-	}
-
-	return primaryRecord, nil
-}
-
-func (p *Provider) getAuthoritativeRecordForPrimary(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
-	aRecord := authoritativeRecordFor(record)
-
-	if err := p.client.Get(ctx, client.ObjectKeyFromObject(aRecord), aRecord); err != nil {
-		return nil, fmt.Errorf("failed to get authoritative record: %w", err)
-	}
-
-	return aRecord, nil
-}
-
-func (p *Provider) createAuthoritativeRecordForPrimary(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
-	aRecord := authoritativeRecordFor(record)
-
-	if err := p.client.Create(ctx, aRecord, &client.CreateOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to create authoritative record: %w", err)
-	}
-
-	return aRecord, nil
-}
-
-func authoritativeRecordFor(rec v1alpha1.DNSRecord) *v1alpha1.DNSRecord {
-	return &v1alpha1.DNSRecord{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      toAuthoritativeRecordName(rec.Name),
-			Namespace: rec.Namespace,
-			Labels: map[string]string{
-				authoritativeNameLabel: rec.Spec.RootHost,
-			},
-		},
-		Spec: v1alpha1.DNSRecordSpec{
-			RootHost: rec.Spec.RootHost,
-			Endpoints: []*externaldns.Endpoint{
-				{
-					DNSName:    rec.Spec.RootHost,
-					RecordType: "SOA",
-					RecordTTL:  0,
-				},
-			},
-			ProviderRef: &v1alpha1.ProviderRef{
-				Name: rec.Status.ProviderRef.Name,
-			},
-		},
-	}
-}
-
-func toAuthoritativeRecordName(name string) string {
-	return fmt.Sprintf("%s-%s", name, "authoritative")
-}
-
 func (p *Provider) ProviderSpecific() provider.ProviderSpecificLabels {
 	return provider.ProviderSpecificLabels{}
 }
@@ -260,5 +185,5 @@ func init() {
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 
 	// This doesn't get registered with the factory
-	provider.RegisterProviderConstructorWithClientAndObject(p.Name().String(), NewProvider, true)
+	provider.RegisterProviderWithClient(p.Name().String(), NewProviderFromSecret, true)
 }

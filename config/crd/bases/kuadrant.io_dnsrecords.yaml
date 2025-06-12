@@ -69,6 +69,11 @@ spec:
           spec:
             description: DNSRecordSpec defines the desired state of DNSRecord
             properties:
+              authorityDelegation:
+                properties:
+                  role:
+                    type: string
+                type: object
               endpoints:
                 description: endpoints is a list of endpoints that will be published
                   into the dns provider.
@@ -186,8 +191,6 @@ spec:
               providerRef:
                 description: ProviderRef is a reference to a provider secret.
                 properties:
-                  delegation_type:
-                    type: string
                   name:
                     type: string
                 required:
@@ -520,8 +523,6 @@ spec:
                 description: ProviderRef is a reference to a provider secret used
                   to publish endpoints.
                 properties:
-                  delegation_type:
-                    type: string
                   name:
                     type: string
                 required:
