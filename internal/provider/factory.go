@@ -23,8 +23,8 @@ var errUnsupportedProvider = fmt.Errorf("provider type given is not supported")
 
 // ProviderConstructor constructs a provider given a Secret resource and a Context.
 // An error will be returned if the appropriate provider is not registered.
-type ProviderConstructorWithSecret func(context.Context, *v1.Secret, Config) (Provider, error)
-type ProviderConstructorWithClientAndObject func(context.Context, client.Client, client.Object, Config) (Provider, error)
+type ProviderConstructor func(context.Context, *v1.Secret, Config) (Provider, error)
+type ProviderConstructorWithClient func(context.Context, client.Client, *v1.Secret, Config) (Provider, error)
 
 var (
 	constructors     = make(map[string]interface{})
@@ -32,17 +32,11 @@ var (
 	defaultProviders []string
 )
 
-func RegisterProviderConstructorWithClientAndObject(name string, c ProviderConstructorWithClientAndObject, asDefault bool) {
+func RegisterProviderWithClient(name string, c ProviderConstructorWithClient, asDefault bool) {
 	registerProvider(name, c, asDefault)
 }
 
-func RegisterProviderSecret(name string, c ProviderConstructorWithSecret, asDefault bool) {
-	RegisterProvider(name, c, asDefault)
-}
-
-// Deprecated
-// use RegisterProviderSecret instead
-func RegisterProvider(name string, c ProviderConstructorWithSecret, asDefault bool) {
+func RegisterProvider(name string, c ProviderConstructor, asDefault bool) {
 	registerProvider(name, c, asDefault)
 }
 
@@ -92,10 +86,18 @@ func NewFactory(c client.Client, p []string) (Factory, error) {
 func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor, c Config) (Provider, error) {
 	logger := log.FromContext(ctx)
 
-	var provider string
 	var providerSecret *v1.Secret
-	if pa.GetProviderRef().DelegationType != nil {
-		provider = DNSProviderCRD.String()
+	if pa.IsDelegatingAuthority() {
+		providerSecret = &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pa.GetProviderRef().Name,
+				Namespace: pa.GetNamespace(),
+			},
+			Type: v1alpha1.SecretTypeKuadrantCRD,
+			Data: map[string][]byte{
+				v1alpha1.CRDZoneRecordLabelKey: []byte(v1alpha1.AuthoritativeRecordLabel),
+			},
+		}
 	} else {
 		providerSecret = &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -106,12 +108,11 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 		if err := f.Client.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret); err != nil {
 			return nil, err
 		}
+	}
 
-		var err error
-		provider, err = NameForProviderSecret(providerSecret)
-		if err != nil {
-			return nil, err
-		}
+	provider, err := NameForProviderSecret(providerSecret)
+	if err != nil {
+		return nil, err
 	}
 
 	constructorsLock.RLock()
@@ -123,12 +124,12 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 		logger.V(1).Info(fmt.Sprintf("initializing %s provider with config", provider), "config", c)
 
 		switch constructor.(type) {
-		case ProviderConstructorWithSecret:
-			typedConstructor := constructor.(ProviderConstructorWithSecret)
+		case ProviderConstructor:
+			typedConstructor := constructor.(ProviderConstructor)
 			return typedConstructor(ctx, providerSecret, c)
-		case ProviderConstructorWithClientAndObject:
-			typedConstructor := constructor.(ProviderConstructorWithClientAndObject)
-			return typedConstructor(ctx, f.Client, pa.GetObject(), c)
+		case ProviderConstructorWithClient:
+			typedConstructor := constructor.(ProviderConstructorWithClient)
+			return typedConstructor(ctx, f.Client, providerSecret, c)
 		}
 
 		return nil, fmt.Errorf("unrecognised contructor for provider '%s'", provider)
@@ -149,6 +150,8 @@ func NameForProviderSecret(secret *v1.Secret) (string, error) {
 		return DNSProviderInMem.String(), nil
 	case v1alpha1.SecretTypeKuadrantCoreDNS:
 		return DNSProviderCoreDNS.String(), nil
+	case v1alpha1.SecretTypeKuadrantCRD:
+		return DNSProviderCRD.String(), nil
 	}
 	return "", errUnsupportedProvider
 }
