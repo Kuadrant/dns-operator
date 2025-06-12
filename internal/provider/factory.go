@@ -23,18 +23,33 @@ var errUnsupportedProvider = fmt.Errorf("provider type given is not supported")
 
 // ProviderConstructor constructs a provider given a Secret resource and a Context.
 // An error will be returned if the appropriate provider is not registered.
-type ProviderConstructor func(context.Context, *v1.Secret, Config) (Provider, error)
+type ProviderConstructorWithSecret func(context.Context, *v1.Secret, Config) (Provider, error)
+type ProviderConstructorWithClientAndObject func(context.Context, client.Client, client.Object, Config) (Provider, error)
 
 var (
-	constructors     = make(map[string]ProviderConstructor)
+	constructors     = make(map[string]interface{})
 	constructorsLock sync.RWMutex
 	defaultProviders []string
 )
 
-// RegisterProvider will register a provider constructor, so it can be used within the application.
+func RegisterProviderConstructorWithClientAndObject(name string, c ProviderConstructorWithClientAndObject, asDefault bool) {
+	registerProvider(name, c, asDefault)
+}
+
+func RegisterProviderSecret(name string, c ProviderConstructorWithSecret, asDefault bool) {
+	RegisterProvider(name, c, asDefault)
+}
+
+// Deprecated
+// use RegisterProviderSecret instead
+func RegisterProvider(name string, c ProviderConstructorWithSecret, asDefault bool) {
+	registerProvider(name, c, asDefault)
+}
+
+// registerProvider will register a provider constructor, so it can be used within the application.
 // 'name' should be unique, and should be used to identify this provider
 // `asDefault` indicates if the provider should be added as a default provider and included in the default providers list.
-func RegisterProvider(name string, c ProviderConstructor, asDefault bool) {
+func registerProvider(name string, c interface{}, asDefault bool) {
 	constructorsLock.Lock()
 	defer constructorsLock.Unlock()
 	constructors[name] = c
@@ -76,19 +91,27 @@ func NewFactory(c client.Client, p []string) (Factory, error) {
 // If the requested ProviderAccessor secret does not exist, an error will be returned.
 func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor, c Config) (Provider, error) {
 	logger := log.FromContext(ctx)
-	providerSecret := &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pa.GetProviderRef().Name,
-			Namespace: pa.GetNamespace(),
-		}}
 
-	if err := f.Client.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret); err != nil {
-		return nil, err
-	}
+	var provider string
+	var providerSecret *v1.Secret
+	if pa.GetProviderRef().DelegationType != nil {
+		provider = DNSProviderCRD.String()
+	} else {
+		providerSecret = &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pa.GetProviderRef().Name,
+				Namespace: pa.GetNamespace(),
+			}}
 
-	provider, err := NameForProviderSecret(providerSecret)
-	if err != nil {
-		return nil, err
+		if err := f.Client.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret); err != nil {
+			return nil, err
+		}
+
+		var err error
+		provider, err = NameForProviderSecret(providerSecret)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	constructorsLock.RLock()
@@ -98,7 +121,17 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 			return nil, fmt.Errorf("provider '%s' not enabled", provider)
 		}
 		logger.V(1).Info(fmt.Sprintf("initializing %s provider with config", provider), "config", c)
-		return constructor(ctx, providerSecret, c)
+
+		switch constructor.(type) {
+		case ProviderConstructorWithSecret:
+			typedConstructor := constructor.(ProviderConstructorWithSecret)
+			return typedConstructor(ctx, providerSecret, c)
+		case ProviderConstructorWithClientAndObject:
+			typedConstructor := constructor.(ProviderConstructorWithClientAndObject)
+			return typedConstructor(ctx, f.Client, pa.GetObject(), c)
+		}
+
+		return nil, fmt.Errorf("unrecognised contructor for provider '%s'", provider)
 	}
 
 	return nil, fmt.Errorf("provider '%s' not registered", provider)

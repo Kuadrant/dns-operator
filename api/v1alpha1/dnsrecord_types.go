@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/internal/common/hash"
@@ -104,7 +105,7 @@ type DNSRecordSpec struct {
 	RootHost string `json:"rootHost"`
 
 	// providerRef is a reference to a provider secret.
-	ProviderRef *ProviderRef `json:"providerRef,omitempty"`
+	ProviderRef ProviderRef `json:"providerRef"`
 
 	// endpoints is a list of endpoints that will be published into the dns provider.
 	// +kubebuilder:validation:MinItems=1
@@ -237,7 +238,11 @@ func (s *DNSRecord) GetUIDHash() string {
 }
 
 func (s *DNSRecord) GetProviderRef() ProviderRef {
-	return *s.Spec.ProviderRef
+	return s.Spec.ProviderRef
+}
+
+func (s *DNSRecord) GetObject() client.Object {
+	return s
 }
 
 func (s *DNSRecord) HasDNSZoneAssigned() bool {
