@@ -17,15 +17,18 @@ limitations under the License.
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"golang.org/x/sync/errgroup"
+
+	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -33,9 +36,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/controller"
+	kubeconfigprovider "github.com/kuadrant/dns-operator/internal/multicluster-runtime/providers/kubeconfig"
 	"github.com/kuadrant/dns-operator/internal/probes"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
@@ -48,7 +53,6 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 	gitSHA   string // pass ldflag here to display gitSHA hash
 	dirty    string // must be string as passed in by ldflag to determine display .
@@ -62,9 +66,7 @@ const (
 )
 
 func init() {
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
-	utilruntime.Must(v1alpha1.AddToScheme(scheme))
+	runtime.Must(v1alpha1.AddToScheme(scheme.Scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -111,7 +113,7 @@ func main() {
 
 	var watchNamespaces = "WATCH_NAMESPACES"
 	defaultOptions := ctrl.Options{
-		Scheme:                 scheme,
+		Scheme:                 scheme.Scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		WebhookServer:          webhook.NewServer(webhook.Options{Port: 9443}),
 		HealthProbeBindAddress: probeAddr,
@@ -131,45 +133,68 @@ func main() {
 		defaultOptions.Cache = cacheOpts
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), defaultOptions)
+	// Create the kubeconfig provider with options
+	clusterProviderOpts := kubeconfigprovider.Options{
+		Namespace:             "dns-operator-system",
+		KubeconfigSecretLabel: "sigs.k8s.io/multicluster-runtime-kubeconfig",
+		KubeconfigSecretKey:   "kubeconfig",
+	}
+
+	// Create the provider first, then the manager with the provider
+	setupLog.Info("Creating cluster provider")
+	clusterProvider := kubeconfigprovider.New(clusterProviderOpts)
+
+	// Setup a cluster-aware Manager, with the provider to lookup clusters.
+	setupLog.Info("Creating cluster aware manager")
+	mgr, err := mcmanager.New(ctrl.GetConfigOrDie(), clusterProvider, defaultOptions)
 	if err != nil {
-		setupLog.Error(err, "unable to start manager")
+		setupLog.Error(err, "unable to start multi cluster manager")
 		os.Exit(1)
 	}
 
-	//ToDo Revert this
-	//if len(providers) == 0 {
-	defaultProviders := provider.RegisteredDefaultProviders()
-	if defaultProviders == nil {
-		setupLog.Error(fmt.Errorf("no default providers registered"), "unable to set providers")
-		os.Exit(1)
+	if len(providers) == 0 {
+		defaultProviders := provider.RegisteredDefaultProviders()
+		if defaultProviders == nil {
+			setupLog.Error(fmt.Errorf("no default providers registered"), "unable to set providers")
+			os.Exit(1)
+		}
+		providers = defaultProviders
 	}
-	providers = defaultProviders
-	//}
 
 	setupLog.Info("init provider factory", "providers", providers)
-	providerFactory, err := provider.NewFactory(mgr.GetClient(), providers)
+	providerFactory, err := provider.NewFactory(mgr.GetLocalManager().GetClient(), providers)
 	if err != nil {
 		setupLog.Error(err, "unable to create provider factory")
 		os.Exit(1)
 	}
 
-	if err = (&controller.DNSRecordReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
+	dnsRecordController := &controller.DNSRecordReconciler{
+		Client:          mgr.GetLocalManager().GetClient(),
+		Scheme:          mgr.GetLocalManager().GetScheme(),
 		ProviderFactory: providerFactory,
-	}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
+	}
+
+	mcdnsRecordController := &controller.MultClusterDNSRecordReconciler{
+		DNSRecordReconciler: *dnsRecordController,
+	}
+
+	if err = dnsRecordController.SetupWithManager(mgr.GetLocalManager(), maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSRecord")
+		os.Exit(1)
+	}
+
+	if err = mcdnsRecordController.SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "MultiClusterDNSRecord")
 		os.Exit(1)
 	}
 
 	if dnsProbesEnabled {
 		probeManager := probes.NewProbeManager()
 		if err = (&controller.DNSProbeReconciler{
-			Client:       mgr.GetClient(),
-			Scheme:       mgr.GetScheme(),
+			Client:       mgr.GetLocalManager().GetClient(),
+			Scheme:       mgr.GetLocalManager().GetScheme(),
 			ProbeManager: probeManager,
-		}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime); err != nil {
+		}).SetupWithManager(mgr.GetLocalManager(), maxRequeueTime, validFor, minRequeueTime); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "DNSProbe")
 			os.Exit(1)
 		}
@@ -186,11 +211,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
+	//ToDo Figure out how we can just use mgr.Start e.g. wrap clusterProvider.Run in a Runnable?
+	//setupLog.Info("starting manager")
+	//if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	//	setupLog.Error(err, "problem running manager")
+	//	os.Exit(1)
+	//}
+
+	ctx := ctrl.SetupSignalHandler()
+	// Starting everything.
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return ignoreCanceled(mgr.Start(ctx))
+	})
+	g.Go(func() error {
+		return ignoreCanceled(clusterProvider.Run(ctx, mgr))
+	})
+	if err := g.Wait(); err != nil {
+		setupLog.Error(err, "unable to start")
 		os.Exit(1)
 	}
+}
+
+func ignoreCanceled(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+	return err
 }
 
 type stringSliceFlags []string
