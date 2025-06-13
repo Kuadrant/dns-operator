@@ -16,7 +16,6 @@ require (
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/martinlindhe/base36 v1.1.1
-	github.com/miekg/dns v1.1.55
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
 	github.com/pkg/errors v0.9.1
@@ -25,6 +24,7 @@ require (
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/net v0.38.0
 	golang.org/x/oauth2 v0.27.0
+	golang.org/x/sync v0.12.0
 	google.golang.org/api v0.162.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.33.0
@@ -33,6 +33,7 @@ require (
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/external-dns v0.14.0
+	sigs.k8s.io/multicluster-runtime v0.21.0-alpha.8
 )
 
 require (
@@ -91,8 +92,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
-	golang.org/x/mod v0.21.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/term v0.30.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
