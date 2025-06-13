@@ -20,7 +20,7 @@ spec:
       - args:
         - --leader-elect
         - --metrics-bind-address=:8080
-        - --provider=aws,google,inmemory,azure
+        - --provider=aws,google,inmemory,azure,coredns,crd
         - --zap-log-level=debug
         command:
         - /manager
