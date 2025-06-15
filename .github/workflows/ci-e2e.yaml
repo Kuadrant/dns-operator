@@ -85,6 +85,13 @@ jobs:
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-coredns
       - name: Run suite AWS
         run: |
+          export TEST_DNS_PROVIDER_NAME=aws
+          export TEST_DNS_ZONE_DOMAIN_NAME=e2e.hcpapps.net
+          export TEST_DNS_NAMESPACE=${{ env.TEST_NAMESPACE }}
+          export TEST_DNS_CONCURRENT_RECORDS=${{ env.TEST_RECORDS_COUNT }}
+          make test-e2e
+      - name: Run suite AWS from Secret
+        run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-aws
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.hcpapps.net
           export TEST_DNS_NAMESPACE=${{ env.TEST_NAMESPACE }}
