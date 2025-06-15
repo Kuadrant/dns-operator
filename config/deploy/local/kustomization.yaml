@@ -16,15 +16,6 @@ patches:
         - secretRef:
             name: dns-provider-credentials-aws
             optional: true
-        - secretRef:
-            name: dns-provider-credentials-azure
-            optional: true
-        - secretRef:
-            name: dns-provider-credentials-v2-azure
-            optional: true
-        - secretRef:
-            name: dns-provider-credentials-gcp
-            optional: true
     target:
       kind: Deployment
   - path: manager_config_patch.yaml

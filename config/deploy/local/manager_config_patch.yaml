@@ -12,17 +12,24 @@ spec:
           args:
             - --metrics-bind-address=:8080
             - --leader-elect
-            - --provider=aws,awsFromSecret,google,googleFromSecret,azure,azureFromSecret,corednsFromSecret
+            - --provider=aws,awsFromSecret,google,googleFromSecret,azure,azureFromSecret,coredns,corednsFromSecret
             - --zap-log-level=debug
-          # Google json creds mounted from secret
+          # static json creds mounted from secret (google,azure)
           env:
           - name: GOOGLE_APPLICATION_CREDENTIALS
-            value: "/etc/google-creds/GOOGLE"
+            value: "/etc/secrets/service-account/credentials.json"
           volumeMounts:
           - name: google-application-credentials
-            mountPath: /etc/google-creds
+            mountPath: /etc/secrets/service-account/
+          # static json creds mounted from secret
+          - name: azure-application-credentials
+            mountPath: /etc/kubernetes/azure.json
       volumes:
         - name: google-application-credentials
           secret:
             secretName: dns-provider-credentials-gcp
+            optional: true
+        - name: azure-application-credentials
+          secret:
+            secretName: dns-provider-credentials-azure
             optional: true

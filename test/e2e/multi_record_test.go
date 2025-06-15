@@ -80,8 +80,50 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	Context("simple", Labels{"simple"}, func() {
 		It("creates and deletes distributed dns records", func(ctx SpecContext) {
 			totalRecords := len(testNamespaces) * len(testClusters) * testConcurrentRecords
-			By(fmt.Sprintf("creating %d simple dnsrecords accross %d clusters each with %d namespaces containing %d records", totalRecords, len(testClusters), len(testNamespaces), testConcurrentRecords))
+			By(fmt.Sprintf("creating %d simple dnsrecords across %d clusters each with %d namespaces containing %d records", totalRecords, len(testClusters), len(testNamespaces), testConcurrentRecords))
 			for ci, tc := range testClusters {
+				if len(tc.testDNSProviderSecrets) == 0 {
+					for ri := 0; ri < testConcurrentRecords; ri++ {
+						config := testConfig{
+							testTargetIP: fmt.Sprintf("127.%d.%d.%d", ci+1, 0, ri+1),
+						}
+						record := &v1alpha1.DNSRecord{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      fmt.Sprintf("%s-%d", testID, ri+1),
+								Namespace: testNamespaces[0],
+							},
+							Spec: v1alpha1.DNSRecordSpec{
+								RootHost: testHostname,
+								Provider: &v1alpha1.Provider{
+									Name: testDNSProvider,
+								},
+								Endpoints: []*externaldnsendpoint.Endpoint{
+									{
+										DNSName: testHostname,
+										Targets: []string{
+											config.testTargetIP,
+										},
+										RecordType: "A",
+										RecordTTL:  60,
+									},
+								},
+								HealthCheck: nil,
+							},
+						}
+
+						By(fmt.Sprintf("creating dns record [name: `%s`, namespace: `%s`, secret: `%s`, endpoint: [dnsname: `%s`, target: `%s`]] on cluster [name: `%s`]", record.Name, record.Namespace, testDNSProvider, testHostname, config.testTargetIP, tc.name))
+						err := tc.k8sClient.Create(ctx, record)
+						Expect(err).ToNot(HaveOccurred())
+
+						testRecords = append(testRecords, &testDNSRecord{
+							cluster:           &testClusters[ci],
+							dnsProviderSecret: nil,
+							record:            record,
+							config:            config,
+						})
+					}
+					continue
+				}
 				for si, s := range tc.testDNSProviderSecrets {
 					for ri := 0; ri < testConcurrentRecords; ri++ {
 						config := testConfig{
@@ -94,7 +136,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							},
 							Spec: v1alpha1.DNSRecordSpec{
 								RootHost: testHostname,
-								ProviderRef: v1alpha1.ProviderRef{
+								ProviderRef: &v1alpha1.ProviderRef{
 									Name: s.Name,
 								},
 								Endpoints: []*externaldnsendpoint.Endpoint{
@@ -366,7 +408,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							},
 							Spec: v1alpha1.DNSRecordSpec{
 								RootHost: testHostname,
-								ProviderRef: v1alpha1.ProviderRef{
+								ProviderRef: &v1alpha1.ProviderRef{
 									Name: s.Name,
 								},
 								Endpoints: []*externaldnsendpoint.Endpoint{

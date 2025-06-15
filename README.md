@@ -38,20 +38,21 @@ The following variables are also required for all credential types:
 - `AZURE_RESOURCE_GROUP`
 - `AZURE_SUBSCRIPTION_ID`
 
-##### AWS Provider from DNS Operator Secret (Route53)
+#### Add DNS provider configuration from DNS Operator Secret
+
+##### AWS Provider (Route53)
 ```bash
 make local-setup-aws-clean local-setup-aws-generate AWS_ACCESS_KEY_ID=<My AWS ACCESS KEY> AWS_SECRET_ACCESS_KEY=<My AWS Secret Access Key>
 ```
 More details about the AWS provider can be found [here](./docs/provider.md#aws-route-53-provider)
 
-##### GCP Provider from DNS Operator Secret 
-
+##### GCP Provider
 ```bash
 make local-setup-gcp-clean local-setup-gcp-generate GCP_GOOGLE_CREDENTIALS='<My GCP Credentials.json>' GCP_PROJECT_ID=<My GCP PROJECT ID>
 ```
 More details about the GCP provider can be found [here](./docs/provider.md#google-cloud-dns-provider)
 
-##### AZURE Provider from DNS Operator Secret 
+##### AZURE Provider
 
 ```bash
 make local-setup-azure-clean local-setup-azure-generate KUADRANT_AZURE_CREDENTIALS='<My Azure Credentials.json>'
@@ -127,8 +128,8 @@ make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=<My domain name> TEST_DNS_PROVIDER_SECRE
 | Environment Variable       | Description                                                                                                                                                                        |
 |----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | TEST_DNS_PROVIDER_SECRET_NAME | Name of the provider secret to use. If using local-setup provider secrets zones, one of [dns-provider-credentials-aws; dns-provider-credentials-gcp;dns-provider-credentials-azure] | 
-| TEST_DNS_ZONE_DOMAIN_NAME        | The Domain name to use in the test. Must be a zone accessible with the (TEST_DNS_PROVIDER_SECRET_NAME) credentials with the same domain name                                       | 
-| TEST_DNS_NAMESPACES        | The namespace(s) where the provider secret(s) can be found                                                                                                                         | 
+| TEST_DNS_ZONE_DOMAIN_NAME     | The Domain name to use in the test. Must be a zone accessible with the (TEST_DNS_PROVIDER_SECRET_NAME) credentials with the same domain name                                       | 
+| TEST_DNS_NAMESPACES           | The namespace(s) where the provider secret(s) can be found                                                                                                                         | 
 
 ### Modifying the API definitions
 If you are editing the API definitions, generate the manifests such as CRs or CRDs using:

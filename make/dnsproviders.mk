@@ -14,13 +14,11 @@ ndef = $(if $(value $(1)),,$(error $(1) not set))
 LOCAL_SETUP_AWS_DIR=config/local-setup/dns-provider/aws
 LOCAL_SETUP_GCP_DIR=config/local-setup/dns-provider/gcp
 LOCAL_SETUP_AZURE_DIR=config/local-setup/dns-provider/azure
-LOCAL_SETUP_AZURE_V2_DIR=config/local-setup/dns-provider/azure-v2
 LOCAL_SETUP_INMEM_DIR=config/local-setup/dns-provider/inmemory
 LOCAL_SETUP_COREDNS_DIR=config/local-setup/dns-provider/coredns
 LOCAL_SETUP_AWS_CREDS=${LOCAL_SETUP_AWS_DIR}/aws-credentials.env
 LOCAL_SETUP_GCP_CREDS=${LOCAL_SETUP_GCP_DIR}/gcp-credentials.env
 LOCAL_SETUP_AZURE_CREDS=${LOCAL_SETUP_AZURE_DIR}/azure-credentials.env
-LOCAL_SETUP_AZURE_V2_CREDS=${LOCAL_SETUP_AZURE_V2_DIR}/azure-credentials-v2.env
 LOCAL_SETUP_COREDNS_CREDS=${LOCAL_SETUP_COREDNS_DIR}/coredns-credentials.env
 
 .PHONY: local-setup-aws-generate
@@ -64,23 +62,6 @@ $(LOCAL_SETUP_AZURE_CREDS):
 	$(call ndef,KUADRANT_AZURE_CREDENTIALS)
 	$(call patch-config,${LOCAL_SETUP_AZURE_CREDS}.template,${LOCAL_SETUP_AZURE_CREDS})
 
-.PHONY: local-setup-azure-v2-generate
-local-setup-azure-v2-generate: local-setup-azure-v2-credentials ## Generate Azure DNS Provider credentials for local-setup
-
-.PHONY: local-setup-azure-v2-clean
-local-setup-azure-v2-clean: ## Remove Azure DNS Provider credentials
-	rm -f ${LOCAL_SETUP_AZURE_V2_CREDS}
-
-.PHONY: local-setup-azure-v2-credentials
-local-setup-azure-v2-credentials: $(LOCAL_SETUP_AZURE_V2_CREDS)
-$(LOCAL_SETUP_AZURE_V2_CREDS):
-	$(call ndef,AZURE_SUBSCRIPTION_ID)
-	$(call ndef,AZURE_RESOURCE_GROUP)
-	$(call ndef,AZURE_TENANT_ID)
-	$(call ndef,AZURE_CLIENT_ID)
-	$(call ndef,AZURE_CLIENT_SECRET)
-	$(call patch-config,${LOCAL_SETUP_AZURE_V2_CREDS}.template,${LOCAL_SETUP_AZURE_V2_CREDS})
-
 .PHONY: local-setup-coredns-generate-from-clusters
 local-setup-coredns-generate-from-clusters: export COREDNS_NAMESERVERS=$(shell hack/coredns-server-list.sh kind-${KIND_CLUSTER_NAME_PREFIX} ${CLUSTER_COUNT} || echo "")
 local-setup-coredns-generate-from-clusters: export COREDNS_ZONES=k.example.com
@@ -114,10 +95,6 @@ local-setup-dns-providers: kustomize ## Create AWS, Azure and GCP DNS Providers 
 	@if [[ -f ${LOCAL_SETUP_AZURE_CREDS} ]]; then\
 		echo "local-setup: creating dns provider for azure in ${TARGET_NAMESPACE}";\
 		$(KUSTOMIZE) build ${LOCAL_SETUP_AZURE_DIR} | $(KUBECTL) -n ${TARGET_NAMESPACE} apply  -f -;\
-	fi
-	@if [[ -f ${LOCAL_SETUP_AZURE_V2_CREDS} ]]; then\
-		echo "local-setup: creating dns provider for azure v2 in ${TARGET_NAMESPACE}";\
-		$(KUSTOMIZE) build ${LOCAL_SETUP_AZURE_V2_DIR} | $(KUBECTL) -n ${TARGET_NAMESPACE} apply  -f -;\
 	fi
 	@if [[ -f ${LOCAL_SETUP_COREDNS_CREDS} ]]; then\
     	echo "local-setup: creating dns provider for coredns in ${TARGET_NAMESPACE}";\

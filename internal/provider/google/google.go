@@ -19,7 +19,6 @@ package google
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -173,7 +172,7 @@ func NewProviderFromSecret(ctx context.Context, s *corev1.Secret, c provider.Con
 
 func NewProvider(ctx context.Context, c provider.Config) (provider.Provider, error) {
 	googleConfig := externaldnsgoogle.GoogleConfig{
-		Project:             os.Getenv("PROJECT_ID"),
+		Project:             c.GoogleProject,
 		DomainFilter:        c.DomainFilter,
 		ZoneIDFilter:        c.ZoneIDFilter,
 		ZoneTypeFilter:      c.ZoneTypeFilter,

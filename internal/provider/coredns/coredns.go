@@ -44,6 +44,7 @@ const (
 // Register this Provider with the provider factory
 func init() {
 	provider.RegisterProviderFromSecret(p.Name().String()+"FromSecret", NewCoreDNSProviderFromSecret, true)
+	provider.RegisterProvider(p.Name().String(), NewCoreDNSProvider, true)
 }
 
 func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
@@ -75,6 +76,31 @@ func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.
 	if _, ok := s.Data[ProviderZonesKey]; ok {
 		p.availableZones = strings.Split(strings.TrimSpace(string(s.Data[ProviderZonesKey])), ",")
 	}
+	p.availableZones = append(p.availableZones, provider.KuadrantTLD)
+	p.DNSQueryFunc = p.dnsQuery
+	return p, nil
+}
+
+func NewCoreDNSProvider(ctx context.Context, c provider.Config) (provider.Provider, error) {
+	logger := log.FromContext(ctx).WithName(p.Name().String())
+
+	p := &CoreDNSProvider{
+		logger:     logger,
+		hostFilter: c.HostDomainFilter,
+	}
+
+	nameservers := []*string{}
+	nservers := strings.Split(strings.TrimSpace(string(c.CoreDNSNameserver)), ",")
+	for _, ns := range nservers {
+		if err := validateNSAddress(ns); err != nil {
+			return p, err
+		}
+		nameservers = append(nameservers, &ns)
+	}
+	p.nameservers = nameservers
+
+	p.availableZones = strings.Split(strings.TrimSpace(string(c.CoreDNSZones)), ",")
+
 	p.availableZones = append(p.availableZones, provider.KuadrantTLD)
 	p.DNSQueryFunc = p.dnsQuery
 	return p, nil

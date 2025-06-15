@@ -70,6 +70,15 @@ type Config struct {
 	ZoneTypeFilter externaldnsprovider.ZoneTypeFilter
 	// only consider hosted zones ending with this zone id
 	ZoneIDFilter externaldnsprovider.ZoneIDFilter
+
+	// For Azure providers, use this file for credentials
+	AzureConfigFile string
+	// For Google providers, use this project id
+	GoogleProject string
+	// CoreDNS Nameserver
+	CoreDNSNameserver string
+	// CoreDNS Zones
+	CoreDNSZones string
 }
 
 type ProviderSpecificLabels struct {

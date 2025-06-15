@@ -82,11 +82,23 @@ func NewAzureProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Co
 }
 
 func NewAzureProvider(ctx context.Context, c provider.Config) (provider.Provider, error) {
-	azureConfig := externaldnsproviderazure.Config{
-		ResourceGroup:            os.Getenv("AZURE_RESOURCE_GROUP"),
-		SubscriptionID:           os.Getenv("AZURE_SUBSCRIPTION_ID"),
-		UseEnvironmentCredential: true, // could expand to support other credential options
+	var azureConfig externaldnsproviderazure.Config
+
+	// Set the config file to the default value if not provided
+	if c.AzureConfigFile == "" {
+		c.AzureConfigFile = "/etc/kubernetes/azure.json"
 	}
+
+	contents, err := os.ReadFile(c.AzureConfigFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read Azure config file '%s': %v", c.AzureConfigFile, err)
+	}
+
+	err = yaml.Unmarshal(contents, &azureConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal Azure config file '%s': %v", c.AzureConfigFile, err)
+	}
+
 	logger := crlog.FromContext(ctx).
 		WithName("azure-dns").
 		WithValues("tenantId", azureConfig.TenantID, "resourceGroup", azureConfig.ResourceGroup)
@@ -100,7 +112,6 @@ func NewAzureProvider(ctx context.Context, c provider.Config) (provider.Provider
 	azureConfig.Transporter = metrics.NewInstrumentedClient(provider.DNSProviderAzure.String(), nil)
 
 	azureProvider, err := externaldnsproviderazure.NewAzureProviderFromConfig(ctx, azureConfig)
-
 	if err != nil {
 		return nil, fmt.Errorf("unable to create azure provider: %s", err)
 	}

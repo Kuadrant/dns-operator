@@ -187,11 +187,16 @@ spec:
                 description: provider is the name of the DNS provider to use, credentials
                   must be available on the environment.
                 properties:
+                  azureConfigFile:
+                    type: string
+                  corednsNameserver:
+                    type: string
+                  corednsZones:
+                    type: string
+                  googleProject:
+                    type: string
                   name:
                     minLength: 1
-                    type: string
-                  resourceGroup:
-                    description: TODO require if Name == azure
                     type: string
                 required:
                 - name
@@ -200,8 +205,6 @@ spec:
                 description: providerRef is a reference to a provider secret.
                 properties:
                   name:
-                    description: make this field required when the parent is not null,
-                      while the parent is optional
                     minLength: 1
                     type: string
                 required:

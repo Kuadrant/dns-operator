@@ -97,6 +97,12 @@ func NewFactory(c client.Client, p []string) (Factory, error) {
 func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor, c Config) (Provider, error) {
 	logger := log.FromContext(ctx)
 
+	// Copy provider specific configuration
+	c.AzureConfigFile = pa.GetProvider().AzureConfigFile
+	c.GoogleProject = pa.GetProvider().GoogleProject
+	c.CoreDNSNameserver = pa.GetProvider().CoreDNSNameserver
+	c.CoreDNSZones = pa.GetProvider().CoreDNSZones
+
 	// If the provider accessor has a provider set, we will use that provider & pass nil as the secret
 	provider := pa.GetProvider().Name
 	if provider != "" {

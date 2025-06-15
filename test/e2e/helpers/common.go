@@ -41,11 +41,11 @@ func ResolversForDomainNameAndProvider(domainName string, providerSecret *v1.Sec
 	var nameServers []string
 	authoritative = true
 
-	if providerSecret.Type == v1alpha1.SecretTypeKuadrantCoreDNS {
+	if providerSecret != nil && providerSecret.Type == v1alpha1.SecretTypeKuadrantCoreDNS {
 		coreDNSNS := providerSecret.Data["NAMESERVERS"]
 		Expect(coreDNSNS).NotTo(BeEmpty())
 		nameServers = strings.Split(string(coreDNSNS), ",")
-	} else if providerSecret.Type != v1alpha1.SecretTypeKuadrantAzure {
+	} else if providerSecret != nil && providerSecret.Type != v1alpha1.SecretTypeKuadrantAzure {
 		// speed up things by using an authoritative nameserver
 		nss, err := net.LookupNS(domainName)
 		Expect(err).ToNot(HaveOccurred())
