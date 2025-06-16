@@ -68,6 +68,8 @@ jobs:
           cache: false
       - name: Sanity check
         run: echo "Hello World"
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
       - name: Create AWS provider configuration
         run: |
           make local-setup-aws-clean local-setup-aws-generate AWS_ACCESS_KEY_ID=${{ secrets.E2E_AWS_ACCESS_KEY_ID }} AWS_SECRET_ACCESS_KEY=${{ secrets.E2E_AWS_SECRET_ACCESS_KEY }}
