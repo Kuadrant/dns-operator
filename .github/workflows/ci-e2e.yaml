@@ -60,12 +60,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        # with:
-        #   ref: ${{ github.event.pull_request.head.sha || github.ref }}
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
       - uses: actions/setup-go@v5
         with:
           go-version: v1.23.x
           cache: false
+      - name: Sanity check
+        run: echo "Hello World"
       - name: Create AWS provider configuration
         run: |
           make local-setup-aws-clean local-setup-aws-generate AWS_ACCESS_KEY_ID=${{ secrets.E2E_AWS_ACCESS_KEY_ID }} AWS_SECRET_ACCESS_KEY=${{ secrets.E2E_AWS_SECRET_ACCESS_KEY }}
