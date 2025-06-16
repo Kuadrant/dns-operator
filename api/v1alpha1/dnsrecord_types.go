@@ -128,7 +128,7 @@ type DNSRecordSpec struct {
 }
 
 type AuthorityDelegation struct {
-	Role *DelegationRole `json:"role,omitempty"`
+	Role DelegationRole `json:"role"`
 }
 
 // DNSRecordStatus defines the observed state of DNSRecord
@@ -278,11 +278,11 @@ func (s *DNSRecord) IsDelegatingAuthority() bool {
 }
 
 func (s *DNSRecord) IsPrimary() bool {
-	return s.IsDelegatingAuthority() && *s.Spec.AuthorityDelegation.Role == DelegationRolePrimary
+	return s.IsDelegatingAuthority() && s.Spec.AuthorityDelegation.Role == DelegationRolePrimary
 }
 
 func (s *DNSRecord) IsRemote() bool {
-	return s.IsDelegatingAuthority() && *s.Spec.AuthorityDelegation.Role == DelegationRoleRemote
+	return s.IsDelegatingAuthority() && s.Spec.AuthorityDelegation.Role == DelegationRoleRemote
 }
 
 func init() {
