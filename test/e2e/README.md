@@ -106,11 +106,12 @@ make local-setup DEPLOY=true DEPLOYMENT_SCOPE=namespace DEPLOYMENT_COUNT=2 CLUST
 
 ### Cluster scoped on single cluster
 ```shell
-make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=mn.hcpapps.net TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-aws TEST_DNS_NAMESPACES=dnstest
+make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=mn.hcpapps.net TEST_DNS_PROVIDER_NAME=aws TEST_DNS_NAMESPACES=dnstest
 ```
 
+Using credentials in a secret:
 ```shell
-make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=mn.hcpapps.net TEST_DNS_PROVIDER_NAME=aws TEST_DNS_NAMESPACES=dnstest
+make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=mn.hcpapps.net TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-aws TEST_DNS_NAMESPACES=dnstest
 ```
 
 ### Namespace scoped on single cluster
