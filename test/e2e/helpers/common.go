@@ -102,7 +102,7 @@ func EndpointsForHost(ctx context.Context, p provider.Provider, host string) ([]
 }
 
 func ProviderForDNSRecord(ctx context.Context, record *v1alpha1.DNSRecord, c client.Client) (provider.Provider, error) {
-	providerFactory, err := provider.NewFactory(c, []string{provider.DNSProviderAWS.String(), provider.DNSProviderGCP.String(), provider.DNSProviderAzure.String(), provider.DNSProviderCoreDNS.String()})
+	providerFactory, err := provider.NewFactory(c, []string{provider.DNSProviderAWS.String(), provider.DNSProviderGCP.String(), provider.DNSProviderAzure.String(), provider.DNSProviderCoreDNS.String(), provider.DNSProviderFromSecretAWS.String(), provider.DNSProviderFromSecretGCP.String(), provider.DNSProviderFromSecretAzure.String(), provider.DNSProviderFromSecretCoreDNS.String()})
 	if err != nil {
 		return nil, err
 	}

@@ -30,7 +30,7 @@ var (
 	DNSProviderGCP     DNSProviderName = "google"
 	DNSProviderInMem   DNSProviderName = "inmemory"
 
-	DNSProviderFromSecretCoreDNS DNSProviderName = "coredns"
+	DNSProviderFromSecretCoreDNS DNSProviderName = "corednsFromSecret"
 	DNSProviderFromSecretAWS     DNSProviderName = "awsFromSecret"
 	DNSProviderFromSecretAzure   DNSProviderName = "azureFromSecret"
 	DNSProviderFromSecretGCP     DNSProviderName = "googleFromSecret"

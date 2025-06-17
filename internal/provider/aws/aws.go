@@ -65,7 +65,7 @@ func (*Route53DNSProvider) Name() provider.DNSProviderName {
 	return provider.DNSProviderAWS
 }
 
-func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (p provider.Provider, err error) {
+func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	config := aws.NewConfig()
 
 	config.WithHTTPClient(metrics.NewInstrumentedClient(provider.DNSProviderAWS.String(), config.HTTPClient))
@@ -112,7 +112,7 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		return nil, fmt.Errorf("unable to create aws provider: %s", err)
 	}
 
-	p = &Route53DNSProvider{
+	p := &Route53DNSProvider{
 		AWSProvider:   awsProvider,
 		awsConfig:     awsConfig,
 		logger:        logger,
