@@ -34,6 +34,7 @@ import (
 const (
 	// configuration environment variables
 	dnsZoneDomainNameEnvvar     = "TEST_DNS_ZONE_DOMAIN_NAME"
+	dnsProviderNameEnvvar       = "TEST_DNS_PROVIDER_NAME"
 	dnsProviderSecretNameEnvvar = "TEST_DNS_PROVIDER_SECRET_NAME"
 	dnsNamespacesEnvvar         = "TEST_DNS_NAMESPACES"
 	dnsConcurrentRecordsEnvVar  = "TEST_DNS_CONCURRENT_RECORDS"
@@ -120,7 +121,9 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	Expect(testZoneDomainName).NotTo(BeEmpty())
 	Expect(testClusters).NotTo(BeEmpty())
 	for i := range testClusters {
-		Expect(testClusters[i].testDNSProviderSecrets).NotTo(BeEmpty())
+		if testProviderSecretName != "" {
+			Expect(testClusters[i].testDNSProviderSecrets).NotTo(BeEmpty())
+		}
 	}
 
 	recordsReadyMaxDuration = GetRecordsReadyTimeout(testDNSProvider)
@@ -173,8 +176,10 @@ func setConfigFromEnvVars() error {
 	if testZoneDomainName = os.Getenv(dnsZoneDomainNameEnvvar); testZoneDomainName == "" {
 		return fmt.Errorf("env variable '%s' must be set", dnsZoneDomainNameEnvvar)
 	}
-	if testProviderSecretName = os.Getenv(dnsProviderSecretNameEnvvar); testProviderSecretName == "" {
-		return fmt.Errorf("env variable '%s' must be set", dnsProviderSecretNameEnvvar)
+	testDNSProvider = os.Getenv(dnsProviderNameEnvvar)
+	testProviderSecretName = os.Getenv(dnsProviderSecretNameEnvvar)
+	if testDNSProvider == "" && testProviderSecretName == "" {
+		return fmt.Errorf("one of env variable '%s' or '%s' must be set", dnsProviderNameEnvvar, dnsProviderSecretNameEnvvar)
 	}
 
 	namespacesStr := os.Getenv(dnsNamespacesEnvvar)
@@ -263,7 +268,9 @@ func loadClusters(ctx context.Context) {
 			k8sClient: k8sClient,
 		}
 
-		loadProviderSecrets(ctx, tc)
+		if testDNSProvider == "" {
+			loadProviderSecrets(ctx, tc)
+		}
 
 		//Append the cluster to the list of test clusters
 		testClusters = append(testClusters, *tc)

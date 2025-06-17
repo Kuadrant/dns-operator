@@ -30,6 +30,12 @@ var (
 	DNSProviderGCP     DNSProviderName = "google"
 	DNSProviderInMem   DNSProviderName = "inmemory"
 
+	DNSProviderFromSecretCoreDNS DNSProviderName = "corednsFromSecret"
+	DNSProviderFromSecretAWS     DNSProviderName = "awsFromSecret"
+	DNSProviderFromSecretAzure   DNSProviderName = "azureFromSecret"
+	DNSProviderFromSecretGCP     DNSProviderName = "googleFromSecret"
+	DNSProviderFromSecretInMem   DNSProviderName = "inmemoryFromSecret"
+
 	CoreDNSRecordZoneLabel = "kuadrant.io/coredns-zone-name"
 	CoreDNSRecordTypeLabel = "kuadrant.io/type"
 
@@ -64,6 +70,15 @@ type Config struct {
 	ZoneTypeFilter externaldnsprovider.ZoneTypeFilter
 	// only consider hosted zones ending with this zone id
 	ZoneIDFilter externaldnsprovider.ZoneIDFilter
+
+	// For Azure providers, use this file for credentials
+	AzureConfigFile string
+	// For Google providers, use this project id
+	GoogleProject string
+	// CoreDNS Nameserver
+	CoreDNSNameserver string
+	// CoreDNS Zones
+	CoreDNSZones string
 }
 
 type ProviderSpecificLabels struct {

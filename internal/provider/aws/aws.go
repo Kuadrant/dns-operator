@@ -73,6 +73,8 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 	sessionOpts := session.Options{
 		Config: *config,
 	}
+
+	// Error if a secret is provided but credentials are missing
 	if string(s.Data[v1alpha1.AWSAccessKeyIDKey]) == "" || string(s.Data[v1alpha1.AWSSecretAccessKeyKey]) == "" {
 		return nil, fmt.Errorf("AWS Provider credentials is empty")
 	}
@@ -111,6 +113,52 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 	}
 
 	p := &Route53DNSProvider{
+		AWSProvider:   awsProvider,
+		awsConfig:     awsConfig,
+		logger:        logger,
+		route53Client: route53Client,
+	}
+	return p, nil
+}
+
+func NewProvider(ctx context.Context, c provider.Config) (provider.Provider, error) {
+	config := aws.NewConfig()
+
+	config.WithHTTPClient(metrics.NewInstrumentedClient(provider.DNSProviderAWS.String(), config.HTTPClient))
+
+	sessionOpts := session.Options{
+		Config: *config,
+	}
+
+	sess, err := session.NewSessionWithOptions(sessionOpts)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create aws session: %s", err)
+	}
+
+	route53Client := route53.New(sess, config)
+
+	awsConfig := externaldnsprovideraws.AWSConfig{
+		DomainFilter:         c.DomainFilter,
+		ZoneIDFilter:         c.ZoneIDFilter,
+		ZoneTypeFilter:       c.ZoneTypeFilter,
+		ZoneTagFilter:        externaldnsprovider.NewZoneTagFilter([]string{}),
+		BatchChangeSize:      awsBatchChangeSize,
+		BatchChangeInterval:  awsBatchChangeInterval,
+		EvaluateTargetHealth: awsEvaluateTargetHealth,
+		PreferCNAME:          awsPreferCNAME,
+		DryRun:               false,
+		ZoneCacheDuration:    awsZoneCacheDuration,
+	}
+
+	logger := log.FromContext(ctx).WithName("aws-dns").WithValues("region", config.Region)
+	ctx = log.IntoContext(ctx, logger)
+
+	awsProvider, err := externaldnsprovideraws.NewAWSProvider(ctx, awsConfig, route53Client)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create aws provider: %s", err)
+	}
+
+	p = &Route53DNSProvider{
 		AWSProvider:   awsProvider,
 		awsConfig:     awsConfig,
 		logger:        logger,
@@ -195,5 +243,6 @@ func (*Route53DNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
 
 // Register this Provider with the provider factory
 func init() {
-	provider.RegisterProvider(p.Name().String(), NewProviderFromSecret, true)
+	provider.RegisterProviderFromSecret(p.Name().String()+"FromSecret", NewProviderFromSecret, true)
+	provider.RegisterProvider(p.Name().String(), NewProvider, true)
 }

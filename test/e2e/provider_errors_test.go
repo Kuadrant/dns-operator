@@ -39,12 +39,21 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 
 	var dnsRecord *v1alpha1.DNSRecord
 
+	var namespace string
+
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-errors-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		k8sClient = testClusters[0].k8sClient
-		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
+
+		if testProviderSecretName != "" {
+			testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
+			namespace = testDNSProviderSecret.Namespace
+		} else {
+			namespace = testNamespaces[0]
+			testDNSProviderSecret = &v1.Secret{}
+		}
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -62,26 +71,45 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 
 	It("correctly handles invalid provider credentials", func(ctx SpecContext) {
 		var expectedProviderErr string
-		pBuilder := builder.NewProviderBuilder("invalid-credentials", testDNSProviderSecret.Namespace).
+		pBuilder := builder.NewProviderBuilder("invalid-credentials", namespace).
 			For(testDNSProviderSecret.Type)
 
-		if testDNSProvider == provider.DNSProviderGCP.String() {
-			//Google
-			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantGCP))
+		if testDNSProvider == provider.DNSProviderAWS.String() {
+			// AWS
+			pBuilder.WithDataItem(v1alpha1.AWSAccessKeyIDKey, "1234")
+			pBuilder.WithDataItem(v1alpha1.AWSSecretAccessKeyKey, "1234")
+			expectedProviderErr = "failed to list hosted zones, InvalidClientTokenId: The security token included in the request is invalid."
+		} else if testDNSProvider == provider.DNSProviderGCP.String() {
+			// Google
 			pBuilder.WithDataItem(v1alpha1.GoogleJsonKey, "{\"client_id\": \"foo.bar.com\",\"client_secret\": \"1234\",\"refresh_token\": \"1234\",\"type\": \"authorized_user\"}")
 			pBuilder.WithDataItem(v1alpha1.GoogleProjectIDKey, "foobar")
 			expectedProviderErr = "oauth2: \"invalid_client\" \"The OAuth client was not found.\""
 		} else if testDNSProvider == provider.DNSProviderAzure.String() {
-			//Azure
-			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantAzure))
+			// Azure
 			pBuilder.WithDataItem(v1alpha1.AzureJsonKey, "{}")
 			Skip("not yet supported for azure")
 		} else if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+			// CoreDNS
+			pBuilder.WithDataItem("ZONES", "wrong.me")
+			Skip("not yet supported for coredns")
+		} else if testDNSProvider == provider.DNSProviderFromSecretGCP.String() {
+			// Google from secret
+			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantGCP))
+			pBuilder.WithDataItem(v1alpha1.GoogleJsonKey, "{\"client_id\": \"foo.bar.com\",\"client_secret\": \"1234\",\"refresh_token\": \"1234\",\"type\": \"authorized_user\"}")
+			pBuilder.WithDataItem(v1alpha1.GoogleProjectIDKey, "foobar")
+			expectedProviderErr = "oauth2: \"invalid_client\" \"The OAuth client was not found.\""
+		} else if testDNSProvider == provider.DNSProviderFromSecretAzure.String() {
+			// Azure from secret
+			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantAzure))
+			pBuilder.WithDataItem(v1alpha1.AzureJsonKey, "{}")
+			Skip("not yet supported for azure")
+		} else if testDNSProvider == provider.DNSProviderFromSecretCoreDNS.String() {
+			// CoreDNS from secret
 			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantCoreDNS))
 			pBuilder.WithDataItem("ZONES", "wrong.me")
 			Skip("not yet supported for coredns")
-		} else {
-			//AWS
+		} else if testDNSProvider == provider.DNSProviderFromSecretAWS.String() {
+			// AWS from secret
 			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantAWS))
 			pBuilder.WithDataItem(v1alpha1.AWSAccessKeyIDKey, "1234")
 			pBuilder.WithDataItem(v1alpha1.AWSSecretAccessKeyKey, "1234")
@@ -90,7 +118,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		invalidProviderSecret = pBuilder.Build()
 		Expect(k8sClient.Create(ctx, invalidProviderSecret)).To(Succeed())
 
-		dnsRecord = testBuildDNSRecord(testID, invalidProviderSecret.Namespace, invalidProviderSecret.Name, "test-owner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, invalidProviderSecret.Namespace, invalidProviderSecret.Name, testDNSProvider, "test-owner", testHostname)
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid provider credentials")
 		err := k8sClient.Create(ctx, dnsRecord)
@@ -155,7 +183,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			invalidEndpoint,
 		}
 
-		dnsRecord = testBuildDNSRecord(testID, testDNSProviderSecret.Namespace, testDNSProviderSecret.Name, "test-owner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, namespace, testDNSProviderSecret.Name, testDNSProvider, "test-owner", testHostname)
 		dnsRecord.Spec.Endpoints = testEndpoints
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid geo endpoint")
@@ -251,7 +279,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			invalidEndpoint,
 		}
 
-		dnsRecord = testBuildDNSRecord(testID, testDNSProviderSecret.Namespace, testDNSProviderSecret.Name, "test-owner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, namespace, testDNSProviderSecret.Name, testDNSProvider, "test-owner", testHostname)
 		dnsRecord.Spec.Endpoints = testEndpoints
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid weight endpoint")
@@ -313,18 +341,29 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 })
 
 // testBuildDNSRecord creates a valid dnsrecord with a single valid endpoint
-func testBuildDNSRecord(name, ns, dnsProviderSecretName, ownerID, rootHost string) *v1alpha1.DNSRecord {
+func testBuildDNSRecord(name, ns, dnsProviderSecretName, dnsProviderName, ownerID, rootHost string) *v1alpha1.DNSRecord {
+	var providerRefObj *v1alpha1.ProviderRef
+	var providerObj *v1alpha1.Provider
+	if dnsProviderSecretName != "" {
+		providerRefObj = &v1alpha1.ProviderRef{
+			Name: testProviderSecretName,
+		}
+	} else {
+		providerObj = &v1alpha1.Provider{
+			Name: dnsProviderName,
+		}
+	}
+
 	return &v1alpha1.DNSRecord{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
 		},
 		Spec: v1alpha1.DNSRecordSpec{
-			OwnerID:  ownerID,
-			RootHost: rootHost,
-			ProviderRef: v1alpha1.ProviderRef{
-				Name: dnsProviderSecretName,
-			},
+			OwnerID:     ownerID,
+			RootHost:    rootHost,
+			ProviderRef: providerRefObj,
+			Provider:    providerObj,
 			Endpoints: []*externaldnsendpoint.Endpoint{
 				{
 					DNSName: rootHost,

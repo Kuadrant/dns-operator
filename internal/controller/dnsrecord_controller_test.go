@@ -83,7 +83,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 	// Test cases covering validation of the DNSRecord resource fields
 	Context("validation", func() {
-		It("should error with no providerRef", func(ctx SpecContext) {
+		It("should error with no providerRef or provider", func(ctx SpecContext) {
 			testHostname = strings.Join([]string{"bar", testZoneDomainName}, ".")
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{

@@ -45,11 +45,11 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		testRecords = []*testDNSRecord{}
-		if testDNSProvider == provider.DNSProviderGCP.String() {
+		if testDNSProvider == provider.DNSProviderGCP.String() || testDNSProvider == provider.DNSProviderFromSecretGCP.String() {
 			geoCode1 = "us-east1"
 			geoCode2 = "europe-west1"
 			weighted = "weighted"
-		} else if testDNSProvider == provider.DNSProviderAzure.String() {
+		} else if testDNSProvider == provider.DNSProviderAzure.String() || testDNSProvider == provider.DNSProviderFromSecretAzure.String() {
 			geoCode1 = "GEO-NA"
 			geoCode2 = "GEO-EU"
 			weighted = "Weighted"
@@ -80,8 +80,50 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	Context("simple", Labels{"simple"}, func() {
 		It("creates and deletes distributed dns records", func(ctx SpecContext) {
 			totalRecords := len(testNamespaces) * len(testClusters) * testConcurrentRecords
-			By(fmt.Sprintf("creating %d simple dnsrecords accross %d clusters each with %d namespaces containing %d records", totalRecords, len(testClusters), len(testNamespaces), testConcurrentRecords))
+			By(fmt.Sprintf("creating %d simple dnsrecords across %d clusters each with %d namespaces containing %d records", totalRecords, len(testClusters), len(testNamespaces), testConcurrentRecords))
 			for ci, tc := range testClusters {
+				if len(tc.testDNSProviderSecrets) == 0 {
+					for ri := 0; ri < testConcurrentRecords; ri++ {
+						config := testConfig{
+							testTargetIP: fmt.Sprintf("127.%d.%d.%d", ci+1, 0, ri+1),
+						}
+						record := &v1alpha1.DNSRecord{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      fmt.Sprintf("%s-%d", testID, ri+1),
+								Namespace: testNamespaces[0],
+							},
+							Spec: v1alpha1.DNSRecordSpec{
+								RootHost: testHostname,
+								Provider: &v1alpha1.Provider{
+									Name: testDNSProvider,
+								},
+								Endpoints: []*externaldnsendpoint.Endpoint{
+									{
+										DNSName: testHostname,
+										Targets: []string{
+											config.testTargetIP,
+										},
+										RecordType: "A",
+										RecordTTL:  60,
+									},
+								},
+								HealthCheck: nil,
+							},
+						}
+
+						By(fmt.Sprintf("creating dns record [name: `%s`, namespace: `%s`, secret: `%s`, endpoint: [dnsname: `%s`, target: `%s`]] on cluster [name: `%s`]", record.Name, record.Namespace, testDNSProvider, testHostname, config.testTargetIP, tc.name))
+						err := tc.k8sClient.Create(ctx, record)
+						Expect(err).ToNot(HaveOccurred())
+
+						testRecords = append(testRecords, &testDNSRecord{
+							cluster:           &testClusters[ci],
+							dnsProviderSecret: nil,
+							record:            record,
+							config:            config,
+						})
+					}
+					continue
+				}
 				for si, s := range tc.testDNSProviderSecrets {
 					for ri := 0; ri < testConcurrentRecords; ri++ {
 						config := testConfig{
@@ -94,7 +136,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							},
 							Spec: v1alpha1.DNSRecordSpec{
 								RootHost: testHostname,
-								ProviderRef: v1alpha1.ProviderRef{
+								ProviderRef: &v1alpha1.ProviderRef{
 									Name: s.Name,
 								},
 								Endpoints: []*externaldnsendpoint.Endpoint{
@@ -366,7 +408,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							},
 							Spec: v1alpha1.DNSRecordSpec{
 								RootHost: testHostname,
-								ProviderRef: v1alpha1.ProviderRef{
+								ProviderRef: &v1alpha1.ProviderRef{
 									Name: s.Name,
 								},
 								Endpoints: []*externaldnsendpoint.Endpoint{
@@ -484,16 +526,16 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
 			var expectedEndpointsLen int
-			if testDNSProvider == provider.DNSProviderGCP.String() {
+			if testDNSProvider == provider.DNSProviderGCP.String() || testDNSProvider == provider.DNSProviderFromSecretGCP.String() {
 				expectedEndpointsLen = (2 + len(testGeoRecords) + len(testRecords)) * 2
 				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
-			} else if testDNSProvider == provider.DNSProviderAzure.String() {
+			} else if testDNSProvider == provider.DNSProviderAzure.String() || testDNSProvider == provider.DNSProviderFromSecretAzure.String() {
 				expectedEndpointsLen = (2 + len(testGeoRecords) + len(testRecords)) * 2
 				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
-			} else if testDNSProvider == provider.DNSProviderAWS.String() {
+			} else if testDNSProvider == provider.DNSProviderAWS.String() || testDNSProvider == provider.DNSProviderFromSecretAWS.String() {
 				expectedEndpointsLen = (2 + len(testGeoRecords) + (len(testRecords) * 2)) * 2
 				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
-			} else if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+			} else if testDNSProvider == provider.DNSProviderCoreDNS.String() || testDNSProvider == provider.DNSProviderFromSecretCoreDNS.String() {
 				expectedEndpointsLen = 1 + len(testGeoRecords) + (len(testRecords) * 2)
 				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
 			}
@@ -559,7 +601,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 			By("[Geo] checking geo endpoints")
 
-			if testDNSProvider == provider.DNSProviderAzure.String() {
+			if testDNSProvider == provider.DNSProviderAzure.String() || testDNSProvider == provider.DNSProviderFromSecretAzure.String() {
 
 				defaultTarget := FindDefaultTarget(zoneEndpoints)
 				// A CNAME record for klbHostName should always exist, be owned by all endpoints and target all geo hostnames
@@ -597,7 +639,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				}))))
 				totalEndpointsChecked++
 			}
-			if testDNSProvider == provider.DNSProviderGCP.String() {
+			if testDNSProvider == provider.DNSProviderGCP.String() || testDNSProvider == provider.DNSProviderFromSecretGCP.String() {
 				// A CNAME record for klbHostName should always exist, be owned by all endpoints and target all geo hostnames
 				klbHostName := testRecords[0].config.hostnames.klb
 
@@ -630,7 +672,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				}))))
 				totalEndpointsChecked++
 			}
-			if testDNSProvider == provider.DNSProviderAWS.String() {
+			if testDNSProvider == provider.DNSProviderAWS.String() || testDNSProvider == provider.DNSProviderFromSecretAWS.String() {
 				// A CNAME record for klbHostName should exist for each geo and be owned by all endpoints in that geo
 				klbHostName := testRecords[0].config.hostnames.klb
 				for geoCode, geoRecords := range testGeoRecords {
@@ -699,7 +741,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				}))))
 				totalEndpointsChecked++
 			}
-			if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+			if testDNSProvider == provider.DNSProviderCoreDNS.String() || testDNSProvider == provider.DNSProviderFromSecretCoreDNS.String() {
 				// A CNAME record for klbHostName should exist for each geo with a setIdentifier of "default" on the default
 				klbHostName := testRecords[0].config.hostnames.klb
 				for geoCode, geoRecords := range testGeoRecords {
@@ -728,7 +770,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By("[Weight] checking weighted endpoints")
-			if testDNSProvider == provider.DNSProviderAzure.String() {
+			if testDNSProvider == provider.DNSProviderAzure.String() || testDNSProvider == provider.DNSProviderFromSecretAzure.String() {
 				// A weighted CNAME record should exist for each geo, be owned by all endpoints in that geo, and target the hostname of all clusters in that geo
 				for geoCode, geoRecords := range testGeoRecords {
 					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
@@ -764,7 +806,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					totalEndpointsChecked++
 				}
 			}
-			if testDNSProvider == provider.DNSProviderGCP.String() {
+			if testDNSProvider == provider.DNSProviderGCP.String() || testDNSProvider == provider.DNSProviderFromSecretGCP.String() {
 				// A weighted CNAME record should exist for each geo, be owned by all endpoints in that geo, and target the hostname of all clusters in that geo
 				for geoCode, geoRecords := range testGeoRecords {
 					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
@@ -800,7 +842,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					totalEndpointsChecked++
 				}
 			}
-			if testDNSProvider == provider.DNSProviderAWS.String() {
+			if testDNSProvider == provider.DNSProviderAWS.String() || testDNSProvider == provider.DNSProviderFromSecretAWS.String() {
 				// A weighted CNAME record should exist for each dns record in each geo and be owned only by that endpoint
 				for _, geoRecords := range testGeoRecords {
 					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
@@ -835,7 +877,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					}
 				}
 			}
-			if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+			if testDNSProvider == provider.DNSProviderCoreDNS.String() || testDNSProvider == provider.DNSProviderFromSecretCoreDNS.String() {
 				// A weighted CNAME record should exist for each dns record in each geo
 				for _, geoRecords := range testGeoRecords {
 					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb

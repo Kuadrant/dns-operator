@@ -11,7 +11,34 @@ One of the key use cases the DNS operator solves, is allowing complex DNS routin
 
 #### Add DNS provider configuration
 
-**NOTE:** You can optionally skip this step but at least one DNS Provider Secret will need to be configured with valid credentials to use the DNS Operator.
+**NOTE:** You can optionally skip this step, but valid credentials are required to use the DNS Operator.
+
+##### AWS Provider (Route53)
+
+The AWS provider will attempt to load credentials using the default AWS [credential chain](https://docs.aws.amazon.com/sdk-for-go/v2/developer-guide/configure-gosdk.html).
+
+In most cases, credentials can be passed with one of: 
+- Environment variables (static credentials mounted from a secret, dynamic credentials mounted through IRSA, etc.)
+- Configuration files (~/.aws/credentials)
+
+##### GCP Provider
+
+The GCP provider will attempt to load [default application credentials](https://cloud.google.com/docs/authentication/provide-credentials-adc).
+
+Additionally, the `PROJECT_ID` environment variable is required, whether or not the credentials contain the project id already.
+
+##### Azure Provider
+
+The Azure Cloud provider will attempt to load credentials from a chain, similar but slightly different from the [default azure credential chain](https://learn.microsoft.com/en-us/azure/developer/go/sdk/authentication/credential-chains#defaultazurecredential-overview):
+- Environment Variables (see the link above for valid credential sets)
+- Managed workload identity
+- Workload identity
+
+The following variables are also required for all credential types:
+- `AZURE_RESOURCE_GROUP`
+- `AZURE_SUBSCRIPTION_ID`
+
+#### Add DNS provider configuration from DNS Operator Secret
 
 ##### AWS Provider (Route53)
 ```bash
@@ -20,7 +47,6 @@ make local-setup-aws-clean local-setup-aws-generate AWS_ACCESS_KEY_ID=<My AWS AC
 More details about the AWS provider can be found [here](./docs/provider.md#aws-route-53-provider)
 
 ##### GCP Provider
-
 ```bash
 make local-setup-gcp-clean local-setup-gcp-generate GCP_GOOGLE_CREDENTIALS='<My GCP Credentials.json>' GCP_PROJECT_ID=<My GCP PROJECT ID>
 ```
@@ -102,8 +128,8 @@ make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=<My domain name> TEST_DNS_PROVIDER_SECRE
 | Environment Variable       | Description                                                                                                                                                                        |
 |----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | TEST_DNS_PROVIDER_SECRET_NAME | Name of the provider secret to use. If using local-setup provider secrets zones, one of [dns-provider-credentials-aws; dns-provider-credentials-gcp;dns-provider-credentials-azure] | 
-| TEST_DNS_ZONE_DOMAIN_NAME        | The Domain name to use in the test. Must be a zone accessible with the (TEST_DNS_PROVIDER_SECRET_NAME) credentials with the same domain name                                       | 
-| TEST_DNS_NAMESPACES        | The namespace(s) where the provider secret(s) can be found                                                                                                                         | 
+| TEST_DNS_ZONE_DOMAIN_NAME     | The Domain name to use in the test. Must be a zone accessible with the (TEST_DNS_PROVIDER_SECRET_NAME) credentials with the same domain name                                       | 
+| TEST_DNS_NAMESPACES           | The namespace(s) where the provider secret(s) can be found                                                                                                                         | 
 
 ### Modifying the API definitions
 If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
@@ -136,7 +162,7 @@ Not exhaustive list of metadata for DNSRecord controller:
 - `ownerID` - ID the of owner of the DNS Record 
 - `txtPrefix`/`txtSuffix` - prefix and suffix of the TXT record in provider. 
 - `zoneEndpoints` - endpoints that exist in the provider
-- `specEdnoinds` - endpoints defined in the spec
+- `specEndpoints` - endpoints defined in the spec
 - `statusEndpoints` - endpoints that were processed previously
 
 > Note that not all the metadata values are present at each of the logs statements. 

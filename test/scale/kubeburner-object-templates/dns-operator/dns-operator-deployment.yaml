@@ -20,13 +20,16 @@ spec:
       - args:
         - --leader-elect
         - --metrics-bind-address=:8080
-        - --provider=aws,google,inmemory,azure
+        - --provider=aws,awsFromSecret,google,googleFromSecret,azure,azureFromSecret,coredns,corednsFromSecret
         - --zap-log-level=debug
         command:
         - /manager
         env:
         - name: WATCH_NAMESPACES
           value: scale-test-{{.Iteration}},kuadrant-dns-operator-{{.Iteration}}
+        # static json creds mounted from secret (google,azure)
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/etc/secrets/service-account/credentials.json"
         image: quay.io/kuadrant/dns-operator:latest
         livenessProbe:
           httpGet:
@@ -56,6 +59,22 @@ spec:
           capabilities:
             drop:
             - ALL
+        # static json creds mounted from secret (google,azure)
+        volumeMounts:
+        - name: google-application-credentials
+          mountPath: /etc/secrets/service-account/
+        # static json creds mounted from secret
+        - name: azure-application-credentials
+          mountPath: /etc/kubernetes/azure.json
+      volumes:
+      - name: google-application-credentials
+        secret:
+          secretName: dns-provider-credentials-gcp
+          optional: true
+      - name: azure-application-credentials
+        secret:
+          secretName: dns-provider-credentials-azure
+          optional: true
       securityContext:
         runAsNonRoot: true
       serviceAccountName: controller-manager

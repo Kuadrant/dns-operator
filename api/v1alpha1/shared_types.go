@@ -72,4 +72,19 @@ type ProviderRef struct {
 type ProviderAccessor interface {
 	GetNamespace() string
 	GetProviderRef() ProviderRef
+	GetProvider() Provider
+}
+
+type Provider struct {
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// +optional
+	AzureConfigFile string `json:"azureConfigFile"`
+	// +optional
+	GoogleProject string `json:"googleProject"`
+	// +optional
+	CoreDNSNameserver string `json:"corednsNameserver"`
+	// +optional
+	CoreDNSZones string `json:"corednsZones"`
 }

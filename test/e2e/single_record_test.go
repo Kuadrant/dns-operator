@@ -42,18 +42,35 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 	var dnsRecord *v1alpha1.DNSRecord
 	var dnsRecords []*v1alpha1.DNSRecord
 
+	var providerRefObj *v1alpha1.ProviderRef
+	var providerObj *v1alpha1.Provider
+	var namespace string
+
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-single-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		k8sClient = testClusters[0].k8sClient
-		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
+
 		if testDNSProvider == provider.DNSProviderGCP.String() {
 			geoCode = "us-east1"
 		} else if testDNSProvider == provider.DNSProviderAzure.String() {
 			geoCode = "GEO-NA"
 		} else {
 			geoCode = "US"
+		}
+
+		if testProviderSecretName != "" {
+			providerRefObj = &v1alpha1.ProviderRef{
+				Name: testProviderSecretName,
+			}
+			testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
+			namespace = testDNSProviderSecret.Namespace
+		} else {
+			providerObj = &v1alpha1.Provider{
+				Name: testDNSProvider,
+			}
+			namespace = testNamespaces[0]
 		}
 	})
 
@@ -86,16 +103,16 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		testTargetIP2 := "127.0.0.2"
 		testWCHostname := "*." + testHostname
 		testHostname2 := "foo." + testHostname
+
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      testID,
-				Namespace: testDNSProviderSecret.Namespace,
+				Namespace: namespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
-				RootHost: testWCHostname,
-				ProviderRef: v1alpha1.ProviderRef{
-					Name: testProviderSecretName,
-				},
+				RootHost:    testWCHostname,
+				ProviderRef: providerRefObj,
+				Provider:    providerObj,
 				Endpoints: []*externaldnsendpoint.Endpoint{
 					{
 						DNSName: testWCHostname,
@@ -200,13 +217,12 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testID,
-					Namespace: testDNSProviderSecret.Namespace,
+					Namespace: namespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
-					RootHost: testHostname,
-					ProviderRef: v1alpha1.ProviderRef{
-						Name: testProviderSecretName,
-					},
+					RootHost:    testHostname,
+					ProviderRef: providerRefObj,
+					Provider:    providerObj,
 					Endpoints: []*externaldnsendpoint.Endpoint{
 						{
 							DNSName: testHostname,
@@ -312,13 +328,12 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testID,
-					Namespace: testDNSProviderSecret.Namespace,
+					Namespace: namespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
-					RootHost: testHostname,
-					ProviderRef: v1alpha1.ProviderRef{
-						Name: testProviderSecretName,
-					},
+					RootHost:    testHostname,
+					ProviderRef: providerRefObj,
+					Provider:    providerObj,
 					Endpoints: []*externaldnsendpoint.Endpoint{
 						{
 							DNSName: cluster1KlbHostName,
@@ -716,7 +731,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 
 		It("handles multiple DNS Records for the same zone at the same time", func(ctx SpecContext) {
 			By("creating " + strconv.Itoa(testConcurrentRecords) + " DNS Records")
-			SetTestEnv("testNamespace", testDNSProviderSecret.Namespace)
+			SetTestEnv("testNamespace", namespace)
 
 			if testDNSProvider == provider.DNSProviderGCP.String() {
 				SetTestEnv("testGeoCode", "europe-west1")
@@ -726,7 +741,11 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				SetTestEnv("testGeoCode", "GEO-EU")
 			}
 
-			SetTestEnv("TEST_DNS_PROVIDER_SECRET_NAME", testDNSProviderSecret.Name)
+			if testDNSProviderSecret != nil {
+				SetTestEnv(dnsProviderSecretNameEnvvar, testDNSProviderSecret.Name)
+			} else {
+				SetTestEnv(dnsProviderNameEnvvar, testDNSProvider)
+			}
 			for i := 1; i <= testConcurrentRecords; i++ {
 				testRecord := &v1alpha1.DNSRecord{}
 				SetTestEnv("testHostname", strings.Join([]string{testID + "-" + strconv.Itoa(i), testDomainName}, "."))
