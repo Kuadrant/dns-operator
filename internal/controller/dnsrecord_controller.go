@@ -639,7 +639,7 @@ func (r *DNSRecordReconciler) applyLabels(ctx context.Context, dnsRecord *v1alph
 				delete(newLabels, provider.CoreDNSRecordZoneLabel)
 			}
 		} else {
-			newLabels[provider.CoreDNSRecordZoneLabel] = dnsRecord.Spec.RootHost
+			newLabels[provider.CoreDNSRecordZoneLabel] = dnsRecord.Status.ZoneDomainName
 		}
 
 		if !maps.Equal(newLabels, dnsRecord.GetLabels()) {
