@@ -85,6 +85,9 @@ func main() {
 	var dnsProbesEnabled bool
 	var allowInsecureCerts bool
 
+	var clusterSecretNamespace string
+	var clusterSecretLabel string
+
 	flag.BoolVar(&dnsProbesEnabled, "enable-probes", true, "Enable DNSHealthProbes controller.")
 	flag.BoolVar(&allowInsecureCerts, "insecure-health-checks", true, "Allow DNSHealthProbes to use insecure certificates")
 
@@ -103,6 +106,10 @@ func main() {
 		"The minimal timeout between calls to the DNS Provider"+
 			"Controls if we commit to the full reconcile loop")
 	flag.Var(&providers, "provider", "DNS Provider(s) to enable. Can be passed multiple times e.g. --provider aws --provider google, or as a comma separated list e.g. --provider aws,gcp")
+
+	flag.StringVar(&clusterSecretNamespace, "cluster-secret-namespace", "kuadrant-system", "The Namespace to look for cluster secrets.")
+	flag.StringVar(&clusterSecretLabel, "cluster-secret-label", "sigs.k8s.io/multicluster-runtime-kubeconfig", "The label that identifies a Secret resource as a cluster secret.")
+
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -135,8 +142,8 @@ func main() {
 
 	// Create the kubeconfig provider with options
 	clusterProviderOpts := kubeconfigprovider.Options{
-		Namespace:             "dns-operator-system",
-		KubeconfigSecretLabel: "sigs.k8s.io/multicluster-runtime-kubeconfig",
+		Namespace:             clusterSecretNamespace,
+		KubeconfigSecretLabel: clusterSecretLabel,
 		KubeconfigSecretKey:   "kubeconfig",
 	}
 
