@@ -528,8 +528,7 @@ func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 		// If a target is managed:
 		// - If after the update the dnsName will no longer be owned by this endpoint(update.desired), remove it from the list of targets.
 		// - If after the update the dnsName will have no owners (it's going to be deleted), remove it from the list of targets.
-		for idx := range desiredCopy.Targets {
-			t := desiredCopy.Targets[idx]
+		for _, t := range desiredCopy.Targets {
 			tDNSName := normalizeDNSName(t)
 			e.logger.V(1).Info(fmt.Sprintf("checking target %s owners", t))
 			if tOwners, tIsManaged := e.dnsNameOwners[tDNSName]; tIsManaged {

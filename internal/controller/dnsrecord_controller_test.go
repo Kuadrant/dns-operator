@@ -319,13 +319,13 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("should allow ownerID to be set explicitly and not allow it to be updated after", func() {
-		dnsRecord.Spec.OwnerID = "owner111"
+		dnsRecord.Spec.OwnerID = "owner1"
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Spec.OwnerID).To(Equal("owner111"))
-			g.Expect(dnsRecord.Status.OwnerID).To(Equal("owner111"))
+			g.Expect(dnsRecord.Spec.OwnerID).To(Equal("owner1"))
+			g.Expect(dnsRecord.Status.OwnerID).To(Equal("owner1"))
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
@@ -338,14 +338,14 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
 			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
-			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf("owner111"))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf("owner1"))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		//Does not allow ownerID to change once set
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.OwnerID).To(Equal("owner111"))
+			g.Expect(dnsRecord.Status.OwnerID).To(Equal("owner1"))
 
 			dnsRecord.Spec.OwnerID = "foobarbaz"
 			err = k8sClient.Update(ctx, dnsRecord)
@@ -357,8 +357,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.OwnerID).To(Equal("owner111"))
-			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf("owner111"))
+			g.Expect(dnsRecord.Status.OwnerID).To(Equal("owner1"))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf("owner1"))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 

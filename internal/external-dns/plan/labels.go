@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	// LabelDelaminator is a default delaminator for labels if a label key has multiple values
-	LabelDelaminator = "&&"
+	// LabelDelimiter is a default delaminator for labels if a label key has multiple values
+	LabelDelimiter = "&&"
 
 	// SoftDeleteKey indicates that endpoint can be soft deleted
 	SoftDeleteKey = "kuadrant/soft-delete"
@@ -18,6 +18,7 @@ const (
 
 func EnsureLabel(labels, label string) string {
 	labelsSplit := SplitLabels(labels)
+	// this can cause duplicate, but the joinLabels will clean that up
 	labelsSplit = append(labelsSplit, label)
 	// remove empty values
 	return RemoveLabel(joinLabels(labelsSplit), "")
@@ -25,24 +26,25 @@ func EnsureLabel(labels, label string) string {
 
 func RemoveLabel(labels, label string) string {
 	labelsSplit := SplitLabels(labels)
-	for i, l := range labelsSplit {
+	var returnLabels []string
+	for _, l := range labelsSplit {
 		if l == label {
-			labelsSplit = append(labelsSplit[:i], labelsSplit[i+1:]...)
-			break
+			continue
 		}
+		returnLabels = append(returnLabels, l)
 	}
-	return joinLabels(labelsSplit)
+	return joinLabels(returnLabels)
 }
 
 func SplitLabels(labels string) []string {
 	if labels == "" {
 		return []string{}
 	}
-	return strings.Split(labels, LabelDelaminator)
+	return strings.Split(labels, LabelDelimiter)
 }
 
 func joinLabels(labels []string) string {
 	slices.Sort(labels)
 	labels = slices.Compact(labels)
-	return strings.Join(labels, LabelDelaminator)
+	return strings.Join(labels, LabelDelimiter)
 }
