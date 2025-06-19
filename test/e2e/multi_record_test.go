@@ -184,16 +184,11 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			if txtRegistryEnabled {
-				var allOwnerMatcher = []types.GomegaMatcher{
-					ContainSubstring("heritage=external-dns,external-dns/owner="),
-				}
 				for _, owner := range allOwners {
-					allOwnerMatcher = append(allOwnerMatcher, ContainSubstring(owner))
-
 					expectedElementMatchers = append(expectedElementMatchers,
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":       Equal("kuadrant-" + owner + "-a-" + testHostname),
-							"Targets":       ConsistOf("\"\""),
+							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + owner + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal(""),
 							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -262,7 +257,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						// if we are deleting record we should not have txt record for it
 						"DNSName":       Not(Equal("kuadrant-" + recordToDelete.record.Status.OwnerID + "-a-" + testHostname)),
-						"Targets":       ConsistOf("\"\""),
+						"Targets":       Not(ConsistOf("\"heritage=external-dns,external-dns/owner=" + recordToDelete.record.Status.OwnerID + ",external-dns/version=1\"")),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -275,11 +270,18 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				if lastRecord {
 					g.Expect(zoneEndpoints).To(HaveLen(0))
 				} else {
-					g.Expect(zoneEndpoints).To(HaveLen(len(expectedElementMatchers)))
+					// each test record has one A record and one TXT record
+					// in the provider all A records are merged into a single one
+					// we have one TXT per record plus one A record
+					// one deleting endpoint takes down one TXT record unless it is the last record (then it takes down A record as well)
+					// testRecords 1 zone 0
+					// testRecords 2 zone 2
+					// testRecords 3 zone 3...
+					g.Expect(zoneEndpoints).To(HaveLen(len(testRecords)))
 					By(fmt.Sprintf("checking ip `%s` and owner `%s` are removed", recordToDelete.config.testTargetIP, recordToDelete.record.Status.OwnerID))
 					g.Expect(zoneEndpoints).To(ContainElements(expectedElementMatchers))
 				}
-			}, 60*time.Second, time.Second, ctx).Should(Succeed())
+			}, 5*time.Second, time.Second, ctx).Should(Succeed())
 
 			//Remove deleted record owner from owners list
 			allOwners = slices.DeleteFunc(allOwners, func(id string) bool {
@@ -485,27 +487,73 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
+
 			var expectedEndpointsLen int
-			var expectedTXTrecordsLen int
 			if testDNSProvider == provider.DNSProviderGCP.String() {
-				expectedEndpointsLen = (2 + len(testGeoRecords) + len(testRecords)) * 2
-				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
+				//### Target endpoints ###
+
+				// "root host CNAME endpoint" + "klb CNAME endpoint(geo policy)"
+				expectedEndpointsLen = 2
+				// "CNAME endpoint per geo (weighted policy)"
+				expectedEndpointsLen += len(testGeoRecords)
+				// "A endpoint per cluster"
+				expectedEndpointsLen += len(testRecords)
+
+				//### Registry endpoints ###
+
+				// "root host TXT endpoint per owner" + "klb TXT endpoint per owner" (Each testRecord is a unique owner)
+				expectedEndpointsLen += 2 * len(testRecords)
+				// "TXT endpoint per geo endpoint" (Each testRecord adds/updates one geo endpoint, so each owns one)
+				expectedEndpointsLen += len(testRecords)
+				// "TXT endpoint per cluster A endpoints"
+				expectedEndpointsLen += len(testRecords)
+
 			} else if testDNSProvider == provider.DNSProviderAzure.String() {
-				expectedEndpointsLen = (2 + len(testGeoRecords) + len(testRecords)) * 2
-				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
+				//### Target endpoints ###
+
+				// "root host CNAME endpoint" + "klb CNAME endpoint(alias to traffic manager)"
+				expectedEndpointsLen = 2
+				// "CNAME endpoint per geo (alias to traffic manager)"
+				expectedEndpointsLen += len(testGeoRecords)
+				// "A endpoint per cluster"
+				expectedEndpointsLen += len(testRecords)
+
+				//### Registry endpoints ###
+
+				// "root host TXT endpoint per owner" + "klb TXT endpoint per owner" (Each testRecord is a unique owner)
+				expectedEndpointsLen += 2 * len(testRecords)
+				// "TXT endpoint per geo endpoint" (Each testRecord adds/updates one geo endpoint, so each owns one)
+				expectedEndpointsLen += len(testRecords)
+				// "TXT endpoint per cluster A endpoints"
+				expectedEndpointsLen += len(testRecords)
+
 			} else if testDNSProvider == provider.DNSProviderAWS.String() {
-				// to avoid npe if test runs with no records to test
-				if len(testRecords) > 0 {
-					// assuming all records have the same number of EPs
-					expectedTXTrecordsLen = len(testRecords) * len(testRecords[0].record.Spec.Endpoints)
-					// we create TXT for each endpoint, but we will not create two shared endpoints:
-					// the root hostname and default lb
-					expectedEndpointsLen = expectedTXTrecordsLen - 2
-				}
-				Expect(zoneEndpoints).To(HaveLen(expectedTXTrecordsLen + expectedEndpointsLen))
+				//### Target endpoints ###
+
+				// "root host CNAME endpoint" + "default geo CNAME endpoint (Geo Routing policy)"
+				expectedEndpointsLen = 2
+				// CNAME endpoint per geo (Geo Routing policy)"
+				expectedEndpointsLen += len(testGeoRecords)
+				// A endpoint per cluster" + "CNAME endpoint per cluster (Weighted routing poicy)" (Each testRecord represents an individual cluster in a geo with a unique IP)
+				expectedEndpointsLen += len(testRecords) * 2
+
+				//### Registry endpoints ###
+
+				// "root host TXT endpoint per owner" + "default geo TXT endpoint per owner" (Each testRecord is a unique owner)
+				expectedEndpointsLen += 2 * len(testRecords)
+				// "TXT endpoint per geo endpoint" (Each testRecord adds/updates one geo endpoint, so each owns one)
+				expectedEndpointsLen += len(testRecords)
+				// "TXT endpoint per cluster A and CNAME endpoints"
+				expectedEndpointsLen += len(testRecords) * 2
+
 			} else if testDNSProvider == provider.DNSProviderCoreDNS.String() {
+				//### Target endpoints ###
+
 				expectedEndpointsLen = 1 + len(testGeoRecords) + (len(testRecords) * 2)
-				Expect(zoneEndpoints).To(HaveLen(expectedEndpointsLen))
+
+				//### Registry endpoints ###
+
+				//None
 			}
 
 			if txtRegistryEnabled {
@@ -550,7 +598,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					By("[Common] checking " + testHostname + " TXT endpoint for owner " + owner)
 					Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-" + owner + "-cname-" + testHostname),
-						"Targets":       ConsistOf("\"\""),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + owner + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -593,7 +641,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					By("[Common] checking " + testHostname + " TXT endpoint for owner " + owner)
 					Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-" + owner + "-cname-" + testHostname),
-						"Targets":       ConsistOf("\"\""),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + owner + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -628,7 +676,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					By("[Common] checking " + testHostname + " TXT endpoint for owner " + owner)
 					Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-" + owner + "-cname-" + testHostname),
-						"Targets":       ConsistOf("\"\""),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + owner + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -667,7 +715,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						By("[Geo] checking " + klbHostName + " -> " + geoCode + " - TXT endpoint for owner " + geoOwner)
 						Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":       Equal("kuadrant-" + geoOwner + "-cname-" + klbHostName),
-							"Targets":       ConsistOf("\"\""),
+							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + geoOwner + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal(geoCode),
 							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -681,7 +729,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						By("[Geo] checking " + klbHostName + " -> default - TXT endpoint for owner " + geoOwner)
 						Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":       Equal("kuadrant-" + geoOwner + "-cname-" + klbHostName),
-							"Targets":       ConsistOf("\"\""),
+							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + geoOwner + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal("default"),
 							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -768,7 +816,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						By("[Weight] checking " + geoKlbHostName + " TXT endpoint for owner " + geoOwner)
 						Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":       Equal("kuadrant-" + geoOwner + "-cname-" + geoKlbHostName),
-							"Targets":       Equal("\"\""),
+							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + geoOwner + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal(""),
 							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -807,7 +855,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						By("[Weight] checking " + geoKlbHostName + " TXT endpoint for owner " + geoOwner)
 						Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":       Equal("kuadrant-" + geoOwner + "-cname-" + geoKlbHostName),
-							"Targets":       ConsistOf("\"\""),
+							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + geoOwner + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal(""),
 							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -839,7 +887,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						By("[Weight] checking " + geoKlbHostName + " -> " + clusterKlbHostName + " -> " + ownerID + " TXT owner endpoint")
 						Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":       Equal("kuadrant-" + ownerID + "-cname-" + geoKlbHostName),
-							"Targets":       ConsistOf("\"\""),
+							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + ownerID + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal(clusterKlbHostName),
 							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -892,7 +940,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					By("[Cluster] checking " + clusterKlbHostName + " TXT owner endpoint")
 					Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-" + ownerID + "-a-" + clusterKlbHostName),
-						"Targets":       ConsistOf("\"\""),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + ownerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
@@ -902,8 +950,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By("checking all endpoints were validated")
-			// we will not
-			Expect(totalEndpointsChecked).To(Equal(expectedEndpointsLen + expectedTXTrecordsLen))
+			Expect(totalEndpointsChecked).To(Equal(expectedEndpointsLen))
 
 			By("deleting all remaining dns records")
 			for _, tr := range testRecords {
