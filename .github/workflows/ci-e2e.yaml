@@ -12,15 +12,6 @@ on:
       - '**.md'
       - 'samples/**'
       - 'LICENSE'
-  pull_request_target:
-    branches:
-      - main
-      - "release-*"
-    paths-ignore:
-      - '**.adoc'
-      - '**.md'
-      - 'samples/**'
-      - 'LICENSE'
   workflow_dispatch:
   merge_group:
 
