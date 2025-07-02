@@ -580,7 +580,7 @@ func TestCleanAzureError(t *testing.T) {
 			err:  fmt.Errorf("some other error"),
 			Verify: func(err error) {
 				Expect(err).ToNot(BeNil())
-				Expect(err.Error()).To(Equal(""))
+				Expect(err.Error()).To(Equal("some other error"))
 			},
 		},
 	}
