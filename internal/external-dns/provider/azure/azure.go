@@ -471,5 +471,9 @@ func CleanAzureError(err error) error {
 			msg = msgBits[1]
 		}
 	}
+	if msg == "" {
+		//unusual error that failed to be cleaned, return the entire error
+		return err
+	}
 	return errors.New(msg)
 }
