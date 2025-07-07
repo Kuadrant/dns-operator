@@ -122,7 +122,7 @@ func TestToTXTName(t *testing.T) {
 			mapper:     newKuadrantAffixMapper(legacyMapperTemplate{}, "foo-", ""),
 			domain:     "example.com",
 			recordType: "A",
-			txtDomain:  "foo-owner1-a-example.com",
+			txtDomain:  "foo-2tqs20a7-a-example.com",
 			id:         "owner1",
 		},
 	}

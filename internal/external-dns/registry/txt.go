@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
 
+	"github.com/kuadrant/dns-operator/internal/common/hash"
 	kuadrantPlan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
 )
 
@@ -718,5 +719,5 @@ func (pr kuadrantAffixNameMapper) toTXTName(endpointDNSName, id, recordType stri
 		dnsName = strings.Replace(dnsName, "*", pr.wildcardReplacement, 1)
 	}
 
-	return pr.prefix + id + affixSeparator + strings.ToLower(recordType) + affixSeparator + dnsName
+	return pr.prefix + hash.ToBase36HashLen(id, 8) + affixSeparator + strings.ToLower(recordType) + affixSeparator + dnsName
 }

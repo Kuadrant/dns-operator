@@ -90,7 +90,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		invalidProviderSecret = pBuilder.Build()
 		Expect(k8sClient.Create(ctx, invalidProviderSecret)).To(Succeed())
 
-		dnsRecord = testBuildDNSRecord(testID, invalidProviderSecret.Namespace, invalidProviderSecret.Name, "testOwner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, invalidProviderSecret.Namespace, invalidProviderSecret.Name, "test-owner", testHostname)
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid provider credentials")
 		err := k8sClient.Create(ctx, dnsRecord)
@@ -155,7 +155,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			invalidEndpoint,
 		}
 
-		dnsRecord = testBuildDNSRecord(testID, testDNSProviderSecret.Namespace, testDNSProviderSecret.Name, "testOwner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, testDNSProviderSecret.Namespace, testDNSProviderSecret.Name, "test-owner", testHostname)
 		dnsRecord.Spec.Endpoints = testEndpoints
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid geo endpoint")
@@ -251,7 +251,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			invalidEndpoint,
 		}
 
-		dnsRecord = testBuildDNSRecord(testID, testDNSProviderSecret.Namespace, testDNSProviderSecret.Name, "testOwner", testHostname)
+		dnsRecord = testBuildDNSRecord(testID, testDNSProviderSecret.Namespace, testDNSProviderSecret.Name, "test-owner", testHostname)
 		dnsRecord.Spec.Endpoints = testEndpoints
 
 		By("creating dnsrecord " + dnsRecord.Name + " with invalid weight endpoint")
