@@ -37,7 +37,8 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 
 	var k8sClient client.Client
 	var testDNSProviderSecret *v1.Secret
-	var geoCode string
+	var geoCode1 string
+	var geoCode2 string
 
 	var dnsRecord *v1alpha1.DNSRecord
 	var dnsRecords []*v1alpha1.DNSRecord
@@ -49,11 +50,14 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		k8sClient = testClusters[0].k8sClient
 		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
 		if testDNSProvider == provider.DNSProviderGCP.String() {
-			geoCode = "us-east1"
+			geoCode1 = "us-east1"
+			geoCode2 = "europe-west1"
 		} else if testDNSProvider == provider.DNSProviderAzure.String() {
-			geoCode = "GEO-NA"
+			geoCode1 = "GEO-NA"
+			geoCode2 = "GEO-EU"
 		} else {
-			geoCode = "US"
+			geoCode1 = "US"
+			geoCode2 = "GEO-EU"
 		}
 	})
 
@@ -303,11 +307,14 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 
 	Context("loadbalanced", Labels{"loadbalanced"}, func() {
 		It("makes available a hostname that can be resolved", Labels{"happy"}, func(ctx SpecContext) {
-			testTargetIP := "127.0.0.1"
+			testTargetIP1 := "127.0.0.1"
+			testTargetIP2 := "127.0.0.2"
 
 			klbHostName := "klb." + testHostname
-			geo1KlbHostName := strings.ToLower(geoCode) + "." + klbHostName
+			geo1KlbHostName := strings.ToLower(geoCode1) + "." + klbHostName
+			geo2KlbHostName := strings.ToLower(geoCode2) + "." + klbHostName
 			cluster1KlbHostName := "cluster1." + klbHostName
+			cluster2KlbHostName := "cluster2." + klbHostName
 
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
@@ -323,7 +330,15 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						{
 							DNSName: cluster1KlbHostName,
 							Targets: []string{
-								testTargetIP,
+								testTargetIP1,
+							},
+							RecordType: "A",
+							RecordTTL:  60,
+						},
+						{
+							DNSName: cluster2KlbHostName,
+							Targets: []string{
+								testTargetIP2,
 							},
 							RecordType: "A",
 							RecordTTL:  60,
@@ -352,17 +367,47 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 							},
 						},
 						{
+							DNSName: geo2KlbHostName,
+							Targets: []string{
+								cluster2KlbHostName,
+							},
+							RecordType:    "CNAME",
+							RecordTTL:     60,
+							SetIdentifier: cluster2KlbHostName,
+							ProviderSpecific: externaldnsendpoint.ProviderSpecific{
+								{
+									Name:  "weight",
+									Value: "200",
+								},
+							},
+						},
+						{
 							DNSName: klbHostName,
 							Targets: []string{
 								geo1KlbHostName,
 							},
 							RecordType:    "CNAME",
 							RecordTTL:     300,
-							SetIdentifier: geoCode,
+							SetIdentifier: geoCode1,
 							ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 								{
 									Name:  "geo-code",
-									Value: geoCode,
+									Value: geoCode1,
+								},
+							},
+						},
+						{
+							DNSName: klbHostName,
+							Targets: []string{
+								geo2KlbHostName,
+							},
+							RecordType:    "CNAME",
+							RecordTTL:     300,
+							SetIdentifier: geoCode2,
+							ProviderSpecific: externaldnsendpoint.ProviderSpecific{
+								{
+									Name:  "geo-code",
+									Value: geoCode2,
 								},
 							},
 						},
@@ -412,11 +457,18 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
 			if testProvider.Name() == provider.DNSProviderGCP {
-				Expect(zoneEndpoints).To(HaveLen(8))
+				Expect(zoneEndpoints).To(HaveLen(12))
 				Expect(zoneEndpoints).To(ContainElements(
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(cluster1KlbHostName),
-						"Targets":       ConsistOf(testTargetIP),
+						"Targets":       ConsistOf(testTargetIP1),
+						"RecordType":    Equal("A"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(cluster2KlbHostName),
+						"Targets":       ConsistOf(testTargetIP2),
 						"RecordType":    Equal("A"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
@@ -440,18 +492,37 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						}),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(geo2KlbHostName),
+						"Targets":       ConsistOf(cluster2KlbHostName),
+						"RecordType":    Equal("CNAME"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "routingpolicy", Value: "weighted"},
+							{Name: cluster2KlbHostName, Value: "200"},
+						}),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(klbHostName),
-						"Targets":       ConsistOf(geo1KlbHostName),
+						"Targets":       ConsistOf(geo1KlbHostName, geo2KlbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
-						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+						"ProviderSpecific": ContainElements([]externaldnsendpoint.ProviderSpecificProperty{
 							{Name: "routingpolicy", Value: "geo"},
-							{Name: geo1KlbHostName, Value: geoCode},
+							{Name: geo1KlbHostName, Value: geoCode1},
+							{Name: geo2KlbHostName, Value: geoCode2},
 						}),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-a-" + cluster1KlbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-a-" + cluster2KlbHostName),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
@@ -472,6 +543,13 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-cname-" + geo2KlbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-cname-" + klbHostName),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
 						"RecordType":    Equal("TXT"),
@@ -481,11 +559,19 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				))
 			}
 			if testProvider.Name() == provider.DNSProviderAzure {
-				Expect(zoneEndpoints).To(HaveLen(8))
+				Expect(zoneEndpoints).To(HaveLen(12))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(cluster1KlbHostName),
-						"Targets":       ConsistOf(testTargetIP),
+						"Targets":       ConsistOf(testTargetIP1),
+						"RecordType":    Equal("A"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(cluster2KlbHostName),
+						"Targets":       ConsistOf(testTargetIP2),
 						"RecordType":    Equal("A"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
@@ -512,19 +598,40 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(geo2KlbHostName),
+						"Targets":       ConsistOf(cluster2KlbHostName),
+						"RecordType":    Equal("CNAME"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "routingpolicy", Value: "Weighted"},
+							{Name: cluster2KlbHostName, Value: "200"},
+						}),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(klbHostName),
-						"Targets":       ConsistOf(geo1KlbHostName),
+						"Targets":       ConsistOf(geo1KlbHostName, geo2KlbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
-						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+						"ProviderSpecific": ContainElements([]externaldnsendpoint.ProviderSpecificProperty{
 							{Name: "routingpolicy", Value: "Geographic"},
 							{Name: geo1KlbHostName, Value: "WORLD"},
+							{Name: geo2KlbHostName, Value: "GEO-EU"},
 						}),
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-a-" + cluster1KlbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-a-" + cluster2KlbHostName),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
@@ -548,6 +655,14 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-cname-" + geo2KlbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					}))))
+				Expect(zoneEndpoints).To(ContainElement(
+					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-cname-" + klbHostName),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
 						"RecordType":    Equal("TXT"),
@@ -556,11 +671,18 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					}))))
 			}
 			if testProvider.Name() == provider.DNSProviderAWS {
-				Expect(zoneEndpoints).To(HaveLen(10))
+				Expect(zoneEndpoints).To(HaveLen(16))
 				Expect(zoneEndpoints).To(ContainElements(
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(cluster1KlbHostName),
-						"Targets":       ConsistOf(testTargetIP),
+						"Targets":       ConsistOf(testTargetIP1),
+						"RecordType":    Equal("A"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(cluster2KlbHostName),
+						"Targets":       ConsistOf(testTargetIP2),
 						"RecordType":    Equal("A"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
@@ -584,14 +706,36 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						}),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(geo2KlbHostName),
+						"Targets":       ConsistOf(cluster2KlbHostName),
+						"RecordType":    Equal("CNAME"),
+						"SetIdentifier": Equal(cluster2KlbHostName),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "alias", Value: "false"},
+							{Name: "aws/weight", Value: "200"},
+						}),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(klbHostName),
 						"Targets":       ConsistOf(geo1KlbHostName),
 						"RecordType":    Equal("CNAME"),
-						"SetIdentifier": Equal(geoCode),
+						"SetIdentifier": Equal(geoCode1),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "alias", Value: "false"},
 							{Name: "aws/geolocation-country-code", Value: "US"},
+						}),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(klbHostName),
+						"Targets":       ConsistOf(geo2KlbHostName),
+						"RecordType":    Equal("CNAME"),
+						"SetIdentifier": Equal(geoCode2),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "alias", Value: "false"},
+							{Name: "aws/geolocation-continent-code", Value: "EU"},
 						}),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -607,6 +751,13 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-a-" + cluster1KlbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(""),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-a-" + cluster2KlbHostName),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
@@ -630,13 +781,33 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						}),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-cname-" + geo2KlbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(cluster2KlbHostName),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "aws/weight", Value: "200"},
+						}),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-cname-" + klbHostName),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
 						"RecordType":    Equal("TXT"),
-						"SetIdentifier": Equal(geoCode),
+						"SetIdentifier": Equal(geoCode1),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "aws/geolocation-country-code", Value: "US"},
+						}),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal("kuadrant-cname-" + klbHostName),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + "\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal(geoCode2),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
+							{Name: "aws/geolocation-continent-code", Value: "EU"},
 						}),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -655,7 +826,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				Expect(zoneEndpoints).To(ContainElements(
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(cluster1KlbHostName),
-						"Targets":       ConsistOf(testTargetIP),
+						"Targets":       ConsistOf(testTargetIP1),
 						"RecordType":    Equal("A"),
 						"SetIdentifier": Equal(""),
 						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
@@ -710,7 +881,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				}
 				g.Expect(err).NotTo(HaveOccurred())
 				GinkgoWriter.Printf("[debug] ips: %v\n", ips)
-				g.Expect(ips).To(Or(ContainElements(testTargetIP)))
+				g.Expect(ips).To(Or(ContainElement(testTargetIP1), ContainElement(testTargetIP2)))
 			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 		})
 
