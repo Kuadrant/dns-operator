@@ -59,8 +59,10 @@ func (b byAllFields) Less(i, j int) bool {
 // SameEndpoint returns true if two endpoints are same
 // considers example.org. and example.org DNSName/Target as different endpoints
 func SameEndpoint(a, b *endpoint.Endpoint) bool {
-	return a.DNSName == b.DNSName && a.Targets.Same(b.Targets) && a.RecordType == b.RecordType && a.SetIdentifier == b.SetIdentifier &&
-		a.Labels[endpoint.OwnerLabelKey] == b.Labels[endpoint.OwnerLabelKey] && a.RecordTTL == b.RecordTTL &&
+	return a.DNSName == b.DNSName && a.Targets.Same(b.Targets) &&
+		a.RecordType == b.RecordType && a.SetIdentifier == b.SetIdentifier &&
+		a.Labels[endpoint.OwnerLabelKey] == b.Labels[endpoint.OwnerLabelKey] &&
+		a.RecordTTL == b.RecordTTL &&
 		a.Labels[endpoint.ResourceLabelKey] == b.Labels[endpoint.ResourceLabelKey] &&
 		a.Labels[endpoint.OwnedRecordLabelKey] == b.Labels[endpoint.OwnedRecordLabelKey] &&
 		SameProviderSpecific(a.ProviderSpecific, b.ProviderSpecific)
