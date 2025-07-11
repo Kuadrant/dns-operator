@@ -528,8 +528,18 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		By("checking dnsrecord " + dnsRecord.Name + " and " + dnsRecord2.Name + " conflict")
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			var oldRequeue, newRequeue time.Duration
+			var err error
+
+			oldRequeue, err = time.ParseDuration(dnsRecord.Status.ValidFor)
 			g.Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			newRequeue, err = time.ParseDuration(dnsRecord.Status.ValidFor)
+			g.Expect(err).NotTo(HaveOccurred())
+
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
@@ -541,6 +551,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			)
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(1)))
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
+			g.Expect(oldRequeue).To(BeNumerically(">", newRequeue))
 
 			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
