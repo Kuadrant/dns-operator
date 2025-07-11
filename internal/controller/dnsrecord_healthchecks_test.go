@@ -50,7 +50,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", Labels{"health_checks"}, fu
 				ProviderRef: &v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints:   getTestEndpoints(testHostname, []string{"172.32.200.1", "172.32.200.2"}),
+				Endpoints:   NewTestEndpoints(testHostname).WithTargets([]string{"172.32.200.1", "172.32.200.2"}).Endpoints(),
 				HealthCheck: getTestHealthCheckSpec(),
 			},
 		}
@@ -289,7 +289,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", Labels{"health_checks"}, fu
 	It("Should not create wildcard probes", func() {
 		// make record a wildcard one
 		dnsRecord.Spec.RootHost = v1alpha1.WildcardPrefix + dnsRecord.Spec.RootHost
-		dnsRecord.Spec.Endpoints = getTestEndpoints(v1alpha1.WildcardPrefix+testHostname, []string{"172.32.200.1", "172.32.200.2"})
+		dnsRecord.Spec.Endpoints = NewTestEndpoints(v1alpha1.WildcardPrefix + testHostname).WithTargets([]string{"172.32.200.1", "172.32.200.2"}).Endpoints()
 		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 		// ensure we have no probes
