@@ -528,6 +528,22 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		By("checking dnsrecord " + dnsRecord.Name + " and " + dnsRecord2.Name + " conflict")
 		Eventually(func(g Gomega) {
+			var oldRequeue, newRequeue time.Duration
+			var err error
+
+			oldRequeue, err = time.ParseDuration(dnsRecord.Status.ValidFor)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			newRequeue, err = time.ParseDuration(dnsRecord.Status.ValidFor)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			g.Expect(oldRequeue.Milliseconds()).To(BeNumerically("<", newRequeue.Milliseconds()))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
