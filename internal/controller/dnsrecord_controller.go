@@ -294,8 +294,10 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 			current.Status.WriteCounter++
 			metrics.WriteCounter.WithLabelValues(current.Name, current.Namespace).Inc()
 			logger.V(1).Info("Changes needed on the same generation of record")
+			requeueTime = exponentialRequeueTime(randomizedValidationRequeue.String())
+		} else {
+			requeueTime = randomizedValidationRequeue
 		}
-		requeueTime = randomizedValidationRequeue
 	} else {
 		logger.Info("All records are already up to date")
 
