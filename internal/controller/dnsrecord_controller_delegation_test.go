@@ -109,7 +109,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ProviderRef: &v1alpha1.ProviderRef{
 					Name: primary1DNSProviderSecret.Name,
 				},
-				Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.1"}),
+				Endpoints: NewTestEndpoints(testHostname).Endpoints(),
 			}
 			By("verifying created record has delegating=false")
 			Expect(primaryK8sClient.Create(ctx, primary1DNSRecord)).To(Succeed())
@@ -416,7 +416,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					ProviderRef: &v1alpha1.ProviderRef{
 						Name: primary1DNSProviderSecret.Name,
 					},
-					Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.1"}),
+					Endpoints: NewTestEndpoints(testHostname).Endpoints(),
 					Delegate:  false,
 				}
 				Expect(secondaryK8sClient.Create(ctx, secondaryDNSRecord)).To(Succeed())
@@ -452,7 +452,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					ProviderRef: &v1alpha1.ProviderRef{
 						Name: primary1DNSProviderSecret.Name,
 					},
-					Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.1"}),
+					Endpoints: NewTestEndpoints(testHostname).Endpoints(),
 					Delegate:  false,
 				}
 

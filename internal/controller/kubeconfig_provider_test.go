@@ -95,7 +95,7 @@ var _ = Describe("Kubeconfig Provider", Labels{"multicluster"}, func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost:  testHostname,
-				Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.1"}),
+				Endpoints: NewTestEndpoints(testHostname).Endpoints(),
 			},
 		}
 		Expect(secondaryK8sClient.Create(ctx, secondaryRecord)).To(Succeed())
