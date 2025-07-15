@@ -216,7 +216,7 @@ func (p *CoreDNSProvider) mergeDNSEndpoints(rr dns.RR, endpoints []*endpoint.End
 		ep.RecordType = "TXT"
 		ep.Targets = rec.Txt
 	default:
-		p.logger.Info("not handling record of type %v ", rec)
+		p.logger.Info("record type not supported", "type", rec)
 	}
 
 	alreadyExists := false
