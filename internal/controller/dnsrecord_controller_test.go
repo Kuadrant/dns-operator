@@ -83,26 +83,6 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 	// Test cases covering validation of the DNSRecord resource fields
 	Context("validation", func() {
-		It("should error with no providerRef", func(ctx SpecContext) {
-			testHostname = strings.Join([]string{"bar", testZoneDomainName}, ".")
-			dnsRecord = &v1alpha1.DNSRecord{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testHostname,
-					Namespace: testNamespace,
-				},
-				Spec: v1alpha1.DNSRecordSpec{
-					RootHost:    testHostname,
-					Endpoints:   getTestEndpoints(testHostname, []string{"127.0.0.1"}),
-					HealthCheck: nil,
-				},
-			}
-			err := k8sClient.Create(ctx, dnsRecord)
-			// It doesn't seem to be possible to have a field marked as required and include the omitempty json struct tag
-			// so even though we don't include the providerRef in the test an empty one is being added.
-			// The error in this case when created via the json openapi would actually be `spec.providerRef: Required value`
-			Expect(err).To(MatchError(ContainSubstring("spec.providerRef.name in body should be at least 1 chars long")))
-		})
-
 		It("should error with no rootHost", func(ctx SpecContext) {
 			testHostname = strings.Join([]string{"bar", testZoneDomainName}, ".")
 			dnsRecord = &v1alpha1.DNSRecord{
@@ -224,6 +204,79 @@ var _ = Describe("DNSRecordReconciler", func() {
 			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord2.Status.WriteCounter).To(Not(BeNumerically(">", int64(1))))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+	})
+
+	It("uses default provider secret", func(ctx SpecContext) {
+		// remove provider ref to force default secret
+		dnsRecord.Spec.ProviderRef.Name = ""
+		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+		// can't find secret - no label
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal("DNSProviderError"),
+					"Message":            And(ContainSubstring("No default provider secret"), ContainSubstring("was found")),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		// label the secret so it becomes default and we should succeed
+		Eventually(func(g Gomega) {
+			if dnsProviderSecret.Labels == nil {
+				dnsProviderSecret.Labels = map[string]string{}
+			}
+			dnsProviderSecret.Labels[v1alpha1.DefaultProviderSecretLabel] = "true"
+			g.Expect(k8sClient.Update(ctx, dnsProviderSecret)).To(Succeed())
+
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionTrue),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		// delete record - we already have provider assigned
+		Eventually(func(g Gomega) {
+			g.Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, dnsRecord))).To(Succeed())
+
+			dnsRecords := &v1alpha1.DNSRecordList{}
+			g.Expect(k8sClient.List(ctx, dnsRecords, client.InNamespace(testNamespace))).To(Succeed())
+			g.Expect(dnsRecords.Items).To(HaveLen(0))
+		}, TestTimeoutShort, time.Second).Should(Succeed())
+
+		// create a second default secret
+		Eventually(func(g Gomega) {
+			secretCopy := dnsProviderSecret.DeepCopy()
+			secretCopy.Name = secretCopy.Name + "-copy"
+			secretCopy.ResourceVersion = ""
+			g.Expect(k8sClient.Create(ctx, secretCopy)).To(Succeed())
+		}, TestTimeoutShort, time.Second).Should(Succeed())
+
+		// re-create record and fail on multiple default secrets
+		Eventually(func(g Gomega) {
+			dnsRecord.ResourceVersion = ""
+			g.Expect(client.IgnoreAlreadyExists(k8sClient.Create(ctx, dnsRecord))).To(Succeed())
+
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionFalse),
+					"Reason":             Equal("DNSProviderError"),
+					"Message":            Equal("Multiple default providers secrets found. Only one expected"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 

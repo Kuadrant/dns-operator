@@ -127,9 +127,8 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
 			if err != nil {
 				logger.Error(err, "Failed to load DNS Provider")
-				reason := "DNSProviderError"
-				message := fmt.Sprintf("The dns provider could not be loaded: %v", err)
-				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, reason, message)
+				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+					"DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
 				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
 			}
 
@@ -191,6 +190,41 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		//Update logger and context so it includes updated owner metadata
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
+	}
+
+	// Ensure we have provider secret
+	if !dnsRecord.HasProviderSecretAssigned() {
+		if dnsRecord.Spec.ProviderRef.Name != "" {
+			dnsRecord.Status.ProviderRef = dnsRecord.Spec.ProviderRef
+		} else {
+			// try to find the default secret
+			defaultSecretList := &v1.SecretList{}
+			err = r.Client.List(ctx, defaultSecretList, client.InNamespace(dnsRecord.Namespace), client.HasLabels{v1alpha1.DefaultProviderSecretLabel})
+
+			// failed to fetch
+			if err != nil {
+				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+					"DNSProviderError", fmt.Sprintf("The default dns provider secret could not be loaded: %v", err))
+				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
+			}
+
+			// no secrets
+			if len(defaultSecretList.Items) == 0 {
+				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+					"DNSProviderError", fmt.Sprintf("No default provider secret labaled %s was found", v1alpha1.DefaultProviderSecretLabel))
+				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, errors.New("no default secret found"))
+			}
+
+			// multiple defaults
+			if len(defaultSecretList.Items) > 1 {
+				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+					"DNSProviderError", fmt.Sprintf("Multiple default providers secrets found. Only one expected"))
+				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, errors.New("multiple default provider secrets found"))
+			}
+
+			// set default secret as a provider secret to this record
+			dnsRecord.Status.ProviderRef.Name = defaultSecretList.Items[0].Name
+		}
 	}
 
 	// Ensure a DNS Zone has been assigned to the record (ZoneID and ZoneDomainName are set in the status)
