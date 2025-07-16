@@ -309,6 +309,7 @@ func (in *DNSRecordStatus) DeepCopyInto(out *DNSRecordStatus) {
 		*out = new(HealthCheckStatus)
 		(*in).DeepCopyInto(*out)
 	}
+	out.ProviderRef = in.ProviderRef
 	if in.DomainOwners != nil {
 		in, out := &in.DomainOwners, &out.DomainOwners
 		*out = make([]string, len(*in))

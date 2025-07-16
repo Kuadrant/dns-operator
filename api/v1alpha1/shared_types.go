@@ -61,10 +61,11 @@ const (
 	InmemInitZonesKey = "INMEM_INIT_ZONES"
 
 	SecretTypeKuadrantCoreDNS corev1.SecretType = "kuadrant.io/coredns"
+
+	DefaultProviderSecretLabel = "kuadrant.io/default-provider"
 )
 
 type ProviderRef struct {
-	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 }
 
