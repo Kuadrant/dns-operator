@@ -7,8 +7,8 @@
 set -e
 
 # Default values
-NAMESPACE="default"
-SERVICE_ACCOUNT="default"
+NAMESPACE="dns-operator-system"
+SERVICE_ACCOUNT="dns-operator-remote-cluster"
 KUBECONFIG_CONTEXT=""
 SECRET_NAME=""
 
@@ -139,7 +139,7 @@ metadata:
   name: ${SECRET_NAME}
   namespace: ${NAMESPACE}
   labels:
-    sigs.k8s.io/multicluster-runtime-kubeconfig: "true"
+    kuadrant.io/multicluster-kubeconfig: "true"
 type: Opaque
 data:
   kubeconfig: ${KUBECONFIG_B64}
