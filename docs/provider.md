@@ -2,6 +2,8 @@
 
 In order to be able to interact with supported DNS providers, Kuadrant needs a credential that it can use.
 
+Credentials are expected to reside in a secret. The secret name can be specified in the `DNSRecord.Spec.ProfiverRef` or the secret can have `kuadrant.io/default-provider=true` label. The secret that got assigned to the DNSRecord will be specified in the `Status.ProfiverRef`.
+
 ## Supported Providers
 
 Kuadrant Supports the following DNS providers currently

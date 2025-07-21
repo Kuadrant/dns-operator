@@ -46,7 +46,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: testHostname,
-				ProviderRef: v1alpha1.ProviderRef{
+				ProviderRef: &v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
 				Endpoints:   getTestEndpoints(testHostname, []string{"172.32.200.1", "172.32.200.2"}),

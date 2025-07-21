@@ -94,7 +94,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: testWCHostname,
-				ProviderRef: v1alpha1.ProviderRef{
+				ProviderRef: &v1alpha1.ProviderRef{
 					Name: testProviderSecretName,
 				},
 				Endpoints: []*externaldnsendpoint.Endpoint{
@@ -205,7 +205,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				},
 				Spec: v1alpha1.DNSRecordSpec{
 					RootHost: testHostname,
-					ProviderRef: v1alpha1.ProviderRef{
+					ProviderRef: &v1alpha1.ProviderRef{
 						Name: testProviderSecretName,
 					},
 					Endpoints: []*externaldnsendpoint.Endpoint{
@@ -317,7 +317,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				},
 				Spec: v1alpha1.DNSRecordSpec{
 					RootHost: testHostname,
-					ProviderRef: v1alpha1.ProviderRef{
+					ProviderRef: &v1alpha1.ProviderRef{
 						Name: testProviderSecretName,
 					},
 					Endpoints: []*externaldnsendpoint.Endpoint{

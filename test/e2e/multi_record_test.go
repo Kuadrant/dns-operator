@@ -95,7 +95,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							},
 							Spec: v1alpha1.DNSRecordSpec{
 								RootHost: testHostname,
-								ProviderRef: v1alpha1.ProviderRef{
+								ProviderRef: &v1alpha1.ProviderRef{
 									Name: s.Name,
 								},
 								Endpoints: []*externaldnsendpoint.Endpoint{
@@ -371,7 +371,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							},
 							Spec: v1alpha1.DNSRecordSpec{
 								RootHost: testHostname,
-								ProviderRef: v1alpha1.ProviderRef{
+								ProviderRef: &v1alpha1.ProviderRef{
 									Name: s.Name,
 								},
 								Endpoints: []*externaldnsendpoint.Endpoint{

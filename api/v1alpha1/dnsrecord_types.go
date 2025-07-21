@@ -103,8 +103,9 @@ type DNSRecordSpec struct {
 	// +kubebuilder:validation:Pattern=`^(?:[\w\-.~:\/?#[\]@!$&'()*+,;=]+)\.(?:[\w\-.~:\/?#[\]@!$&'()*+,;=]+)$`
 	RootHost string `json:"rootHost"`
 
-	// providerRef is a reference to a provider secret.
-	ProviderRef ProviderRef `json:"providerRef"`
+	// ProviderRef is a reference to a provider secret.
+	// +optional
+	ProviderRef *ProviderRef `json:"providerRef"`
 
 	// endpoints is a list of endpoints that will be published into the dns provider.
 	// +kubebuilder:validation:MinItems=1
@@ -148,6 +149,9 @@ type DNSRecordStatus struct {
 
 	// ownerID is a unique string used to identify the owner of this record.
 	OwnerID string `json:"ownerID,omitempty"`
+
+	// ProviderRef is a reference to a provider secret used to publish endpoints.
+	ProviderRef ProviderRef `json:"providerRef,omitempty"`
 
 	// DomainOwners is a list of all the owners working against the root domain of this record
 	DomainOwners []string `json:"domainOwners,omitempty"`
@@ -237,7 +241,7 @@ func (s *DNSRecord) GetUIDHash() string {
 }
 
 func (s *DNSRecord) GetProviderRef() ProviderRef {
-	return s.Spec.ProviderRef
+	return s.Status.ProviderRef
 }
 
 func (s *DNSRecord) HasDNSZoneAssigned() bool {
@@ -247,6 +251,8 @@ func (s *DNSRecord) HasDNSZoneAssigned() bool {
 func (s *DNSRecord) HasOwnerIDAssigned() bool {
 	return s.Status.OwnerID != ""
 }
+
+func (s *DNSRecord) HasProviderSecretAssigned() bool { return s.Status.ProviderRef.Name != "" }
 
 func init() {
 	SchemeBuilder.Register(&DNSRecord{}, &DNSRecordList{})

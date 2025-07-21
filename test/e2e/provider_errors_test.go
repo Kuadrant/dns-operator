@@ -322,7 +322,7 @@ func testBuildDNSRecord(name, ns, dnsProviderSecretName, ownerID, rootHost strin
 		Spec: v1alpha1.DNSRecordSpec{
 			OwnerID:  ownerID,
 			RootHost: rootHost,
-			ProviderRef: v1alpha1.ProviderRef{
+			ProviderRef: &v1alpha1.ProviderRef{
 				Name: dnsProviderSecretName,
 			},
 			Endpoints: []*externaldnsendpoint.Endpoint{
