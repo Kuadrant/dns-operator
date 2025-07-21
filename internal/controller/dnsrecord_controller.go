@@ -120,8 +120,33 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Update the logger with appropriate record/zone metadata from the dnsRecord
 	ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 
+	if dnsRecord.Status.ProviderEndpointsRemoved() {
+		logger.V(1).Info("Status ProviderEndpointRemoved is true, finalizer can be removed")
+		logger.Info("Removing Finalizer", "finalizer_name", DNSRecordFinalizer)
+		controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
+		if err = r.Update(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, err
+		}
+	}
+
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
 		logger.Info("Deleting DNSRecord")
+		if dnsRecord.Status.ProviderEndpointsRemoved() {
+			// If the status is set there is no clean up work required.
+			// This stops a requeue loop if there are other finalizers add to the resource.
+			// i.e. user generated finalizers.
+			return ctrl.Result{Requeue: false}, nil
+		}
+
+		if !dnsRecord.Status.ProviderEndpointsDeletion() {
+			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
+			result, err := r.updateStatus(ctx, previous, dnsRecord, probes, true, []string{}, err)
+			return result, err
+		}
+
 		if dnsRecord.HasDNSZoneAssigned() {
 			// Create a dns provider with config calculated for the current dns record status (Last successful)
 			dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
@@ -153,15 +178,13 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			logger.Info("dns zone was never assigned, skipping zone cleanup")
 		}
 
-		logger.Info("Removing Finalizer", "finalizer_name", DNSRecordFinalizer)
-		controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
-		if err = r.Update(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
-			if apierrors.IsConflict(err) {
-				return ctrl.Result{Requeue: true}, nil
-			}
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
+		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsRemoved), "DNS records removed from provider")
+		dnsRecord.Status.ZoneEndpoints = nil
+		dnsRecord.Status.ZoneDomainName = ""
+		dnsRecord.Status.ZoneID = ""
+		dnsRecord.Status.OwnerID = ""
+		result, err := r.updateStatus(ctx, previous, dnsRecord, probes, true, []string{}, err)
+		return result, err
 	}
 
 	if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
@@ -534,6 +557,12 @@ func exponentialRequeueTime(lastRequeueTime string) time.Duration {
 // setStatusConditions sets healthy and ready condition on given DNSRecord
 func setStatusConditions(record *v1alpha1.DNSRecord, hadChanges bool, notHealthyProbes []string) {
 	// we get here only when spec err is nil - can trust hadChanges bool
+
+	readyCond := meta.FindStatusCondition(record.Status.Conditions, string(v1alpha1.ConditionTypeReady))
+	if readyCond != nil && (readyCond.Reason == string(v1alpha1.ConditionReasonProviderEndpointsRemoved) || readyCond.Reason == string(v1alpha1.ConditionReasonProviderEndpointsDeletion)) {
+		// status already set to the expected value
+		return
+	}
 
 	// give precedence to AwaitingValidation condition
 	if hadChanges {
