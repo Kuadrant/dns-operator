@@ -1,0 +1,18 @@
+resources:
+  - ../../../deploy/local
+
+patches:
+  - patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: dns-operator-controller-manager
+        namespace: dns-operator-system
+  - patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: dns-operator-controller-manager-metrics-service
+        namespace: dns-operator-system

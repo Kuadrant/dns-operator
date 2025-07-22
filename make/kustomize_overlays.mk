@@ -57,7 +57,7 @@ generate-operator-deployment-overlay: ## Generate a DNS Operator deployment over
 	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator
 	cd $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator && \
 	touch kustomization.yaml && \
-	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/local-setup/dns-operator",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator)
+	$(KUSTOMIZE) edit add resource $(call config_path_for,"config/local-setup/dns-operator/namespace-scoped",$(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/dns-operator)
 
 	# Generate coredns deployment overlay
 	mkdir -p $(CLUSTER_OVERLAY_DIR)/$(CLUSTER_NAME)/coredns
