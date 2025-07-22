@@ -1,0 +1,14 @@
+nameSuffix: -endpoint
+
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    app.kubernetes.io/part-of: dns-operator
+    app.kubernetes.io/managed-by: kustomize
+
+secretGenerator:
+  - name: dns-provider-credentials
+    type: "kuadrant.io/endpoint"
+    literals:
+      - ENDPOINT_GVR=kuadrant.io/v1alpha1.dnsrecords
+      - ENDPOINT_ZONE_RECORD_LABEL=kuadrant.io/zone-record=true

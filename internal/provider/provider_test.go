@@ -51,20 +51,22 @@ func TestSanitizeError(t *testing.T) {
 
 func Test_findDNSZoneForHost(t *testing.T) {
 	testCases := []struct {
-		name    string
-		host    string
-		zones   []DNSZone
-		want    string
-		want1   string
-		wantErr bool
+		name      string
+		host      string
+		zones     []DNSZone
+		allowApex bool
+		want      string
+		want1     string
+		wantErr   bool
 	}{
 		{
-			name:    "no zones",
-			host:    "sub.domain.test.example.com",
-			zones:   []DNSZone{},
-			want:    "",
-			want1:   "",
-			wantErr: true,
+			name:      "no zones",
+			host:      "sub.domain.test.example.com",
+			zones:     []DNSZone{},
+			allowApex: true,
+			want:      "",
+			want1:     "",
+			wantErr:   true,
 		},
 		{
 			name: "single zone with match",
@@ -74,9 +76,10 @@ func Test_findDNSZoneForHost(t *testing.T) {
 					DNSName: "example.com",
 				},
 			},
-			want:    "example.com",
-			want1:   "sub.domain.test",
-			wantErr: false,
+			allowApex: true,
+			want:      "example.com",
+			want1:     "sub.domain.test",
+			wantErr:   false,
 		},
 		{
 			name: "does not match exact dns name",
@@ -86,9 +89,10 @@ func Test_findDNSZoneForHost(t *testing.T) {
 					DNSName: "sub.domain.test.example.com",
 				},
 			},
-			want:    "",
-			want1:   "",
-			wantErr: true,
+			allowApex: true,
+			want:      "",
+			want1:     "",
+			wantErr:   true,
 		},
 		{
 			name: "multiple zones that all match",
@@ -104,9 +108,10 @@ func Test_findDNSZoneForHost(t *testing.T) {
 					DNSName: "domain.test.example.com",
 				},
 			},
-			want:    "domain.test.example.com",
-			want1:   "sub",
-			wantErr: false,
+			allowApex: true,
+			want:      "domain.test.example.com",
+			want1:     "sub",
+			wantErr:   false,
 		},
 		{
 			name: "multiple zones some match",
@@ -122,9 +127,10 @@ func Test_findDNSZoneForHost(t *testing.T) {
 					DNSName: "test.otherdomain.com",
 				},
 			},
-			want:    "test.example.com",
-			want1:   "sub.domain",
-			wantErr: false,
+			allowApex: true,
+			want:      "test.example.com",
+			want1:     "sub.domain",
+			wantErr:   false,
 		},
 		{
 			name: "multiple zones no match",
@@ -140,9 +146,10 @@ func Test_findDNSZoneForHost(t *testing.T) {
 					DNSName: "test.otherdomain.com",
 				},
 			},
-			want:    "",
-			want1:   "",
-			wantErr: true,
+			allowApex: true,
+			want:      "",
+			want1:     "",
+			wantErr:   true,
 		},
 		{
 			name: "handles tld with a dot",
@@ -152,9 +159,10 @@ func Test_findDNSZoneForHost(t *testing.T) {
 					DNSName: "example.co.uk",
 				},
 			},
-			want:    "example.co.uk",
-			want1:   "sub.domain.test",
-			wantErr: false,
+			allowApex: true,
+			want:      "example.co.uk",
+			want1:     "sub.domain.test",
+			wantErr:   false,
 		},
 		{
 			name: "tld with a dot will not match against a zone of the tld",
@@ -164,9 +172,10 @@ func Test_findDNSZoneForHost(t *testing.T) {
 					DNSName: "co.uk",
 				},
 			},
-			want:    "",
-			want1:   "",
-			wantErr: true,
+			allowApex: true,
+			want:      "",
+			want1:     "",
+			wantErr:   true,
 		},
 		{
 			name: "multiple zones with multiple matches for the same dns name",
@@ -182,9 +191,10 @@ func Test_findDNSZoneForHost(t *testing.T) {
 					DNSName: "test.example.com",
 				},
 			},
-			want:    "",
-			want1:   "",
-			wantErr: true,
+			allowApex: true,
+			want:      "",
+			want1:     "",
+			wantErr:   true,
 		},
 		{
 			name: "apex domain",
@@ -197,14 +207,15 @@ func Test_findDNSZoneForHost(t *testing.T) {
 					DNSName: "test.example.com",
 				},
 			},
-			want:    "",
-			want1:   "",
-			wantErr: true,
+			allowApex: true,
+			want:      "",
+			want1:     "",
+			wantErr:   true,
 		},
 	}
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1, err := findDNSZoneForHost(tt.host, tt.host, tt.zones)
+			got, got1, err := findDNSZoneForHost(tt.host, tt.host, tt.zones, tt.allowApex)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("findDNSZoneForHost() error = %v, wantErr %v", err, tt.wantErr)
 				return

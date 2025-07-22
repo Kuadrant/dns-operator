@@ -24,11 +24,12 @@ var (
 
 	ErrNoZoneForHost = fmt.Errorf("no zone for host")
 
-	DNSProviderCoreDNS DNSProviderName = "coredns"
-	DNSProviderAWS     DNSProviderName = "aws"
-	DNSProviderAzure   DNSProviderName = "azure"
-	DNSProviderGCP     DNSProviderName = "google"
-	DNSProviderInMem   DNSProviderName = "inmemory"
+	DNSProviderCoreDNS  DNSProviderName = "coredns"
+	DNSProviderAWS      DNSProviderName = "aws"
+	DNSProviderAzure    DNSProviderName = "azure"
+	DNSProviderGCP      DNSProviderName = "google"
+	DNSProviderInMem    DNSProviderName = "inmemory"
+	DNSProviderEndpoint DNSProviderName = "endpoint"
 
 	CoreDNSRecordZoneLabel = "kuadrant.io/coredns-zone-name"
 	CoreDNSRecordTypeLabel = "kuadrant.io/type"
@@ -92,9 +93,9 @@ func SanitizeError(err error) error {
 }
 
 // FindDNSZoneForHost finds the most suitable zone for the given host in the given list of DNSZones
-func FindDNSZoneForHost(ctx context.Context, host string, zones []DNSZone) (*DNSZone, error) {
+func FindDNSZoneForHost(ctx context.Context, host string, zones []DNSZone, denyApex bool) (*DNSZone, error) {
 	log.FromContext(ctx).V(1).Info(fmt.Sprintf("finding most suitable zone for %s from %v possible zones %v", host, len(zones), zones))
-	z, _, err := findDNSZoneForHost(host, host, zones)
+	z, _, err := findDNSZoneForHost(host, host, zones, denyApex)
 	return z, err
 }
 
@@ -112,7 +113,7 @@ func IsWildCardHost(host string) bool {
 }
 
 // findDNSZoneForHost will take a host and look for a zone that patches the immediate parent of that host and will continue to step through parents until it either finds a zone  or fails. Example *.example.com will look for example.com and other.domain.example.com will step through each subdomain until it hits example.com.
-func findDNSZoneForHost(originalHost, host string, zones []DNSZone) (*DNSZone, string, error) {
+func findDNSZoneForHost(originalHost, host string, zones []DNSZone, denyApex bool) (*DNSZone, string, error) {
 	if len(zones) == 0 {
 		return nil, "", fmt.Errorf("%w : %s", ErrNoZoneForHost, host)
 	}
@@ -126,7 +127,7 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone) (*DNSZone, s
 	}
 
 	// We do not currently support creating records for Apex domains, and a DNSZone represents an Apex domain we cannot setup dns for the host
-	if id, is := IsApexDomain(originalHost, zones); is {
+	if id, is := IsApexDomain(originalHost, zones); is && denyApex {
 		return nil, "", fmt.Errorf("host %s is an apex domain with zone id %s. Cannot configure DNS for apex domain as apex domains only support A records", originalHost, id)
 	}
 
@@ -138,8 +139,8 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone) (*DNSZone, s
 	// We do not currently support creating records for Apex domains, and a DNSZone represents an Apex domain, as such
 	// we should never be trying to find a zone that matches the `originalHost` exactly. Instead, we just continue
 	// on to the next possible valid host to try i.e. the parent domain.
-	if host == originalHost {
-		return findDNSZoneForHost(originalHost, parentDomain, zones)
+	if host == originalHost && denyApex {
+		return findDNSZoneForHost(originalHost, parentDomain, zones, denyApex)
 	}
 
 	matches := slices.DeleteFunc(slices.Clone(zones), func(zone DNSZone) bool {
@@ -153,5 +154,5 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone) (*DNSZone, s
 		return &matches[0], subdomain, nil
 	}
 
-	return findDNSZoneForHost(originalHost, parentDomain, zones)
+	return findDNSZoneForHost(originalHost, parentDomain, zones, denyApex)
 }
