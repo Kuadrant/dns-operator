@@ -11,6 +11,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -24,17 +25,27 @@ var errUnsupportedProvider = fmt.Errorf("provider type given is not supported")
 // ProviderConstructor constructs a provider given a Secret resource and a Context.
 // An error will be returned if the appropriate provider is not registered.
 type ProviderConstructor func(context.Context, *v1.Secret, Config) (Provider, error)
+type ProviderConstructorWithClient func(context.Context, dynamic.Interface, *v1.Secret, Config) (Provider, error)
 
 var (
-	constructors     = make(map[string]ProviderConstructor)
+	constructors     = make(map[string]interface{})
 	constructorsLock sync.RWMutex
 	defaultProviders []string
 )
 
+func RegisterProviderWithClient(name string, c ProviderConstructorWithClient, asDefault bool) {
+	registerProvider(name, c, asDefault)
+}
+
+func RegisterProvider(name string, c ProviderConstructor, asDefault bool) {
+	registerProvider(name, c, asDefault)
+}
+
 // RegisterProvider will register a provider constructor, so it can be used within the application.
 // 'name' should be unique, and should be used to identify this provider
 // `asDefault` indicates if the provider should be added as a default provider and included in the default providers list.
-func RegisterProvider(name string, c ProviderConstructor, asDefault bool) {
+func registerProvider(name string, c interface{}, asDefault bool) {
+	log.Log.Info("registering provider", "name", name)
 	constructorsLock.Lock()
 	defer constructorsLock.Unlock()
 	constructors[name] = c
@@ -56,12 +67,13 @@ type Factory interface {
 // factory is the default Factory implementation
 type factory struct {
 	client.Client
-	providers []string
+	dynamicClient dynamic.Interface
+	providers     []string
 }
 
 // NewFactory returns a new provider factory with the given client and given providers enabled.
 // Will return an error if any given provider has no registered provider implementation.
-func NewFactory(c client.Client, p []string) (Factory, error) {
+func NewFactory(c client.Client, d dynamic.Interface, p []string) (Factory, error) {
 	var err error
 	registeredProviders := maps.Keys(constructors)
 	for _, provider := range p {
@@ -69,7 +81,7 @@ func NewFactory(c client.Client, p []string) (Factory, error) {
 			err = errors.Join(err, fmt.Errorf("provider '%s' not registered", provider))
 		}
 	}
-	return &factory{Client: c, providers: p}, err
+	return &factory{Client: c, dynamicClient: d, providers: p}, err
 }
 
 // ProviderFor will return a Provider interface for the given ProviderAccessor secret.
@@ -98,7 +110,14 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 			return nil, fmt.Errorf("provider '%s' not enabled", provider)
 		}
 		logger.V(1).Info(fmt.Sprintf("initializing %s provider with config", provider), "config", c)
-		return constructor(ctx, providerSecret, c)
+		switch typedConstructor := constructor.(type) {
+		case ProviderConstructor:
+			return typedConstructor(ctx, providerSecret, c)
+		case ProviderConstructorWithClient:
+			return typedConstructor(ctx, f.dynamicClient, providerSecret, c)
+		}
+
+		return nil, fmt.Errorf("unrecognised contructor for provider '%s'", provider)
 	}
 
 	return nil, fmt.Errorf("provider '%s' not registered", provider)
@@ -116,6 +135,8 @@ func NameForProviderSecret(secret *v1.Secret) (string, error) {
 		return DNSProviderInMem.String(), nil
 	case v1alpha1.SecretTypeKuadrantCoreDNS:
 		return DNSProviderCoreDNS.String(), nil
+	case v1alpha1.SecretTypeKuadrantEndpoint:
+		return DNSProviderEndpoint.String(), nil
 	}
 	return "", errUnsupportedProvider
 }

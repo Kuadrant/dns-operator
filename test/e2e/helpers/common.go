@@ -15,6 +15,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
@@ -101,8 +102,8 @@ func EndpointsForHost(ctx context.Context, p provider.Provider, host string) ([]
 	return filtered, nil
 }
 
-func ProviderForDNSRecord(ctx context.Context, record *v1alpha1.DNSRecord, c client.Client) (provider.Provider, error) {
-	providerFactory, err := provider.NewFactory(c, []string{provider.DNSProviderAWS.String(), provider.DNSProviderGCP.String(), provider.DNSProviderAzure.String(), provider.DNSProviderCoreDNS.String()})
+func ProviderForDNSRecord(ctx context.Context, record *v1alpha1.DNSRecord, c client.Client, d dynamic.Interface) (provider.Provider, error) {
+	providerFactory, err := provider.NewFactory(c, d, []string{provider.DNSProviderAWS.String(), provider.DNSProviderGCP.String(), provider.DNSProviderAzure.String(), provider.DNSProviderCoreDNS.String()})
 	if err != nil {
 		return nil, err
 	}

@@ -183,7 +183,7 @@ func (p *Route53DNSProvider) DNSZoneForHost(ctx context.Context, host string) (*
 	if err != nil {
 		return nil, err
 	}
-	return provider.FindDNSZoneForHost(ctx, host, zones)
+	return provider.FindDNSZoneForHost(ctx, host, zones, true)
 }
 
 func (*Route53DNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {

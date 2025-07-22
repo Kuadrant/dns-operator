@@ -108,7 +108,7 @@ type DNSRecordSpec struct {
 	ProviderRef *ProviderRef `json:"providerRef"`
 
 	// endpoints is a list of endpoints that will be published into the dns provider.
-	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MinItems=0
 	// +optional
 	Endpoints []*externaldns.Endpoint `json:"endpoints,omitempty"`
 
@@ -209,9 +209,6 @@ const WildcardPrefix = "*."
 
 func (s *DNSRecord) Validate() error {
 	root := s.Spec.RootHost
-	if len(s.Spec.Endpoints) == 0 {
-		return fmt.Errorf("no endpoints defined for DNSRecord. Nothing to do")
-	}
 
 	root, _ = strings.CutPrefix(root, WildcardPrefix)
 
@@ -227,6 +224,12 @@ func (s *DNSRecord) Validate() error {
 			}
 		}
 	}
+
+	if len(s.Spec.Endpoints) == 0 {
+		// probably a zone record with nothing merged into it yet, just ignore it until it has records
+		return nil
+	}
+
 	if !rootEndpointFound {
 		return fmt.Errorf("invalid endpoint set. rootHost is set but found no endpoint defining a record for the rootHost %s", root)
 	}

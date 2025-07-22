@@ -16,6 +16,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
@@ -43,6 +45,8 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 	var dnsRecord *v1alpha1.DNSRecord
 	var dnsRecords []*v1alpha1.DNSRecord
 
+	var dynamicClient dynamic.Interface
+
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-single-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
@@ -56,6 +60,11 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		} else {
 			geoCode = "US"
 		}
+		config, err := rest.InClusterConfig()
+		Expect(err).ToNot(HaveOccurred())
+
+		dynamicClient, err = dynamic.NewForConfig(config)
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -147,7 +156,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
 		By("ensuring zone records are created as expected")
-		testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
+		testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient, dynamicClient)
 		Expect(err).NotTo(HaveOccurred())
 		zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 		Expect(err).NotTo(HaveOccurred())
@@ -243,7 +252,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
 			By("ensuring zone records are created as expected")
-			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
+			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient, dynamicClient)
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
@@ -408,7 +417,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
 			By("ensuring zone records are created as expected")
-			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient)
+			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient, dynamicClient)
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
