@@ -1,0 +1,16 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced-google-zone
+  labels:
+    kuadrant.io/crd-provider-zone-record: mn.google.hcpapps.net
+spec:
+  rootHost: loadbalanced.mn.google.hcpapps.net
+  endpoints:
+    - dnsName: ignore.me.loadbalanced.mn.google.hcpapps.net
+      recordTTL: 60
+      recordType: TXT
+      targets:
+        - "foo=bar"
+  providerRef:
+    name: dns-provider-credentials-gcp

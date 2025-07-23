@@ -1,0 +1,14 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-simple-coredns-cluster3
+spec:
+  rootHost: simple.k.example.com
+  endpoints:
+  - dnsName: simple.k.example.com
+    recordTTL: 60
+    recordType: A
+    targets:
+    - 172.18.200.3
+  providerRef:
+    name: dns-provider-credentials-crd

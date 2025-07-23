@@ -1,0 +1,14 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-simple-aws-cluster3
+spec:
+  rootHost: simple.mn.hcpapps.net
+  endpoints:
+  - dnsName: simple.mn.hcpapps.net
+    recordTTL: 60
+    recordType: A
+    targets:
+    - 172.18.200.3
+  providerRef:
+    name: dns-provider-credentials-crd

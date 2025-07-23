@@ -1,0 +1,48 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced-coredns-cluster1
+spec:
+  rootHost: loadbalanced.k.example.com
+  endpoints:
+    - dnsName: loadbalanced.k.example.com
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.loadbalanced.k.example.com
+    - dnsName: klb.loadbalanced.k.example.com
+      providerSpecific:
+        - name: geo-code
+          value: IE
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: IE
+      targets:
+        - ie.klb.loadbalanced.k.example.com
+    - dnsName: klb.loadbalanced.k.example.com
+      providerSpecific:
+        - name: geo-code
+          value: '*'
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: default
+      targets:
+        - ie.klb.loadbalanced.k.example.com
+    - dnsName: ie.klb.loadbalanced.k.example.com
+      providerSpecific:
+        - name: weight
+          value: "200"
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster1-gw1-ns1.klb.loadbalanced.k.example.com
+      targets:
+        - cluster1-gw1-ns1.klb.loadbalanced.k.example.com
+    - dnsName: cluster1-gw1-ns1.klb.loadbalanced.k.example.com
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.1
+      labels:
+        soft_delete: "false"
+  providerRef:
+    name: dns-provider-credentials-crd

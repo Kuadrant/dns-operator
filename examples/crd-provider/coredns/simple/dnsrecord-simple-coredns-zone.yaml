@@ -1,0 +1,16 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-simple-coredns-zone
+  labels:
+    kuadrant.io/crd-provider-zone-record: k.example.com
+spec:
+  rootHost: simple.k.example.com
+  endpoints:
+    - dnsName: ignore.me.simple.k.example.com
+      recordTTL: 60
+      recordType: TXT
+      targets:
+        - "foo=bar"
+  providerRef:
+    name: dns-provider-credentials-coredns

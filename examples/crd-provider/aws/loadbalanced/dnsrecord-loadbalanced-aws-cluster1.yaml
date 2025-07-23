@@ -1,0 +1,48 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced-aws-cluster1
+spec:
+  rootHost: loadbalanced.mn.hcpapps.net
+  endpoints:
+    - dnsName: loadbalanced.mn.hcpapps.net
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.loadbalanced.mn.hcpapps.net
+    - dnsName: klb.loadbalanced.mn.hcpapps.net
+      providerSpecific:
+        - name: geo-code
+          value: IE
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: IE
+      targets:
+        - ie.klb.loadbalanced.mn.hcpapps.net
+    - dnsName: klb.loadbalanced.mn.hcpapps.net
+      providerSpecific:
+        - name: geo-code
+          value: '*'
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: default
+      targets:
+        - ie.klb.loadbalanced.mn.hcpapps.net
+    - dnsName: ie.klb.loadbalanced.mn.hcpapps.net
+      providerSpecific:
+        - name: weight
+          value: "200"
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster1-gw1-ns1.klb.loadbalanced.mn.hcpapps.net
+      targets:
+        - cluster1-gw1-ns1.klb.loadbalanced.mn.hcpapps.net
+    - dnsName: cluster1-gw1-ns1.klb.loadbalanced.mn.hcpapps.net
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.1
+      labels:
+        soft_delete: "false"
+  providerRef:
+    name: dns-provider-credentials-crd

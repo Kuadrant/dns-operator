@@ -1,0 +1,16 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced-aws-zone
+  labels:
+    kuadrant.io/crd-provider-zone-record: mn.hcpapps.net
+spec:
+  rootHost: loadbalanced.mn.hcpapps.net
+  endpoints:
+    - dnsName: ignore.me.loadbalanced.mn.hcpapps.net
+      recordTTL: 60
+      recordType: TXT
+      targets:
+        - "foo=bar"
+  providerRef:
+    name: dns-provider-credentials-aws

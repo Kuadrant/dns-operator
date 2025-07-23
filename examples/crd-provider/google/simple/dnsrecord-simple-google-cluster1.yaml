@@ -1,0 +1,14 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-simple-google-cluster1
+spec:
+  rootHost: simple.mn.google.hcpapps.net
+  endpoints:
+  - dnsName: simple.mn.google.hcpapps.net
+    recordTTL: 60
+    recordType: A
+    targets:
+    - 172.18.200.1
+  providerRef:
+    name: dns-provider-credentials-crd

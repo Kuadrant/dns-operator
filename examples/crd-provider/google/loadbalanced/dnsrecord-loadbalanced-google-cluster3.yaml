@@ -1,0 +1,37 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced-google-cluster3
+spec:
+  rootHost: loadbalanced.mn.google.hcpapps.net
+  endpoints:
+    - dnsName: loadbalanced.mn.google.hcpapps.net
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.loadbalanced.mn.google.hcpapps.net
+    - dnsName: klb.loadbalanced.mn.google.hcpapps.net
+      providerSpecific:
+        - name: geo-code
+          value: us-east1
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: IE
+      targets:
+        - us-east1.klb.loadbalanced.mn.google.hcpapps.net
+    - dnsName: us-east1.klb.loadbalanced.mn.google.hcpapps.net
+      providerSpecific:
+        - name: weight
+          value: "100"
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster3-gw1-ns1.klb.loadbalanced.mn.google.hcpapps.net
+      targets:
+        - cluster3-gw1-ns1.klb.loadbalanced.mn.google.hcpapps.net
+    - dnsName: cluster3-gw1-ns1.klb.loadbalanced.mn.google.hcpapps.net
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.3
+  providerRef:
+    name: dns-provider-credentials-crd

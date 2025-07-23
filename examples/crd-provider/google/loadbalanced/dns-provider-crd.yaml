@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dns-provider-credentials-crd
+type: kuadrant.io/crd
+stringData:
+  CRD_ZONE_RECORD_LABEL: "kuadrant.io/crd-provider-zone-record"
