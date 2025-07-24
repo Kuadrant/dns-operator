@@ -111,13 +111,18 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
+	//ToDo Replace this with generic logic to parse flags from env vars
+	var csNamespaceEnvVarName = "CLUSTER_SECRET_NAMESPACE"
+	if ns := os.Getenv(csNamespaceEnvVarName); ns != "" {
+		clusterSecretNamespace = ns
+	}
+
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	printControllerMetaInfo()
 
 	ctx := ctrl.SetupSignalHandler()
 
-	var watchNamespaces = "WATCH_NAMESPACES"
 	defaultOptions := ctrl.Options{
 		Scheme:                 scheme.Scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
@@ -127,6 +132,8 @@ func main() {
 		LeaderElectionID:       "a3f98d6c.kuadrant.io",
 	}
 
+	//ToDo Replace this with generic logic to parse flags from env vars, also add `--watch-namespaces` as a flag
+	var watchNamespaces = "WATCH_NAMESPACES"
 	if watch := os.Getenv(watchNamespaces); watch != "" {
 		namespaces := strings.Split(watch, ",")
 		setupLog.Info("watching namespaces set ", watchNamespaces, namespaces)
