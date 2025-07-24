@@ -120,25 +120,22 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Update the logger with appropriate record/zone metadata from the dnsRecord
 	ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 
-	if dnsRecord.Status.ProviderEndpointsRemoved() {
-		logger.V(1).Info("Status ProviderEndpointRemoved is true, finalizer can be removed")
-		logger.Info("Removing Finalizer", "finalizer_name", DNSRecordFinalizer)
-		controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
-		if err = r.Update(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
-			if apierrors.IsConflict(err) {
-				return ctrl.Result{Requeue: true}, nil
-			}
-			return ctrl.Result{}, err
-		}
-	}
-
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
 		logger.Info("Deleting DNSRecord")
 		if dnsRecord.Status.ProviderEndpointsRemoved() {
+			logger.V(1).Info("Status ProviderEndpointRemoved is true, finalizer can be removed")
+			logger.Info("Removing Finalizer", "finalizer_name", DNSRecordFinalizer)
+			controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
+			if err = r.Update(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
+				if apierrors.IsConflict(err) {
+					return ctrl.Result{Requeue: true}, nil
+				}
+				return ctrl.Result{}, err
+			}
 			// If the status is set there is no clean up work required.
 			// This stops a requeue loop if there are other finalizers add to the resource.
 			// i.e. user generated finalizers.
-			return ctrl.Result{Requeue: false}, nil
+			return ctrl.Result{}, nil
 		}
 
 		if !dnsRecord.Status.ProviderEndpointsDeletion() {
