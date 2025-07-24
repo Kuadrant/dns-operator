@@ -17,18 +17,24 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -52,12 +58,38 @@ var (
 	gitSHA   string // pass ldflag here to display gitSHA hash
 	dirty    string // must be string as passed in by ldflag to determine display .
 	version  string // must be string as passed in by ldflag to determine display .
+
+	// controller flags
+	metricsAddr          string
+	enableLeaderElection bool
+	probeAddr            string
+	minRequeueTime       time.Duration
+	validFor             time.Duration
+	maxRequeueTime       time.Duration
+	providers            stringSliceFlags
+	dnsProbesEnabled     bool
+	allowInsecureCerts   bool
 )
 
 const (
 	RequeueDuration           = time.Minute * 15
 	ValidityDuration          = time.Minute * 14
 	DefaultValidationDuration = time.Second * 5
+
+	// controller flags keys
+	metricsAddrKey          = "metrics-bind-address"
+	enableLeaderElectionKey = "leader-elect"
+	probeAddrKey            = "health-probe-bind-address"
+	minRequeueTimeKey       = "min-requeue-time"
+	validForKey             = "valid-for"
+	maxRequeueTimeKey       = "max-requeue-time"
+	providersKey            = "provider"
+	dnsProbesEnabledKey     = "enable-probes"
+	allowInsecureCertsKey   = "insecure-health-checks"
+
+	// override flags map
+	overrideMapName      = "dns-operator"
+	overrideMapNamespace = "kuadrant-system"
 )
 
 func init() {
@@ -72,34 +104,24 @@ func printControllerMetaInfo() {
 }
 
 func main() {
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
-	var minRequeueTime time.Duration
-	var validFor time.Duration
-	var maxRequeueTime time.Duration
-	var providers stringSliceFlags
-	var dnsProbesEnabled bool
-	var allowInsecureCerts bool
+	flag.BoolVar(&dnsProbesEnabled, dnsProbesEnabledKey, true, "Enable DNSHealthProbes controller.")
+	flag.BoolVar(&allowInsecureCerts, allowInsecureCertsKey, true, "Allow DNSHealthProbes to use insecure certificates")
 
-	flag.BoolVar(&dnsProbesEnabled, "enable-probes", true, "Enable DNSHealthProbes controller.")
-	flag.BoolVar(&allowInsecureCerts, "insecure-health-checks", true, "Allow DNSHealthProbes to use insecure certificates")
-
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	flag.StringVar(&metricsAddr, metricsAddrKey, ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&probeAddr, probeAddrKey, ":8081", "The address the probe endpoint binds to.")
+	flag.BoolVar(&enableLeaderElection, enableLeaderElectionKey, false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.DurationVar(&maxRequeueTime, "max-requeue-time", RequeueDuration,
+	flag.DurationVar(&maxRequeueTime, maxRequeueTimeKey, RequeueDuration,
 		"The maximum times it takes between reconciliations of DNS Record "+
 			"Controls how ofter record is reconciled")
-	flag.DurationVar(&validFor, "valid-for", ValidityDuration,
+	flag.DurationVar(&validFor, validForKey, ValidityDuration,
 		"Duration when the record is considered to hold valid information"+
 			"Controls if we commit to the full reconcile loop")
-	flag.DurationVar(&minRequeueTime, "min-requeue-time", DefaultValidationDuration,
+	flag.DurationVar(&minRequeueTime, minRequeueTimeKey, DefaultValidationDuration,
 		"The minimal timeout between calls to the DNS Provider"+
 			"Controls if we commit to the full reconcile loop")
-	flag.Var(&providers, "provider", "DNS Provider(s) to enable. Can be passed multiple times e.g. --provider aws --provider google, or as a comma separated list e.g. --provider aws,gcp")
+	flag.Var(&providers, providersKey, "DNS Provider(s) to enable. Can be passed multiple times e.g. --provider aws --provider google, or as a comma separated list e.g. --provider aws,gcp")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -136,8 +158,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	overrideControllerFlags()
+
 	if len(providers) == 0 {
 		defaultProviders := provider.RegisteredDefaultProviders()
+		fmt.Println("\n\n\n def providers \n " + strings.Join(defaultProviders, ""))
 		if defaultProviders == nil {
 			setupLog.Error(fmt.Errorf("no default providers registered"), "unable to set providers")
 			os.Exit(1)
@@ -188,6 +213,76 @@ func main() {
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
+	}
+}
+
+// overrideControllerFlags locates the "dns-operator" config map and overrides controller flags with values from it
+func overrideControllerFlags() {
+	k8sClient, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "unable to create client")
+		os.Exit(1)
+	}
+
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      overrideMapName,
+			Namespace: overrideMapNamespace,
+		},
+	}
+
+	err = k8sClient.Get(context.Background(), client.ObjectKeyFromObject(configMap), configMap)
+	if errors.IsNotFound(err) {
+		return
+	}
+	if err != nil {
+		setupLog.Error(err, "unable to get configmap with controller flags")
+		os.Exit(1)
+	}
+	setupLog.Info(fmt.Sprintf("overriding controller flags with the %s ConfigMap", overrideMapName))
+	for k, v := range configMap.Data {
+		switch k {
+		case dnsProbesEnabledKey:
+			value, parseErr := strconv.ParseBool(v)
+			if parseErr == nil {
+				dnsProbesEnabled = value
+			}
+		case allowInsecureCertsKey:
+			value, parseErr := strconv.ParseBool(v)
+			if parseErr == nil {
+				allowInsecureCerts = value
+			}
+		case metricsAddrKey:
+			metricsAddr = v
+		case probeAddrKey:
+			probeAddr = v
+		case enableLeaderElectionKey:
+			value, parseErr := strconv.ParseBool(v)
+			if parseErr == nil {
+				enableLeaderElection = value
+			}
+		case maxRequeueTimeKey:
+			value, parseErr := time.ParseDuration(v)
+			if parseErr == nil {
+				maxRequeueTime = value
+			}
+		case validForKey:
+			value, parseErr := time.ParseDuration(v)
+			if parseErr == nil {
+				validFor = value
+			}
+		case minRequeueTimeKey:
+			value, parseErr := time.ParseDuration(v)
+			if parseErr == nil {
+				minRequeueTime = value
+			}
+		case providersKey:
+			sliceFlag := stringSliceFlags{}
+			parseErr := sliceFlag.Set(v)
+			if parseErr == nil {
+				providers = sliceFlag
+			}
+		}
 	}
 }
 
