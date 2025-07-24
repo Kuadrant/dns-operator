@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -58,12 +59,45 @@ var (
 	dirty           string // must be string as passed in by ldflag to determine display .
 	version         string // must be string as passed in by ldflag to determine display .
 	delegationRoles = []string{controller.DelegationRolePrimary, controller.DelegationRoleSecondary}
+
+	// controller flags
+	metricsAddr            string
+	enableLeaderElection   bool
+	probeAddr              string
+	minRequeueTime         time.Duration
+	validFor               time.Duration
+	maxRequeueTime         time.Duration
+	providers              stringSliceFlags
+	dnsProbesEnabled       bool
+	allowInsecureCerts     bool
+	clusterSecretNamespace string
+	clusterSecretLabel     string
+	watchNamespaces        string
+	delegationRole         string
+
+	// represents booth flag and envar key
+	metricsAddrKey            = variableKey("metrics-bind-address")
+	enableLeaderElectionKey   = variableKey("leader-elect")
+	probeAddrKey              = variableKey("health-probe-bind-address")
+	minRequeueTimeKey         = variableKey("min-requeue-time")
+	validForKey               = variableKey("valid-for")
+	maxRequeueTimeKey         = variableKey("max-requeue-time")
+	providersKey              = variableKey("provider")
+	dnsProbesEnabledKey       = variableKey("enable-probes")
+	allowInsecureCertsKey     = variableKey("insecure-health-checks")
+	clusterSecretNamespaceKey = variableKey("cluster-secret-namespace")
+	clusterSecretLabelKey     = variableKey("cluster-secret-label")
+	watchNamespacesKey        = variableKey("watch-namespaces")
+	delegationRoleKey         = variableKey("delegation-role")
 )
 
 const (
 	RequeueDuration           = time.Minute * 15
 	ValidityDuration          = time.Minute * 14
 	DefaultValidationDuration = time.Second * 5
+
+	DefaultClusterSecretNamespace = "dns-operator-system"
+	DefaultClusterSecretLabel     = "kuadrant.io/multicluster-kubeconfig"
 )
 
 func init() {
@@ -76,58 +110,42 @@ func printControllerMetaInfo() {
 }
 
 func main() {
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
-	var minRequeueTime time.Duration
-	var validFor time.Duration
-	var maxRequeueTime time.Duration
-	var providers stringSliceFlags
-	var dnsProbesEnabled bool
-	var allowInsecureCerts bool
+	flag.BoolVar(&dnsProbesEnabled, dnsProbesEnabledKey.Flag(), true, "Enable DNSHealthProbes controller.")
+	flag.BoolVar(&allowInsecureCerts, allowInsecureCertsKey.Flag(), true, "Allow DNSHealthProbes to use insecure certificates")
 
-	var clusterSecretNamespace string
-	var clusterSecretLabel string
+	flag.BoolVar(&dnsProbesEnabled, dnsProbesEnabledKey.Flag(), true, "Enable DNSHealthProbes controller.")
+	flag.BoolVar(&allowInsecureCerts, allowInsecureCertsKey.Flag(), true, "Allow DNSHealthProbes to use insecure certificates")
 
-	var delegationRole string
-
-	flag.BoolVar(&dnsProbesEnabled, "enable-probes", true, "Enable DNSHealthProbes controller.")
-	flag.BoolVar(&allowInsecureCerts, "insecure-health-checks", true, "Allow DNSHealthProbes to use insecure certificates")
-
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	flag.StringVar(&metricsAddr, metricsAddrKey.Flag(), ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&probeAddr, probeAddrKey.Flag(), ":8081", "The address the probe endpoint binds to.")
+	flag.BoolVar(&enableLeaderElection, enableLeaderElectionKey.Flag(), false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.DurationVar(&maxRequeueTime, "max-requeue-time", RequeueDuration,
+	flag.DurationVar(&maxRequeueTime, maxRequeueTimeKey.Flag(), RequeueDuration,
 		"The maximum times it takes between reconciliations of DNS Record "+
 			"Controls how ofter record is reconciled")
-	flag.DurationVar(&validFor, "valid-for", ValidityDuration,
+	flag.DurationVar(&validFor, validForKey.Flag(), ValidityDuration,
 		"Duration when the record is considered to hold valid information"+
 			"Controls if we commit to the full reconcile loop")
-	flag.DurationVar(&minRequeueTime, "min-requeue-time", DefaultValidationDuration,
+	flag.DurationVar(&minRequeueTime, minRequeueTimeKey.Flag(), DefaultValidationDuration,
 		"The minimal timeout between calls to the DNS Provider"+
 			"Controls if we commit to the full reconcile loop")
-	flag.Var(&providers, "provider", "DNS Provider(s) to enable. Can be passed multiple times e.g. --provider aws --provider google, or as a comma separated list e.g. --provider aws,gcp")
+	flag.Var(&providers, providersKey.Flag(), "DNS Provider(s) to enable. Can be passed multiple times e.g. --provider aws --provider google, or as a comma separated list e.g. --provider aws,gcp")
 
-	flag.StringVar(&clusterSecretNamespace, "cluster-secret-namespace", "dns-operator-system", "The Namespace to look for cluster secrets.")
-	flag.StringVar(&clusterSecretLabel, "cluster-secret-label", "kuadrant.io/multicluster-kubeconfig", "The label that identifies a Secret resource as a cluster secret.")
+	flag.StringVar(&clusterSecretNamespace, clusterSecretNamespaceKey.Flag(), DefaultClusterSecretNamespace, "The Namespace to look for cluster secrets.")
+	flag.StringVar(&clusterSecretLabel, clusterSecretLabelKey.Flag(), DefaultClusterSecretLabel, "The label that identifies a Secret resource as a cluster secret.")
+	flag.StringVar(&watchNamespaces, watchNamespacesKey.Flag(), "", "Comma separated list of default namespaces.")
 
-	flag.Var(newDelegationRoleValue(controller.DelegationRolePrimary, &delegationRole), "delegation-role", "The delegation role for this controller. Must be one of 'primary'(default), or 'secondary'")
+	flag.Var(newDelegationRoleValue(controller.DelegationRolePrimary, &delegationRole), delegationRoleKey.Flag(), "The delegation role for this controller. Must be one of 'primary'(default), or 'secondary'")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	//ToDo Replace this with generic logic to parse flags from env vars
-	var csNamespaceEnvVarName = "CLUSTER_SECRET_NAMESPACE"
-	if ns := os.Getenv(csNamespaceEnvVarName); ns != "" {
-		clusterSecretNamespace = ns
-	}
-
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	printControllerMetaInfo()
+	overrideControllerFlags()
 
 	ctx := ctrl.SetupSignalHandler()
 
@@ -140,11 +158,9 @@ func main() {
 		LeaderElectionID:       "a3f98d6c.kuadrant.io",
 	}
 
-	//ToDo Replace this with generic logic to parse flags from env vars, also add `--watch-namespaces` as a flag
-	var watchNamespaces = "WATCH_NAMESPACES"
-	if watch := os.Getenv(watchNamespaces); watch != "" {
-		namespaces := strings.Split(watch, ",")
-		setupLog.Info("watching namespaces set ", watchNamespaces, namespaces)
+	if watchNamespaces != "" {
+		namespaces := strings.Split(watchNamespaces, ",")
+		setupLog.Info("watching namespaces set ", watchNamespacesKey.Flag(), namespaces)
 		cacheOpts := cache.Options{
 			DefaultNamespaces: map[string]cache.Config{},
 		}
@@ -270,6 +286,81 @@ func main() {
 	}
 }
 
+// overrideControllerFlags overrides "some-flag" with value of "SOME_FLAG" envar.
+func overrideControllerFlags() {
+	for _, env := range os.Environ() {
+		pair := strings.SplitN(env, "=", 2)
+		k := pair[0]
+		v := pair[1]
+		switch k {
+		case dnsProbesEnabledKey.Envar():
+			value, parseErr := strconv.ParseBool(v)
+			if parseErr == nil {
+				dnsProbesEnabled = value
+				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", dnsProbesEnabledKey.Flag(), v))
+			}
+		case allowInsecureCertsKey.Envar():
+			value, parseErr := strconv.ParseBool(v)
+			if parseErr == nil {
+				allowInsecureCerts = value
+				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", allowInsecureCertsKey.Flag(), v))
+			}
+		case metricsAddrKey.Envar():
+			metricsAddr = v
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", metricsAddrKey.Flag(), v))
+		case probeAddrKey.Envar():
+			probeAddr = v
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", probeAddrKey.Flag(), v))
+		case enableLeaderElectionKey.Envar():
+			value, parseErr := strconv.ParseBool(v)
+			if parseErr == nil {
+				enableLeaderElection = value
+				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", enableLeaderElectionKey.Flag(), v))
+			}
+		case maxRequeueTimeKey.Envar():
+			value, parseErr := time.ParseDuration(v)
+			if parseErr == nil {
+				maxRequeueTime = value
+				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", maxRequeueTimeKey.Flag(), v))
+			}
+		case validForKey.Envar():
+			value, parseErr := time.ParseDuration(v)
+			if parseErr == nil {
+				validFor = value
+				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", validForKey.Flag(), v))
+			}
+		case minRequeueTimeKey.Envar():
+			value, parseErr := time.ParseDuration(v)
+			if parseErr == nil {
+				minRequeueTime = value
+				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", minRequeueTimeKey.Flag(), v))
+			}
+		case providersKey.Envar():
+			sliceFlag := stringSliceFlags{}
+			parseErr := sliceFlag.Set(v)
+			if parseErr == nil {
+				providers = sliceFlag
+				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", providersKey.Flag(), v))
+			}
+		case clusterSecretNamespaceKey.Envar():
+			clusterSecretNamespace = v
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", clusterSecretNamespaceKey.Flag(), v))
+		case clusterSecretLabelKey.Envar():
+			clusterSecretLabel = v
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", clusterSecretLabelKey.Flag(), v))
+		case watchNamespacesKey.Envar():
+			watchNamespaces = v
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", watchNamespacesKey.Flag(), v))
+		case delegationRoleKey.Envar():
+			role := newDelegationRoleValue(delegationRole, &delegationRole)
+			parseErr := role.Set(v)
+			if parseErr == nil {
+				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", delegationRoleKey.Flag(), v))
+			}
+		}
+	}
+}
+
 type stringSliceFlags []string
 
 func (n *stringSliceFlags) String() string {
@@ -289,6 +380,21 @@ func (n *stringSliceFlags) Set(s string) error {
 		*n = append(*n, strVal)
 	}
 	return nil
+}
+
+// represents a variableKey of a variable that can be passed to the controller as flag or envar
+type variableKey string
+
+// Flag returns string of format "some-value"
+func (v *variableKey) Flag() string {
+	s := strings.ToLower(string(*v))
+	return strings.ReplaceAll(s, "_", "-")
+}
+
+// Envar returns a string of format "SOME_VALUE"
+func (v *variableKey) Envar() string {
+	s := strings.ToUpper(string(*v))
+	return strings.ReplaceAll(s, "-", "_")
 }
 
 type delegationRoleValue string

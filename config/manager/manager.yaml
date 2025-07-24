@@ -11,6 +11,12 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: system
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: controller-env
+  namespace: system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -50,6 +56,9 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        envFrom:
+          - configMapRef:
+              name: controller-env
         image: controller:latest
         name: manager
         securityContext:
