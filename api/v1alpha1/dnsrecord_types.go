@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
@@ -161,6 +162,24 @@ type DNSRecordStatus struct {
 
 	// zoneDomainName is the domain name of the zone that the dns record is publishing endpoints
 	ZoneDomainName string `json:"zoneDomainName,omitempty"`
+}
+
+// ProviderEndpointsRemoved return true if the ready status condition has the reason set to "ProviderEndpointsRemoved"
+func (s *DNSRecordStatus) ProviderEndpointsRemoved() bool {
+	readyCond := meta.FindStatusCondition(s.Conditions, string(ConditionTypeReady))
+	if readyCond != nil && readyCond.Reason == string(ConditionReasonProviderEndpointsRemoved) {
+		return true
+	}
+	return false
+}
+
+// ProviderEndpointsDeletion return true if the ready status condition has the reason set to "ProviderEndpointsDeletion"
+func (s *DNSRecordStatus) ProviderEndpointsDeletion() bool {
+	readyCond := meta.FindStatusCondition(s.Conditions, string(ConditionTypeReady))
+	if readyCond != nil && readyCond.Reason == string(ConditionReasonProviderEndpointsDeletion) {
+		return true
+	}
+	return false
 }
 
 //+kubebuilder:object:root=true
