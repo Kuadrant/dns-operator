@@ -284,7 +284,7 @@ build: manifests generate fmt vet ## Build manager binary.
 run: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 run: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure,coredns
+	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure,coredns,endpoint
 
 .PHONY: run-with-probes
 run-with-probes: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")

@@ -15,6 +15,8 @@ import (
 	"github.com/onsi/gomega/types"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
@@ -41,6 +43,8 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 
 	var testRecords []*testDNSRecord
 
+	var dynamicClient dynamic.Interface
+
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-multi-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
@@ -59,6 +63,11 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			geoCode2 = "GEO-EU"
 			weighted = "weighted"
 		}
+		config, err := rest.InClusterConfig()
+		Expect(err).ToNot(HaveOccurred())
+
+		dynamicClient, err = dynamic.NewForConfig(config)
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -169,7 +178,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By("ensuring zone records are created as expected")
-			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient)
+			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient, dynamicClient)
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
@@ -483,7 +492,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			GinkgoWriter.Printf("[debug] all records became ready in %v\n", time.Since(checkStarted))
 
 			By("checking provider zone records are created as expected")
-			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient)
+			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient, dynamicClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)

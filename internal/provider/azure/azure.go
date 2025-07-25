@@ -101,7 +101,7 @@ func (p *AzureProvider) DNSZoneForHost(ctx context.Context, host string) (*provi
 	if err != nil {
 		return nil, err
 	}
-	return provider.FindDNSZoneForHost(ctx, host, zones)
+	return provider.FindDNSZoneForHost(ctx, host, zones, true)
 }
 
 func (p *AzureProvider) ProviderSpecific() provider.ProviderSpecificLabels {

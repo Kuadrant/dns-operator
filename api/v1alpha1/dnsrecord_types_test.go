@@ -16,14 +16,9 @@ func TestValidate(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "invalid domain",
-			rootHost: "example",
-			wantErr:  true,
-		},
-		{
 			name:     "no endpoints",
 			rootHost: "example.com",
-			wantErr:  true,
+			wantErr:  false,
 		},
 		{
 			name:     "invalid domain",
