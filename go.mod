@@ -33,6 +33,7 @@ require (
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/external-dns v0.14.0
+	sigs.k8s.io/multicluster-runtime v0.20.4-alpha.7.0.20250715171424-5a71e2a8172e
 )
 
 require (
