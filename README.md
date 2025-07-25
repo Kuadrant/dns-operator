@@ -99,11 +99,11 @@ The e2e test suite can be executed against any cluster running the DNS Operator 
 make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=<My domain name> TEST_DNS_PROVIDER_SECRET_NAME=<My provider secret name> TEST_DNS_NAMESPACES=<My test namespace(s)>
 ```
 
-| Environment Variable       | Description                                                                                                                                                                        |
-|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Environment Variable          | Description                                                                                                                                                                         |
+|-------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | TEST_DNS_PROVIDER_SECRET_NAME | Name of the provider secret to use. If using local-setup provider secrets zones, one of [dns-provider-credentials-aws; dns-provider-credentials-gcp;dns-provider-credentials-azure] | 
-| TEST_DNS_ZONE_DOMAIN_NAME        | The Domain name to use in the test. Must be a zone accessible with the (TEST_DNS_PROVIDER_SECRET_NAME) credentials with the same domain name                                       | 
-| TEST_DNS_NAMESPACES        | The namespace(s) where the provider secret(s) can be found                                                                                                                         | 
+| TEST_DNS_ZONE_DOMAIN_NAME     | The Domain name to use in the test. Must be a zone accessible with the (TEST_DNS_PROVIDER_SECRET_NAME) credentials with the same domain name                                        | 
+| TEST_DNS_NAMESPACES           | The namespace(s) where the provider secret(s) can be found                                                                                                                          | 
 
 ### Modifying the API definitions
 If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
@@ -115,6 +115,21 @@ make manifests
 **NOTE:** Run `make --help` for more information on all potential `make` targets
 
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+
+## Controller flags 
+The controller can be started with any of the following flags. Upon the start of the controller operator will locate the `dns-operator` configMap in the `kuadrant-system` namespace and will use data from it to override any flags set. The keys in the configMap must match exactly the name of the flag; the values must be parsable from a string into the type of the flag. If there is an error parsing - the value from the config map will be ignored.
+
+| Flag Name                 | Flag Type     | Description                                                                                                           | Default                             |
+|---------------------------|---------------|-----------------------------------------------------------------------------------------------------------------------|-------------------------------------|
+| metrics-bind-address      | string        | The address the metric endpoint binds to.                                                                             | ":8080"                             |
+| health-probe-bind-address | string        | The address the probe endpoint binds to.                                                                              | ":8081"                             |
+| leader-elect              | bool          | Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager. | "false"                             |
+| min-requeue-time          | time.Duration | The minimal timeout between calls to the DNS Provider. Controls if we commit to the full reconcile loop               | "5s"                                |
+| max-requeue-time          | time.Duration | The maximum times it takes between reconciliations of DNS Record. Controls how ofter record is reconciled.            | "15m"                               |
+| valid-for                 | time.Duration | Duration when the record is considered to hold valid information. Controls if we commit to the full reconcile loop    | "14m"                               |
+| provider                  | string        | DNS Provider(s) to enable.                                                                                            | "aws,google,inmemory,azure,coredns" |
+| enable-probes             | bool          | Enable DNSHealthProbes controller.                                                                                    | "true"                              |
+| insecure-health-checks    | bool          | Allow DNSHealthProbes to use insecure certificates                                                                    | "true"                              |
 
 ## Logging
 Logs are following the general guidelines: 
