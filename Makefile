@@ -205,16 +205,13 @@ local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependenci
 		$(MAKE) -s install-coredns COREDNS_KUSTOMIZATION=config/local-setup/coredns ;\
 		if [ ${DEPLOY} = "true" ]; then\
 			echo "local-setup: deploying operator (cluster scoped) to ${KIND_CLUSTER_NAME}" ;\
-        	# Create namespace,rbac,serviceaccounts,deployment etc.. configured to use locally built operator image ;\
 			$(MAKE) -s local-deploy ;\
 		else\
 			echo "local-setup: deploying operator (cluster scoped) to ${KIND_CLUSTER_NAME}, no manager Deployment" ;\
-			# Create namespace,rbac,serviceaccounts etc.. but no operator deployment ;\
 			$(MAKE) -s deploy DEPLOY_KUSTOMIZATION=config/local-setup/dns-operator/cluster-scoped ;\
 		fi ;\
 	else\
 		echo "local-setup: deploying operator (namespace scoped) to ${KIND_CLUSTER_NAME}" ;\
-		# DEPLOY is implicitly true when using namespaced scope ;\
 		$(MAKE) -s local-deploy-namespaced ;\
 	fi ;\
 
