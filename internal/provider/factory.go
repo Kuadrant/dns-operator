@@ -85,17 +85,33 @@ func NewFactory(c client.Client, d dynamic.Interface, p []string) (Factory, erro
 }
 
 // ProviderFor will return a Provider interface for the given ProviderAccessor secret.
-// If the requested ProviderAccessor secret does not exist, an error will be returned.
+// If the ProviderAccessor is delegating an in memory endpoint provider secret is returned with configuration appropriate for delegation of that resource.
+// If the requested ProviderAccessor is not delegating, and the secret does not exist in the resource namespace, an error will be returned.
 func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor, c Config) (Provider, error) {
 	logger := log.FromContext(ctx)
-	providerSecret := &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pa.GetProviderRef().Name,
-			Namespace: pa.GetNamespace(),
-		}}
 
-	if err := f.Client.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret); err != nil {
-		return nil, err
+	var providerSecret *v1.Secret
+	if pa.IsDelegating() {
+		providerSecret = &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pa.GetProviderRef().Name,
+				Namespace: pa.GetNamespace(),
+			},
+			Type: v1alpha1.SecretTypeKuadrantEndpoint,
+			Data: map[string][]byte{
+				v1alpha1.EndpointLabelSelectorKey: []byte(fmt.Sprintf("%s=%s", v1alpha1.DelegationAuthoritativeRecordLabel, pa.GetRootHost())),
+			},
+		}
+	} else {
+		providerSecret = &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pa.GetProviderRef().Name,
+				Namespace: pa.GetNamespace(),
+			}}
+
+		if err := f.Client.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret); err != nil {
+			return nil, err
+		}
 	}
 
 	provider, err := NameForProviderSecret(providerSecret)

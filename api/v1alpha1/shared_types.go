@@ -92,4 +92,6 @@ type ProviderRef struct {
 type ProviderAccessor interface {
 	GetNamespace() string
 	GetProviderRef() ProviderRef
+	GetRootHost() string
+	IsDelegating() bool
 }
