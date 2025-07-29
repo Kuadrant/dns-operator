@@ -176,6 +176,10 @@ test-e2e: ginkgo
 test-e2e-multi: ginkgo
 	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=multi_record ./test/e2e
 
+.PHONY: test-e2e-single
+test-e2e-single: ginkgo
+	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=single_record ./test/e2e
+
 .PHONY: test-scale
 test-scale: export JOB_ITERATIONS := 1
 test-scale: export NUM_RECORDS := 1

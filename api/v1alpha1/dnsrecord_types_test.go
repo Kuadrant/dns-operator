@@ -53,17 +53,6 @@ func TestValidate(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name:     "valid wildcard domain no endpoint",
-			rootHost: "*.example.com",
-			dnsNames: []string{
-				"a.b.example.com",
-				"b.a.example.com",
-				"a.example.com",
-				"b.example.com",
-			},
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {

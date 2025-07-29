@@ -80,6 +80,10 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantCoreDNS))
 			pBuilder.WithDataItem("ZONES", "wrong.me")
 			Skip("not yet supported for coredns")
+		} else if testDNSProvider == provider.DNSProviderEndpoint.String() {
+			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantEndpoint))
+			pBuilder.WithDataItem("ZONES", "wrong.me")
+			Skip("not yet supported for endpoint provider")
 		} else {
 			//AWS
 			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantAWS))
@@ -130,6 +134,8 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			//Azure
 			expectedProviderErr = "The following locations specified in the geoMapping property for endpoint ‘foo-example-com’ are not supported: NOTAGEOCODE."
 			validGeoCode = "GEO-NA"
+		} else if testDNSProvider == provider.DNSProviderEndpoint.String() {
+			Skip("not applicable for endpoint provider")
 		} else {
 			//AWS or Core DNS
 			expectedProviderErr = "unexpected geo code. Prefix with GEO- for continents or use ISO_3166 Alpha 2 supported code for countries"
@@ -226,6 +232,8 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			expectedProviderErr = "Operation input is malformed. Please retry the request."
 		} else if testDNSProvider == provider.DNSProviderCoreDNS.String() {
 			expectedProviderErr = "invalid weight expected a value >= 0"
+		} else if testDNSProvider == provider.DNSProviderEndpoint.String() {
+			Skip("not applicable for endpoint provider")
 		} else {
 			//AWS
 			expectedProviderErr = "weight' failed to satisfy constraint: Member must have value greater than or equal to 0"

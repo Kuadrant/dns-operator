@@ -42,6 +42,10 @@ on:
         description: Skip tests with CoreDNS provider
         default: false
         type: boolean
+      skipEndpoint:
+        description: Skip tests with endpoints provider
+        default: false
+        type: boolean
   merge_group:
     types: [ checks_requested ]
 
@@ -96,6 +100,7 @@ jobs:
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-gcp
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-azure
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-coredns
+          kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-endpoint
       - name: Run suite AWS
         if: ${{ !inputs.skipAWS }}
         run: |
@@ -125,6 +130,14 @@ jobs:
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-coredns
           export TEST_DNS_ZONE_DOMAIN_NAME=k.example.com
+          export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
+          export TEST_DNS_CONCURRENT_RECORDS=1
+          make test-e2e
+      - name: Run suite Endpoint
+        if: ${{ !inputs.skipEndpoint }}
+        run: |
+          export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-endpoint
+          export TEST_DNS_ZONE_DOMAIN_NAME=e2e.kuadrant.local
           export TEST_DNS_NAMESPACES=${{ env.TEST_NAMESPACE }}
           export TEST_DNS_CONCURRENT_RECORDS=1
           make test-e2e

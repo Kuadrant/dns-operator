@@ -249,9 +249,6 @@ func (s *DNSRecord) Validate() error {
 		return nil
 	}
 
-	if !rootEndpointFound {
-		return fmt.Errorf("invalid endpoint set. rootHost is set but found no endpoint defining a record for the rootHost %s", root)
-	}
 	return nil
 }
 

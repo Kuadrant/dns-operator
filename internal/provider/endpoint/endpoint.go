@@ -159,7 +159,15 @@ func (p *EndpointProvider) Name() provider.DNSProviderName {
 
 // AdjustEndpoints nothing to do here
 func (p *EndpointProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
-	return endpoints, nil
+	var retEndpoints []*endpoint.Endpoint
+
+	for _, e := range endpoints {
+		if e.RecordType == endpoint.RecordTypeTXT && e.RecordTTL <= 0 {
+			e.RecordTTL = endpoint.TTL(300)
+		}
+		retEndpoints = append(retEndpoints, e)
+	}
+	return retEndpoints, nil
 }
 
 func NewProviderFromSecret(ctx context.Context, client dynamic.Interface, s *v1.Secret, providerConfig provider.Config) (provider.Provider, error) {
@@ -180,7 +188,7 @@ func NewProviderFromSecret(ctx context.Context, client dynamic.Interface, s *v1.
 	if gvrStr = string(s.Data[v1alpha1.EndpointGVRKey]); gvrStr == "" {
 		gvrStr = v1alpha1.DefaultEndpointGVR
 	}
-	logger.Info("got GVR string", "GVR", gvrStr)
+
 	gvr, err = common.ParseGVRString(gvrStr)
 	if err != nil {
 		return nil, err
@@ -194,7 +202,7 @@ func NewProviderFromSecret(ctx context.Context, client dynamic.Interface, s *v1.
 	if err != nil {
 		return nil, err
 	}
-	logger.Info("got label selector", "labelSelector", labelSelector)
+
 	namespacedClient := client.Resource(gvr).Namespace(s.GetNamespace())
 
 	endpointProvider := &EndpointProvider{

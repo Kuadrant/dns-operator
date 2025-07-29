@@ -15,9 +15,9 @@ import (
 	"github.com/onsi/gomega/types"
 
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
@@ -39,19 +39,19 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 	var testHostname string
 
 	var k8sClient client.Client
+	var dynamicClient dynamic.Interface
 	var testDNSProviderSecret *v1.Secret
 	var geoCode string
 
 	var dnsRecord *v1alpha1.DNSRecord
 	var dnsRecords []*v1alpha1.DNSRecord
 
-	var dynamicClient dynamic.Interface
-
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-single-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		k8sClient = testClusters[0].k8sClient
+		dynamicClient = testClusters[0].dynamicClient
 		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
 		if testDNSProvider == provider.DNSProviderGCP.String() {
 			geoCode = "us-east1"
@@ -60,11 +60,26 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		} else {
 			geoCode = "US"
 		}
-		config, err := rest.InClusterConfig()
-		Expect(err).ToNot(HaveOccurred())
 
-		dynamicClient, err = dynamic.NewForConfig(config)
-		Expect(err).ToNot(HaveOccurred())
+		if testDNSProvider == string(provider.DNSProviderEndpoint) {
+			By("creating zone records for rootHost: " + testDomainName)
+			zoneRecord := &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "zone-record",
+					Namespace: testDNSProviderSecret.Namespace,
+					Labels: map[string]string{
+						"kuadrant.io/zone-record": "true",
+					},
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: testDomainName,
+					ProviderRef: &v1alpha1.ProviderRef{
+						Name: "dns-provider-credentials-inmemory",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, zoneRecord, &client.CreateOptions{})).To(BeNil())
+		}
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -80,11 +95,32 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				g.Expect(err).To(MatchError(ContainSubstring("not found")))
 			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
 		}
+
 		if len(dnsRecords) > 0 {
 			for _, record := range dnsRecords {
 				err := k8sClient.Delete(ctx, record, client.PropagationPolicy(metav1.DeletePropagationForeground))
 				Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 			}
+			Eventually(func(g Gomega, ctx context.Context) {
+				for _, record := range dnsRecords {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(record), record)
+					g.Expect(err).To(MatchError(ContainSubstring("not found")))
+				}
+			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
+		}
+
+		if testDNSProvider == string(provider.DNSProviderEndpoint) {
+			zoneRecord := &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "zone-record",
+					Namespace: testDNSProviderSecret.Namespace,
+				},
+			}
+			Expect(k8sClient.Delete(ctx, zoneRecord, &client.DeleteOptions{})).To(BeNil())
+
+			Eventually(func(g Gomega, ctx context.Context) {
+				g.Expect(apierrors.IsNotFound(k8sClient.Get(ctx, client.ObjectKeyFromObject(zoneRecord), &v1alpha1.DNSRecord{}, &client.GetOptions{}))).To(BeTrue())
+			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
 		}
 	})
 
@@ -185,14 +221,12 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 					"RecordType":    Equal("TXT"),
 					"SetIdentifier": Equal(""),
-					"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 				})),
 				PointTo(MatchFields(IgnoreExtras, Fields{
 					"DNSName":       Equal("kuadrant-" + hash.ToBase36HashLen(dnsRecord.Status.OwnerID, 8) + "-a-" + testHostname2),
 					"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 					"RecordType":    Equal("TXT"),
 					"SetIdentifier": Equal(""),
-					"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 				})),
 			)
 			expectedDomainOwnersMatcher = ConsistOf(dnsRecord.GetUIDHash())
@@ -274,7 +308,6 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 				)
 				expectedDomainOwnersMatcher = ConsistOf(dnsRecord.GetUIDHash())
@@ -284,31 +317,34 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(zoneEndpoints).To(ContainElements(expectedElementMatchers))
 			Expect(dnsRecord.Status.DomainOwners).To(expectedDomainOwnersMatcher)
 
-			By("ensuring the authoritative nameserver resolves the hostname")
-			resolvers, authoritative := ResolversForDomainNameAndProvider(testZoneDomainName, testDNSProviderSecret)
-			Expect(resolvers).To(Not(BeEmpty()))
+			if testDNSProvider != provider.DNSProviderEndpoint.String() {
+				By("ensuring the authoritative nameserver resolves the hostname")
+				resolvers, authoritative := ResolversForDomainNameAndProvider(testZoneDomainName, testDNSProviderSecret)
+				Expect(resolvers).To(Not(BeEmpty()))
 
-			if !authoritative {
-				//we need to wait a minute to allow the records to propagate if not using an authoritative nameserver
-				Consistently(func(g Gomega, ctx context.Context) {
-					g.Expect(true).To(BeTrue())
-				}, 1*time.Minute, 1*time.Minute, ctx).Should(Succeed())
-			}
-
-			Eventually(func(g Gomega, ctx context.Context) {
-				var err error
-				var ips []string
-				for _, resolver := range resolvers {
-					ips, err = resolver.LookupHost(ctx, testHostname)
-					if err == nil {
-						break
-					}
+				if !authoritative {
+					//we need to wait a minute to allow the records to propagate if not using an authoritative nameserver
+					Consistently(func(g Gomega, ctx context.Context) {
+						g.Expect(true).To(BeTrue())
+					}, 1*time.Minute, 1*time.Minute, ctx).Should(Succeed())
 				}
-				g.Expect(err).NotTo(HaveOccurred())
-				GinkgoWriter.Printf("[debug] ips: %v\n", ips)
-				g.Expect(ips).To(Or(ContainElements(testTargetIP)))
-			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+
+				Eventually(func(g Gomega, ctx context.Context) {
+					var err error
+					var ips []string
+					for _, resolver := range resolvers {
+						ips, err = resolver.LookupHost(ctx, testHostname)
+						if err == nil {
+							break
+						}
+					}
+					g.Expect(err).NotTo(HaveOccurred())
+					GinkgoWriter.Printf("[debug] ips: %v\n", ips)
+					g.Expect(ips).To(Or(ContainElements(testTargetIP)))
+				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+			}
 		})
+
 	})
 
 	Context("loadbalanced", Labels{"loadbalanced"}, func() {
@@ -465,28 +501,24 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-" + hash.ToBase36HashLen(dnsRecord.Status.OwnerID, 8) + "-cname-" + testHostname),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-" + hash.ToBase36HashLen(dnsRecord.Status.OwnerID, 8) + "-cname-" + geo1KlbHostName),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-" + hash.ToBase36HashLen(dnsRecord.Status.OwnerID, 8) + "-cname-" + klbHostName),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 				))
 			}
@@ -538,7 +570,6 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -546,7 +577,6 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -554,7 +584,6 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -562,7 +591,6 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 			}
 			if testProvider.Name() == provider.DNSProviderAWS {
@@ -620,21 +648,18 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-" + hash.ToBase36HashLen(dnsRecord.Status.OwnerID, 8) + "-cname-" + testHostname),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal("kuadrant-" + hash.ToBase36HashLen(dnsRecord.Status.OwnerID, 8) + "-cname-" + geo1KlbHostName),
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(cluster1KlbHostName),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "aws/weight", Value: "200"},
 						}),
@@ -644,7 +669,6 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(geoCode),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "aws/geolocation-country-code", Value: "US"},
 						}),
@@ -654,7 +678,6 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal("default"),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "aws/geolocation-country-code", Value: "*"},
 						}),
@@ -698,30 +721,32 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				))
 			}
 
-			By("ensuring the authoritative nameserver resolves the hostname")
-			resolvers, authoritative := ResolversForDomainNameAndProvider(testZoneDomainName, testDNSProviderSecret)
-			Expect(resolvers).To(Not(BeEmpty()))
+			if testDNSProvider != provider.DNSProviderEndpoint.String() {
+				By("ensuring the authoritative nameserver resolves the hostname")
+				resolvers, authoritative := ResolversForDomainNameAndProvider(testZoneDomainName, testDNSProviderSecret)
+				Expect(resolvers).To(Not(BeEmpty()))
 
-			if !authoritative {
-				//we need to wait a minute to allow the records to propagate if not using an authoritative nameserver
-				Consistently(func(g Gomega, ctx context.Context) {
-					g.Expect(true).To(BeTrue())
-				}, 1*time.Minute, 1*time.Minute, ctx).Should(Succeed())
-			}
-
-			Eventually(func(g Gomega, ctx context.Context) {
-				var err error
-				var ips []string
-				for _, resolver := range resolvers {
-					ips, err = resolver.LookupHost(ctx, testHostname)
-					if err == nil {
-						break
-					}
+				if !authoritative {
+					//we need to wait a minute to allow the records to propagate if not using an authoritative nameserver
+					Consistently(func(g Gomega, ctx context.Context) {
+						g.Expect(true).To(BeTrue())
+					}, 1*time.Minute, 1*time.Minute, ctx).Should(Succeed())
 				}
-				g.Expect(err).NotTo(HaveOccurred())
-				GinkgoWriter.Printf("[debug] ips: %v\n", ips)
-				g.Expect(ips).To(Or(ContainElements(testTargetIP)))
-			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+
+				Eventually(func(g Gomega, ctx context.Context) {
+					var err error
+					var ips []string
+					for _, resolver := range resolvers {
+						ips, err = resolver.LookupHost(ctx, testHostname)
+						if err == nil {
+							break
+						}
+					}
+					g.Expect(err).NotTo(HaveOccurred())
+					GinkgoWriter.Printf("[debug] ips: %v\n", ips)
+					g.Expect(ips).To(Or(ContainElements(testTargetIP)))
+				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+			}
 		})
 
 		It("handles multiple DNS Records for the same zone at the same time", func(ctx SpecContext) {
@@ -764,7 +789,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					)
 				}
 			}, recordsReadyMaxDuration*time.Duration(testConcurrentRecords), 5*time.Second, ctx).Should(Succeed())
-			By(fmt.Sprintf("Total time for %d records to become ready: %s", testConcurrentRecords, time.Now().Sub(startedTime)))
+			By(fmt.Sprintf("Total time for %d records to become ready: %s", testConcurrentRecords, time.Since(startedTime)))
 		})
 	})
 

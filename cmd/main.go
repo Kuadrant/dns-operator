@@ -183,14 +183,14 @@ func main() {
 		providers = defaultProviders
 	}
 
-	dynamicClient, err := dynamic.NewForConfig(mgr.GetConfig())
+	dynamicClient, err := dynamic.NewForConfig(mgr.GetLocalManager().GetConfig())
 	if err != nil {
 		setupLog.Error(err, "unable to create dynamic client for cluster")
 		os.Exit(1)
 	}
 
 	setupLog.Info("init provider factory", "providers", providers)
-	providerFactory, err := provider.NewFactory(mgr.GetLocalManager().GetClient(), providers)
+	providerFactory, err := provider.NewFactory(mgr.GetLocalManager().GetClient(), dynamicClient, providers)
 	if err != nil {
 		setupLog.Error(err, "unable to create provider factory")
 		os.Exit(1)
