@@ -26,21 +26,21 @@ on:
         description: Flags to pass directly to the ginkgo command
         default: "-v"
         type: string
-      testAWS:
-        description: Run tests with AWS provider
-        default: true
+      skipAWS:
+        description: Skip tests with AWS provider
+        default: false
         type: boolean
-      testGCP:
-        description: Run tests with GCP provider
-        default: true
+      skipGCP:
+        description: Skip tests with GCP provider
+        default: false
         type: boolean
-      testAzure:
-        description: Run tests with Azure provider
-        default: true
+      skipAzure:
+        description: Skip tests with Azure provider
+        default: false
         type: boolean
-      testCoreDNS:
-        description: Run tests with CoreDNS provider
-        default: true
+      skipCoreDNS:
+        description: Skip tests with CoreDNS provider
+        default: false
         type: boolean
   merge_group:
     types: [ checks_requested ]
@@ -97,7 +97,7 @@ jobs:
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-azure
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-coredns
       - name: Run suite AWS
-        if: ${{ inputs.testAWS }}
+        if: ${{ !inputs.skipAWS }}
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-aws
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.hcpapps.net
@@ -105,7 +105,7 @@ jobs:
           export TEST_DNS_CONCURRENT_RECORDS=${{ env.TEST_RECORDS_COUNT }}
           make test-e2e
       - name: Run suite GCP
-        if: ${{ inputs.testGCP }}
+        if: ${{ !inputs.skipGCP }}
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-gcp
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.google.hcpapps.net
@@ -113,7 +113,7 @@ jobs:
           export TEST_DNS_CONCURRENT_RECORDS=${{ env.TEST_RECORDS_COUNT }}
           make test-e2e
       - name: Run suite Azure
-        if: ${{ (github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'release-')) || github.event_name == 'workflow_dispatch') && inputs.testAzure }}
+        if: ${{ (github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'release-')) || github.event_name == 'workflow_dispatch') && !inputs.skipAzure }}
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-azure
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.azure.hcpapps.net
@@ -121,7 +121,7 @@ jobs:
           export TEST_DNS_CONCURRENT_RECORDS=${{ env.TEST_RECORDS_COUNT }}
           make test-e2e
       - name: Run suite CoreDNS
-        if: ${{ inputs.testCoreDNS }}
+        if: ${{ !inputs.skipCoreDNS }}
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-coredns
           export TEST_DNS_ZONE_DOMAIN_NAME=k.example.com
