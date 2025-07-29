@@ -28,6 +28,7 @@ jobs:
         with:
           cancel_others: false
           paths_ignore: '["**/*.md", "**/*.adoc", "LICENSE"]'
+          do_not_skip: '["push", "merge_group", "workflow_dispatch", "schedule"]'
   lint:
     name: lint
     if: needs.pre-job.outputs.should_skip != 'true'
