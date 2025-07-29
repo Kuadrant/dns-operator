@@ -122,6 +122,12 @@ func (p *GoogleDNSProvider) Name() provider.DNSProviderName {
 	return provider.DNSProviderGCP
 }
 
+func (p *GoogleDNSProvider) Labels() map[string]string {
+	return map[string]string{
+		provider.DNSProviderLabel: p.Name().String(),
+	}
+}
+
 func NewProviderFromSecret(ctx context.Context, s *corev1.Secret, c provider.Config) (provider.Provider, error) {
 	if string(s.Data[v1alpha1.GoogleJsonKey]) == "" || string(s.Data[v1alpha1.GoogleProjectIDKey]) == "" {
 		return nil, fmt.Errorf("GCP Provider credentials is empty")

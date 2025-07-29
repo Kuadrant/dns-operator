@@ -189,6 +189,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
+					g.Expect(tr.record.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", testDNSProvider))
 					allOwners = append(allOwners, tr.record.GetUIDHash())
 					allTargetIps = append(allTargetIps, tr.config.testTargetIP)
 					if txtRegistryEnabled {
@@ -517,6 +518,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
+					g.Expect(tr.record.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", testDNSProvider))
 					allOwners = append(allOwners, tr.record.GetUIDHash())
 					if txtRegistryEnabled {
 						g.Expect(tr.record.Status.DomainOwners).NotTo(BeEmpty())

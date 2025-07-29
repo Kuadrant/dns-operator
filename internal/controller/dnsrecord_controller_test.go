@@ -189,6 +189,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
@@ -221,6 +222,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord2.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
@@ -272,6 +274,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(k8sClient.Update(ctx, dnsProviderSecret)).To(Succeed())
 
 			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
@@ -304,6 +307,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(client.IgnoreAlreadyExists(k8sClient.Create(ctx, dnsRecord))).To(Succeed())
 
 			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
@@ -328,6 +332,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
 			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
@@ -357,6 +362,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeZero())
 			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
@@ -382,6 +388,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeZero())
 			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
@@ -424,6 +431,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
 			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
@@ -606,6 +614,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
 			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
@@ -697,6 +706,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
 			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
@@ -760,6 +770,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					"ObservedGeneration": Equal(dnsRecord.Generation),
 				})),
 			)
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
 			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
@@ -980,6 +991,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 				g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID2))
 				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName2))
 				g.Expect(dnsRecord.Status.Conditions).To(

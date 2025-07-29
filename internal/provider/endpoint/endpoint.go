@@ -157,6 +157,12 @@ func (p *EndpointProvider) Name() provider.DNSProviderName {
 	return provider.DNSProviderEndpoint
 }
 
+func (p *EndpointProvider) Labels() map[string]string {
+	return map[string]string{
+		provider.DNSProviderLabel: p.Name().String(),
+	}
+}
+
 // AdjustEndpoints nothing to do here
 func (p *EndpointProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
 	var retEndpoints []*endpoint.Endpoint
