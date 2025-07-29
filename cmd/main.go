@@ -17,15 +17,16 @@ limitations under the License.
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -33,6 +34,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/controller"
@@ -47,7 +50,6 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 	gitSHA   string // pass ldflag here to display gitSHA hash
 	dirty    string // must be string as passed in by ldflag to determine display .
@@ -61,9 +63,7 @@ const (
 )
 
 func init() {
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
-	utilruntime.Must(v1alpha1.AddToScheme(scheme))
+	runtime.Must(v1alpha1.AddToScheme(scheme.Scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -81,6 +81,9 @@ func main() {
 	var providers stringSliceFlags
 	var dnsProbesEnabled bool
 	var allowInsecureCerts bool
+
+	var clusterSecretNamespace string
+	var clusterSecretLabel string
 
 	flag.BoolVar(&dnsProbesEnabled, "enable-probes", true, "Enable DNSHealthProbes controller.")
 	flag.BoolVar(&allowInsecureCerts, "insecure-health-checks", true, "Allow DNSHealthProbes to use insecure certificates")
@@ -100,17 +103,28 @@ func main() {
 		"The minimal timeout between calls to the DNS Provider"+
 			"Controls if we commit to the full reconcile loop")
 	flag.Var(&providers, "provider", "DNS Provider(s) to enable. Can be passed multiple times e.g. --provider aws --provider google, or as a comma separated list e.g. --provider aws,gcp")
+
+	flag.StringVar(&clusterSecretNamespace, "cluster-secret-namespace", "dns-operator-system", "The Namespace to look for cluster secrets.")
+	flag.StringVar(&clusterSecretLabel, "cluster-secret-label", "kuadrant.io/multicluster-kubeconfig", "The label that identifies a Secret resource as a cluster secret.")
+
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	//ToDo Replace this with generic logic to parse flags from env vars
+	var csNamespaceEnvVarName = "CLUSTER_SECRET_NAMESPACE"
+	if ns := os.Getenv(csNamespaceEnvVarName); ns != "" {
+		clusterSecretNamespace = ns
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	printControllerMetaInfo()
 
-	var watchNamespaces = "WATCH_NAMESPACES"
+	ctx := ctrl.SetupSignalHandler()
+
 	defaultOptions := ctrl.Options{
-		Scheme:                 scheme,
+		Scheme:                 scheme.Scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		WebhookServer:          webhook.NewServer(webhook.Options{Port: 9443}),
 		HealthProbeBindAddress: probeAddr,
@@ -118,6 +132,8 @@ func main() {
 		LeaderElectionID:       "a3f98d6c.kuadrant.io",
 	}
 
+	//ToDo Replace this with generic logic to parse flags from env vars, also add `--watch-namespaces` as a flag
+	var watchNamespaces = "WATCH_NAMESPACES"
 	if watch := os.Getenv(watchNamespaces); watch != "" {
 		namespaces := strings.Split(watch, ",")
 		setupLog.Info("watching namespaces set ", watchNamespaces, namespaces)
@@ -130,9 +146,29 @@ func main() {
 		defaultOptions.Cache = cacheOpts
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), defaultOptions)
+	// Create the kubeconfig provider with options
+	clusterProviderOpts := kubeconfigprovider.Options{
+		Namespace:             clusterSecretNamespace,
+		KubeconfigSecretLabel: clusterSecretLabel,
+		KubeconfigSecretKey:   "kubeconfig",
+	}
+
+	// Create the provider first, then the manager with the provider
+	setupLog.Info("Creating cluster provider")
+	clusterProvider := kubeconfigprovider.New(clusterProviderOpts)
+
+	// Setup a cluster-aware Manager, with the provider to lookup clusters.
+	setupLog.Info("Creating cluster aware manager")
+	mgr, err := mcmanager.New(ctrl.GetConfigOrDie(), clusterProvider, defaultOptions)
 	if err != nil {
-		setupLog.Error(err, "unable to start manager")
+		setupLog.Error(err, "unable to start multi cluster manager")
+		os.Exit(1)
+	}
+
+	// Setup provider controller with the manager.
+	err = clusterProvider.SetupWithManager(ctx, mgr)
+	if err != nil {
+		setupLog.Error(err, "Unable to setup provider with manager")
 		os.Exit(1)
 	}
 
@@ -146,28 +182,39 @@ func main() {
 	}
 
 	setupLog.Info("init provider factory", "providers", providers)
-	providerFactory, err := provider.NewFactory(mgr.GetClient(), providers)
+	providerFactory, err := provider.NewFactory(mgr.GetLocalManager().GetClient(), providers)
 	if err != nil {
 		setupLog.Error(err, "unable to create provider factory")
 		os.Exit(1)
 	}
 
-	if err = (&controller.DNSRecordReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
+	dnsRecordController := &controller.DNSRecordReconciler{
+		Client:          mgr.GetLocalManager().GetClient(),
+		Scheme:          mgr.GetLocalManager().GetScheme(),
 		ProviderFactory: providerFactory,
-	}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
+	}
+
+	remoteDNSRecordController := &controller.RemoteDNSRecordReconciler{
+		DNSRecordReconciler: *dnsRecordController,
+	}
+
+	if err = dnsRecordController.SetupWithManager(mgr.GetLocalManager(), maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSRecord")
+		os.Exit(1)
+	}
+
+	if err = remoteDNSRecordController.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RemoteDNSRecord")
 		os.Exit(1)
 	}
 
 	if dnsProbesEnabled {
 		probeManager := probes.NewProbeManager()
 		if err = (&controller.DNSProbeReconciler{
-			Client:       mgr.GetClient(),
-			Scheme:       mgr.GetScheme(),
+			Client:       mgr.GetLocalManager().GetClient(),
+			Scheme:       mgr.GetLocalManager().GetScheme(),
 			ProbeManager: probeManager,
-		}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime); err != nil {
+		}).SetupWithManager(mgr.GetLocalManager(), maxRequeueTime, validFor, minRequeueTime); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "DNSProbe")
 			os.Exit(1)
 		}
@@ -185,7 +232,7 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

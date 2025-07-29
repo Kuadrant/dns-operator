@@ -80,6 +80,7 @@ type DNSRecordReconciler struct {
 	client.Client
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
+	remoteClient    bool
 }
 
 func postReconcile(ctx context.Context, name, ns string) {
@@ -97,6 +98,11 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	logger := baseLogger
 
 	logger.Info("Reconciling DNSRecord")
+	if r.remoteClient {
+		logger.Info("Reconciling Remote DNSRecord")
+		//ToDo implement remote record processing
+		return ctrl.Result{}, nil
+	}
 
 	reconcileStart = metav1.Now()
 	probes := &v1alpha1.DNSHealthCheckProbeList{}
