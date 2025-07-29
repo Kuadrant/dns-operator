@@ -30,6 +30,8 @@ var (
 	DNSProviderGCP     DNSProviderName = "google"
 	DNSProviderInMem   DNSProviderName = "inmemory"
 
+	DNSProviderLabel = "kuadrant.io/dns-provider-name"
+
 	CoreDNSRecordZoneLabel = "kuadrant.io/coredns-zone-name"
 	CoreDNSRecordTypeLabel = "kuadrant.io/type"
 
@@ -53,6 +55,8 @@ type Provider interface {
 	ProviderSpecific() ProviderSpecificLabels
 
 	Name() DNSProviderName
+
+	Labels() map[string]string
 }
 
 type Config struct {
