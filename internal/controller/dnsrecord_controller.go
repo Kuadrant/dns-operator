@@ -449,9 +449,19 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, val
 				logger.Error(err, "failed to list dnsrecords ", "namespace", o.GetNamespace())
 				return toReconcile
 			}
+
+			isDefaultSecret := s.Labels[v1alpha1.DefaultProviderSecretLabel] == "true"
+
 			for _, record := range records.Items {
 				if record.Status.ProviderRef.Name == o.GetName() {
 					logger.Info("secret updated", "secret", o.GetNamespace()+"/"+o.GetName(), "enqueuing dnsrecord ", record.GetName())
+					toReconcile = append(toReconcile, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&record)})
+				}
+
+				// if this is a default and we don't have secret in spec (we need a default) and we haven't assigned a secret yet
+				// (note that the status ref is not a pointer so no need for a nil check) add a records to the queue.
+				// the secret that just got updated should be assigned to such a record
+				if isDefaultSecret && (record.Spec.ProviderRef == nil || record.Spec.ProviderRef.Name == "") && record.Status.ProviderRef.Name == "" {
 					toReconcile = append(toReconcile, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&record)})
 				}
 			}
