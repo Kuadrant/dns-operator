@@ -15,6 +15,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/tools/clientcmd"
@@ -27,6 +28,7 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/coredns"
+	_ "github.com/kuadrant/dns-operator/internal/provider/endpoint"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
@@ -76,6 +78,7 @@ type testCluster struct {
 	name                   string
 	testDNSProviderSecrets []*v1.Secret
 	k8sClient              client.Client
+	dynamicClient          dynamic.Interface
 }
 
 // testDNSRecord encapsulates a v1alpha1.DNSRecord created in a test case, the v1.Secret (DNS Provider Secret) it was created with and the config used to create it.
@@ -258,9 +261,13 @@ func loadClusters(ctx context.Context) {
 		k8sClient, err := client.New(cfg, client.Options{Scheme: scheme.Scheme})
 		Expect(err).NotTo(HaveOccurred())
 
+		dynamicClient, err := dynamic.NewForConfig(cfg)
+		Expect(err).ToNot(HaveOccurred())
+
 		tc := &testCluster{
-			name:      c,
-			k8sClient: k8sClient,
+			name:          c,
+			k8sClient:     k8sClient,
+			dynamicClient: dynamicClient,
 		}
 
 		loadProviderSecrets(ctx, tc)

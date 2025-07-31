@@ -16,6 +16,7 @@ LOCAL_SETUP_GCP_DIR=config/local-setup/dns-provider/gcp
 LOCAL_SETUP_AZURE_DIR=config/local-setup/dns-provider/azure
 LOCAL_SETUP_INMEM_DIR=config/local-setup/dns-provider/inmemory
 LOCAL_SETUP_COREDNS_DIR=config/local-setup/dns-provider/coredns
+LOCAL_SETUP_ENDPOINT_DIR=config/local-setup/dns-provider/endpoint
 LOCAL_SETUP_AWS_CREDS=${LOCAL_SETUP_AWS_DIR}/aws-credentials.env
 LOCAL_SETUP_GCP_CREDS=${LOCAL_SETUP_GCP_DIR}/gcp-credentials.env
 LOCAL_SETUP_AZURE_CREDS=${LOCAL_SETUP_AZURE_DIR}/azure-credentials.env
@@ -83,7 +84,7 @@ $(LOCAL_SETUP_COREDNS_CREDS):
 
 .PHONY: local-setup-dns-providers
 local-setup-dns-providers: TARGET_NAMESPACE=dnstest
-local-setup-dns-providers: kustomize ## Create AWS, Azure and GCP DNS Providers in the 'TARGET_NAMESPACE' namespace
+local-setup-dns-providers: kustomize ## Create AWS, Azure, GCP, CoreDNS and Endpoints DNS Providers in the 'TARGET_NAMESPACE' namespace
 	@if [[ -f ${LOCAL_SETUP_GCP_CREDS} ]]; then\
 		echo "local-setup: creating dns provider for gcp in ${TARGET_NAMESPACE}";\
 		$(KUSTOMIZE) build ${LOCAL_SETUP_GCP_DIR} | $(KUBECTL) -n ${TARGET_NAMESPACE} apply -f -;\
@@ -99,6 +100,10 @@ local-setup-dns-providers: kustomize ## Create AWS, Azure and GCP DNS Providers 
 	@if [[ -f ${LOCAL_SETUP_COREDNS_CREDS} ]]; then\
     	echo "local-setup: creating dns provider for coredns in ${TARGET_NAMESPACE}";\
     	$(KUSTOMIZE) build ${LOCAL_SETUP_COREDNS_DIR} | $(KUBECTL) -n ${TARGET_NAMESPACE} apply  -f -;\
+    fi
+	@if [[ -d ${LOCAL_SETUP_ENDPOINT_DIR} ]]; then\
+    	echo "local-setup: creating dns provider for endpoint in ${TARGET_NAMESPACE}";\
+    	$(KUSTOMIZE) build ${LOCAL_SETUP_ENDPOINT_DIR} | $(KUBECTL) -n ${TARGET_NAMESPACE} apply  -f -;\
     fi
 
 	@echo "local-setup: creating dns provider for inmemory in ${TARGET_NAMESPACE}"

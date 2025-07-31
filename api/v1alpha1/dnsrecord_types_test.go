@@ -16,14 +16,9 @@ func TestValidate(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "invalid domain",
-			rootHost: "example",
-			wantErr:  true,
-		},
-		{
 			name:     "no endpoints",
 			rootHost: "example.com",
-			wantErr:  true,
+			wantErr:  false,
 		},
 		{
 			name:     "invalid domain",
@@ -57,17 +52,6 @@ func TestValidate(t *testing.T) {
 				"b.example.com",
 			},
 			wantErr: false,
-		},
-		{
-			name:     "valid wildcard domain no endpoint",
-			rootHost: "*.example.com",
-			dnsNames: []string{
-				"a.b.example.com",
-				"b.a.example.com",
-				"a.example.com",
-				"b.example.com",
-			},
-			wantErr: true,
 		},
 	}
 

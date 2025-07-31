@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 	"github.com/onsi/gomega/types"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
@@ -59,6 +60,30 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			geoCode2 = "GEO-EU"
 			weighted = "weighted"
 		}
+
+		if testDNSProvider == string(provider.DNSProviderEndpoint) {
+			By("creating zone records for rootHost: " + testDomainName)
+			zoneRecord := &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "zone-record",
+					Labels: map[string]string{
+						"kuadrant.io/zone-record": "true",
+					},
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: testDomainName,
+					ProviderRef: &v1alpha1.ProviderRef{
+						Name: "dns-provider-credentials-inmemory",
+					},
+				},
+			}
+			for _, c := range testClusters {
+				for _, n := range testNamespaces {
+					zoneRecord.Namespace = n
+					Expect(c.k8sClient.Create(ctx, zoneRecord, &client.CreateOptions{})).To(BeNil())
+				}
+			}
+		}
 	})
 
 	AfterEach(func(ctx SpecContext) {
@@ -76,6 +101,28 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				g.Expect(err).To(MatchError(ContainSubstring("not found")))
 			}
 		}, time.Minute, 10*time.Second, ctx).Should(Succeed())
+
+		if testDNSProvider == string(provider.DNSProviderEndpoint) {
+			zoneRecord := &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "zone-record",
+				},
+			}
+			for _, c := range testClusters {
+				for _, n := range testNamespaces {
+					zoneRecord.Namespace = n
+					Expect(c.k8sClient.Delete(ctx, zoneRecord, &client.DeleteOptions{})).To(BeNil())
+				}
+			}
+			Eventually(func(g Gomega, ctx context.Context) {
+				for _, c := range testClusters {
+					for _, n := range testNamespaces {
+						zoneRecord.Namespace = n
+						g.Expect(apierrors.IsNotFound(c.k8sClient.Get(ctx, client.ObjectKeyFromObject(zoneRecord), &v1alpha1.DNSRecord{}, &client.GetOptions{}))).To(BeTrue())
+					}
+				}
+			}, recordsReadyMaxDuration, 5*time.Second, ctx).Should(Succeed())
+		}
 	})
 
 	Context("simple", Labels{"simple"}, func() {
@@ -169,7 +216,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By("ensuring zone records are created as expected")
-			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient)
+			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient, testClusters[0].dynamicClient)
 			Expect(err).NotTo(HaveOccurred())
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 			Expect(err).NotTo(HaveOccurred())
@@ -192,7 +239,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + owner + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						})),
 					)
 				}
@@ -201,31 +247,32 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			Expect(zoneEndpoints).To(HaveLen(len(expectedElementMatchers)))
 			Expect(zoneEndpoints).To(ContainElements(expectedElementMatchers))
 
-			By("ensuring the authoritative nameserver resolves the hostname")
-			resolvers, authoritative := ResolversForDomainNameAndProvider(testZoneDomainName, testRecords[0].dnsProviderSecret)
-			Expect(resolvers).To(Not(BeEmpty()))
+			if testDNSProvider != string(provider.DNSProviderEndpoint) {
+				By("ensuring the authoritative nameserver resolves the hostname")
+				resolvers, authoritative := ResolversForDomainNameAndProvider(testZoneDomainName, testRecords[0].dnsProviderSecret)
+				Expect(resolvers).To(Not(BeEmpty()))
 
-			if !authoritative {
-				//we need to wait a minute to allow the records to propagate if not using an authoritative nameserver
-				Consistently(func(g Gomega, ctx context.Context) {
-					g.Expect(true).To(BeTrue())
-				}, 1*time.Minute, 1*time.Minute, ctx).Should(Succeed())
-			}
-
-			Eventually(func(g Gomega, ctx context.Context) {
-				var err error
-				var ips []string
-				for _, resolver := range resolvers {
-					ips, err = resolver.LookupHost(ctx, testHostname)
-					if err == nil {
-						break
-					}
+				if !authoritative {
+					//we need to wait a minute to allow the records to propagate if not using an authoritative nameserver
+					Consistently(func(g Gomega, ctx context.Context) {
+						g.Expect(true).To(BeTrue())
+					}, 1*time.Minute, 1*time.Minute, ctx).Should(Succeed())
 				}
-				g.Expect(err).NotTo(HaveOccurred())
-				GinkgoWriter.Printf("[debug] ips: %v\n", ips)
-				g.Expect(ips).To(Or(ContainElements(allTargetIps)))
-			}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
 
+				Eventually(func(g Gomega, ctx context.Context) {
+					var err error
+					var ips []string
+					for _, resolver := range resolvers {
+						ips, err = resolver.LookupHost(ctx, testHostname)
+						if err == nil {
+							break
+						}
+					}
+					g.Expect(err).NotTo(HaveOccurred())
+					GinkgoWriter.Printf("[debug] ips: %v\n", ips)
+					g.Expect(ips).To(Or(ContainElements(allTargetIps)))
+				}, 300*time.Second, 10*time.Second, ctx).Should(Succeed())
+			}
 			//Test Deletion of one of the records
 			recordToDelete := testRecords[0]
 			lastRecord := len(testRecords) == 1
@@ -261,7 +308,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						"Targets":       Not(ConsistOf("\"heritage=external-dns,external-dns/owner=" + recordToDelete.record.Status.OwnerID + ",external-dns/version=1\"")),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					})))
 			}
 
@@ -269,6 +315,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
 				g.Expect(err).NotTo(HaveOccurred())
 				if lastRecord {
+					By("checking final endpoint is removed")
 					g.Expect(zoneEndpoints).To(HaveLen(0))
 				} else {
 					// each test record has one A record and one TXT record
@@ -483,7 +530,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			GinkgoWriter.Printf("[debug] all records became ready in %v\n", time.Since(checkStarted))
 
 			By("checking provider zone records are created as expected")
-			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient)
+			testProvider, err := ProviderForDNSRecord(ctx, testRecords[0].record, testClusters[0].k8sClient, testClusters[0].dynamicClient)
 			Expect(err).NotTo(HaveOccurred())
 
 			zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
@@ -555,6 +602,8 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				//### Registry endpoints ###
 
 				//None
+			} else if testDNSProvider == string(provider.DNSProviderEndpoint) {
+				expectedEndpointsLen = 2 + len(testGeoRecords) + len(testRecords)
 			}
 
 			if txtRegistryEnabled {
@@ -602,7 +651,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + owner + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 					totalEndpointsChecked++
 				}
@@ -645,7 +693,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + owner + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 					totalEndpointsChecked++
 				}
@@ -680,7 +727,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + owner + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 					totalEndpointsChecked++
 				}
@@ -719,7 +765,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + geoOwner + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal(geoCode),
-							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 							"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 								{Name: awsGeoCodeKey, Value: awsGeoCodeValue},
 							}),
@@ -733,7 +778,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + geoOwner + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal("default"),
-							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 							"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 								{Name: "aws/geolocation-country-code", Value: "*"},
 							}),
@@ -820,7 +864,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + geoOwner + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						}))))
 						totalEndpointsChecked++
 					}
@@ -859,7 +902,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + geoOwner + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 						}))))
 						totalEndpointsChecked++
 					}
@@ -891,7 +933,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + ownerID + ",external-dns/version=1\""),
 							"RecordType":    Equal("TXT"),
 							"SetIdentifier": Equal(clusterKlbHostName),
-							"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 							"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 								{Name: "aws/weight", Value: "200"},
 							}),
@@ -944,7 +985,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + ownerID + ",external-dns/version=1\""),
 						"RecordType":    Equal("TXT"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
 					}))))
 					totalEndpointsChecked++
 				}

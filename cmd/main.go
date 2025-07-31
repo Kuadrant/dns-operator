@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -44,6 +45,7 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/coredns"
+	_ "github.com/kuadrant/dns-operator/internal/provider/endpoint"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
 	//+kubebuilder:scaffold:imports
@@ -181,8 +183,14 @@ func main() {
 		providers = defaultProviders
 	}
 
+	dynamicClient, err := dynamic.NewForConfig(mgr.GetLocalManager().GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to create dynamic client for cluster")
+		os.Exit(1)
+	}
+
 	setupLog.Info("init provider factory", "providers", providers)
-	providerFactory, err := provider.NewFactory(mgr.GetLocalManager().GetClient(), providers)
+	providerFactory, err := provider.NewFactory(mgr.GetLocalManager().GetClient(), dynamicClient, providers)
 	if err != nil {
 		setupLog.Error(err, "unable to create provider factory")
 		os.Exit(1)

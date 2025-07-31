@@ -249,7 +249,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			// multiple defaults
 			if len(defaultSecretList.Items) > 1 {
 				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-					"DNSProviderError", fmt.Sprintf("Multiple default providers secrets found. Only one expected"))
+					"DNSProviderError", "Multiple default providers secrets found. Only one expected")
 				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, errors.New("multiple default provider secrets found"))
 			}
 
@@ -824,7 +824,7 @@ func (r *CoreDNSHandler) computeLocalEndpointSet(original *v1alpha1.DNSRecord) (
 	return localEndpoints, nil
 }
 
-func (r *CoreDNSHandler) computeFullEndpointSet(ctx context.Context, from *v1alpha1.DNSRecord, dnsProvider provider.Provider) ([]*externaldnsendpoint.Endpoint, error) {
+func (r *CoreDNSHandler) computeFullEndpointSet(ctx context.Context, _ *v1alpha1.DNSRecord, dnsProvider provider.Provider) ([]*externaldnsendpoint.Endpoint, error) {
 	//TODO we don't account for multiple disconnected hosts in a single record yet we just expect everything is connected to the rootHost. This is the case for Kuadrant records but doesn't have to be the case for a straight DNSRecord
 	remoteEndpoints, err := dnsProvider.Records(ctx)
 	if err != nil {

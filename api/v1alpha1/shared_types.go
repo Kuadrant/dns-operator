@@ -63,6 +63,25 @@ const (
 	SecretTypeKuadrantCoreDNS corev1.SecretType = "kuadrant.io/coredns"
 
 	DefaultProviderSecretLabel = "kuadrant.io/default-provider"
+
+	// This label defines the GVR to use for the endpoints provider
+	EndpointGVRKey = "ENDPOINT_GVR"
+
+	// The GVR to use in the endpoint provider is none are provided
+	DefaultEndpointGVR = "kuadrant.io/v1alpha1.dnsrecords"
+
+	// This is a label selector for the endpoint provider to find available zones
+	EndpointLabelSelectorKey = "ENDPOINT_ZONE_RECORD_LABEL"
+
+	// Default label selector used by the endpoint provider
+	DefaultLabelSelector = "kuadrant.io/zone-record=true"
+
+	// SecretTypeKuadrantEndpoint contains required fields for setting up an endpoint provider.
+	//
+	// no required fields, optional fields are:
+	// - ENDPOINT_GVR (defaults to: kuadrant.io/v1alpha1.dnsrecords)
+	// - ENDPOINT_ZONE_RECORD_LABEL (defaults to: kuadrant.io/zone-record=true)
+	SecretTypeKuadrantEndpoint corev1.SecretType = "kuadrant.io/endpoint"
 )
 
 type ProviderRef struct {
