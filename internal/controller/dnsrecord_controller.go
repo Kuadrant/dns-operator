@@ -185,8 +185,8 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		dnsRecord.Status.ZoneDomainName = ""
 		dnsRecord.Status.ZoneID = ""
 		dnsRecord.Status.OwnerID = ""
-		result, err := r.updateStatus(ctx, previous, dnsRecord, probes, true, []string{}, err)
-		return result, err
+
+		return r.updateStatusAndRequeue(ctx, previous, dnsRecord, time.Second)
 	}
 
 	if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
@@ -401,12 +401,19 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 	current.Status.ObservedGeneration = current.Generation
 	current.Status.QueuedAt = reconcileStart
 
+	return r.updateStatusAndRequeue(ctx, previous, current, requeueTime)
+}
+
+// updateStatusAndRequeue will update the status of the record if the current and previous status is different
+// and returns a reconcile.result that re-queues at the given time.
+func (r *DNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, previous, current *v1alpha1.DNSRecord, requeueTime time.Duration) (reconcile.Result, error) {
+	logger := log.FromContext(ctx)
 	// update the record after setting the status
 	if !equality.Semantic.DeepEqual(previous.Status, current.Status) {
 		logger.V(1).Info("Updating status of DNSRecord")
 		if updateError := r.Status().Update(ctx, current); updateError != nil {
 			if apierrors.IsConflict(updateError) {
-				return ctrl.Result{Requeue: true}, nil
+				return ctrl.Result{RequeueAfter: time.Second}, nil
 			}
 			return ctrl.Result{}, updateError
 		}
