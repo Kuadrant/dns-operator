@@ -284,11 +284,21 @@ build: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 build: manifests generate fmt vet ## Build manager binary.
 	go build -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
 
+DEFAULT_RUN_FLAGS ?= --zap-devel --provider inmemory,aws,google,azure,coredns,endpoint
+RUN_FLAGS ?= $(DEFAULT_RUN_FLAGS)
+
 .PHONY: run
 run: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 run: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go --zap-devel --provider inmemory,aws,google,azure,coredns,endpoint
+	go run -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" --race ./cmd/main.go ${RUN_FLAGS}
+
+.PHONY: run-primary
+run-primary: run ## Run a controller from your host with the primary delegation role(default).
+
+.PHONY: run-secondary
+run-secondary: ## Run a controller from your host with the secondary delegation role.
+	$(MAKE) run RUN_FLAGS="${DEFAULT_RUN_FLAGS} --delegation-role=secondary --metrics-bind-address=:8082 --health-probe-bind-address=:8083"
 
 .PHONY: run-with-probes
 run-with-probes: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
