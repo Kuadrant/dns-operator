@@ -1,0 +1,47 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced-inmem-cluster1
+spec:
+  rootHost: loadbalanced.kuadrant.local
+  endpoints:
+    - dnsName: loadbalanced.kuadrant.local
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.loadbalanced.kuadrant.local
+    - dnsName: klb.loadbalanced.kuadrant.local
+      providerSpecific:
+        - name: geo-code
+          value: IE
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: IE
+      targets:
+        - ie.klb.loadbalanced.kuadrant.local
+    - dnsName: klb.loadbalanced.kuadrant.local
+      providerSpecific:
+        - name: geo-code
+          value: '*'
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: default
+      targets:
+        - ie.klb.loadbalanced.kuadrant.local
+    - dnsName: ie.klb.loadbalanced.kuadrant.local
+      providerSpecific:
+        - name: weight
+          value: "200"
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster1-gw1-ns1.klb.loadbalanced.kuadrant.local
+      targets:
+        - cluster1-gw1-ns1.klb.loadbalanced.kuadrant.local
+    - dnsName: cluster1-gw1-ns1.klb.loadbalanced.kuadrant.local
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.1
+      labels:
+        soft_delete: "false"
+  delegate: true
