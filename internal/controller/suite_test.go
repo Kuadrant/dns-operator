@@ -242,6 +242,7 @@ func setupEnv(delegationRole string) (*envtest.Environment, ctrl.Manager) {
 
 	dnsRecordController := &DNSRecordReconciler{
 		Client:          mgr.GetClient(),
+		LocalClient:     mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
 		DelegationRole:  delegationRole,

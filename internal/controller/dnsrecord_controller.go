@@ -82,6 +82,7 @@ var (
 // DNSRecordReconciler reconciles a DNSRecord object
 type DNSRecordReconciler struct {
 	client.Client
+	LocalClient     client.Client
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
 	DelegationRole  string
@@ -95,6 +96,14 @@ func postReconcile(ctx context.Context, name, ns string) {
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/finalizers,verbs=update
+
+func (r *DNSRecordReconciler) IsRemoteRecord() bool {
+	return r.remoteClient
+}
+
+func (r *DNSRecordReconciler) IsLocalRecord() bool {
+	return !r.IsRemoteRecord()
+}
 
 func (r *DNSRecordReconciler) IsPrimary() bool {
 	return r.DelegationRole == DelegationRolePrimary
@@ -111,11 +120,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	logger := baseLogger
 
 	logger.Info("Reconciling DNSRecord")
-	if r.remoteClient {
-		logger.Info("Reconciling Remote DNSRecord")
-		//ToDo implement remote record processing
-		return ctrl.Result{}, nil
-	}
 
 	reconcileStart = metav1.Now()
 	probes := &v1alpha1.DNSHealthCheckProbeList{}
@@ -139,9 +143,15 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Update the logger with appropriate record/zone metadata from the dnsRecord
 	ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 
+	//Only remote records that are delegating should be processed
+	if r.IsRemoteRecord() && !dnsRecord.IsDelegating() {
+		logger.V(1).Info("skipping reconciliation of remote record that is not delegating")
+		return ctrl.Result{}, nil
+	}
+
 	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
 		logger.Info("Deleting DNSRecord")
-		if dnsRecord.Status.ProviderEndpointsRemoved() {
+		if r.IsLocalRecord() && dnsRecord.Status.ProviderEndpointsRemoved() {
 			logger.V(1).Info("Status ProviderEndpointRemoved is true, finalizer can be removed")
 			logger.Info("Removing Finalizer", "finalizer_name", DNSRecordFinalizer)
 			controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
@@ -156,6 +166,16 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			// i.e. user generated finalizers.
 			return ctrl.Result{}, nil
 		}
+
+		// Local records that are delegating in remote mode should do nothing
+		if r.IsSecondary() && r.IsLocalRecord() && dnsRecord.IsDelegating() {
+			return ctrl.Result{}, nil
+		}
+
+		//ToDo Do we need to determine the role here?,
+		// if it's remote, and primary, it should deal with it's own cleanup?
+		// if it's remote, and secondary, we should deal with cleanup?
+		// Does it matter if both do it, record is deleting anyway and only an "issue" in multi primary setups?
 
 		if !dnsRecord.Status.ProviderEndpointsDeletion() {
 			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
@@ -173,7 +193,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
 			}
 
-			if probesEnabled {
+			if r.IsLocalRecord() && probesEnabled {
 				if err = r.DeleteHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
 					return ctrl.Result{}, err
 				}
@@ -202,14 +222,29 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatusAndRequeue(ctx, previous, dnsRecord, time.Second)
 	}
 
-	if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
-		logger.Info("Adding Finalizer", "finalizer_name", DNSRecordFinalizer)
-		controllerutil.AddFinalizer(dnsRecord, DNSRecordFinalizer)
-		err = r.Update(ctx, dnsRecord)
-		if err != nil {
-			return ctrl.Result{}, err
+	if r.IsLocalRecord() {
+		if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
+			logger.Info("Adding Finalizer", "finalizer_name", DNSRecordFinalizer)
+			controllerutil.AddFinalizer(dnsRecord, DNSRecordFinalizer)
+			err = r.Update(ctx, dnsRecord)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
 		}
-		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+		//ToDo Set a "ready for processing" status here
+	} else {
+		//ToDo Use the "ready for processing" status here instead of checking the finalizer
+		if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
+			logger.Info("remote record no ready for processing, skipping")
+			// Remote records must have had a finalizer set before continuing
+			return ctrl.Result{}, nil
+		}
+	}
+
+	// Local records that are delegating in remote mode should just set a status and return
+	if r.IsSecondary() && r.IsLocalRecord() && dnsRecord.IsDelegating() {
+		return ctrl.Result{}, nil
 	}
 
 	err = dnsRecord.Validate()
@@ -284,7 +319,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		if dnsRecord.IsDelegating() {
-			ddh := DNSRecordDelegationHelper{r.Client}
+			ddh := DNSRecordDelegationHelper{r.LocalClient}
 			_, err = ddh.EnsureAuthoritativeRecord(ctx, *dnsRecord)
 			if err != nil {
 				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
@@ -325,7 +360,16 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
 	}
 
-	if probesEnabled {
+	if common.MergeLabels(dnsRecord, dnsProvider.Labels()) {
+		logger.Info("Adding provider labels")
+		err = r.Update(ctx, dnsRecord)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+	}
+
+	if r.IsLocalRecord() && probesEnabled {
 		if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -358,7 +402,9 @@ func (r *DNSRecordReconciler) setLogger(ctx context.Context, logger logr.Logger,
 		WithValues("rootHost", dnsRecord.Spec.RootHost).
 		WithValues("ownerID", dnsRecord.Status.OwnerID).
 		WithValues("zoneID", dnsRecord.Status.ZoneID).
-		WithValues("zoneDomainName", dnsRecord.Status.ZoneDomainName)
+		WithValues("zoneDomainName", dnsRecord.Status.ZoneDomainName).
+		WithValues("remoteRecord", r.IsRemoteRecord()).
+		WithValues("delegationRole", r.DelegationRole)
 	return log.IntoContext(ctx, logger), logger
 }
 
