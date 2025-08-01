@@ -99,6 +99,12 @@ func (p CoreDNSProvider) Name() provider.DNSProviderName {
 	return provider.DNSProviderCoreDNS
 }
 
+func (p *CoreDNSProvider) Labels() map[string]string {
+	return map[string]string{
+		provider.DNSProviderLabel: p.Name().String(),
+	}
+}
+
 // DNSZones returns a list of dns zones accessible for this provider
 func (p *CoreDNSProvider) DNSZones(ctx context.Context) ([]provider.DNSZone, error) {
 	zones := []provider.DNSZone{}
