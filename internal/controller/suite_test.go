@@ -45,6 +45,7 @@ import (
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
+	_ "github.com/kuadrant/dns-operator/internal/provider/endpoint"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
 	//+kubebuilder:scaffold:imports
@@ -101,7 +102,7 @@ var _ = BeforeSuite(func() {
 	dynClient, err := dynamic.NewForConfig(cfg)
 	Expect(err).ToNot(HaveOccurred())
 
-	providerFactory, err := provider.NewFactory(mgr.GetClient(), dynClient, []string{provider.DNSProviderInMem.String()})
+	providerFactory, err := provider.NewFactory(mgr.GetClient(), dynClient, []string{provider.DNSProviderInMem.String(), provider.DNSProviderEndpoint.String()})
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&DNSRecordReconciler{

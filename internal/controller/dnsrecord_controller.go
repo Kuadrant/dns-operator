@@ -219,7 +219,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Ensure we have provider secret
-	if !dnsRecord.HasProviderSecretAssigned() {
+	if !dnsRecord.IsDelegating() && !dnsRecord.HasProviderSecretAssigned() {
 		if dnsRecord.Spec.ProviderRef != nil && dnsRecord.Spec.ProviderRef.Name != "" {
 			dnsRecord.Status.ProviderRef = *dnsRecord.Spec.ProviderRef
 		} else {
@@ -268,6 +268,16 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 				"DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
 			return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
+		}
+
+		if dnsRecord.IsDelegating() {
+			ddh := DNSRecordDelegationHelper{r.Client}
+			_, err = ddh.EnsureAuthoritativeRecord(ctx, *dnsRecord)
+			if err != nil {
+				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+					"DNSProviderError", fmt.Sprintf("Unable to create authoritative record: %v", provider.SanitizeError(err)))
+				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
+			}
 		}
 
 		z, err := p.DNSZoneForHost(ctx, dnsRecord.Spec.RootHost)

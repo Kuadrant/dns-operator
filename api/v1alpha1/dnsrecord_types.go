@@ -31,6 +31,7 @@ type Protocol string
 
 const HttpProtocol Protocol = "HTTP"
 const HttpsProtocol Protocol = "HTTPS"
+const DelegationAuthoritativeRecordLabel = "kuadrant.io/delegation-authoritative-record"
 
 // HealthCheckSpec configures health checks in the DNS provider.
 // By default this health check will be applied to each unique DNS A Record for
@@ -86,6 +87,9 @@ type HealthCheckStatusProbe struct {
 // DNSRecordSpec defines the desired state of DNSRecord
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.ownerID) || has(self.ownerID)", message="OwnerID can't be unset if it was previously set"
 // +kubebuilder:validation:XValidation:rule="has(oldSelf.ownerID) || !has(self.ownerID)", message="OwnerID can't be set if it was previously unset"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.delegate) || has(self.delegate)", message="Delegate can't be unset if it was previously set"
+// +kubebuilder:validation:XValidation:rule="has(oldSelf.delegate) || !has(self.delegate)", message="Delegate can't be set if it was previously unset"
+// +kubebuilder:validation:XValidation:rule="!(has(self.providerRef) && has(self.delegate) && self.delegate == true)", message="delegate=true and providerRef are mutually exclusive"
 type DNSRecordSpec struct {
 	// ownerID is a unique string used to identify the owner of this record.
 	// If unset or set to an empty string the record UID will be used.
@@ -115,6 +119,8 @@ type DNSRecordSpec struct {
 
 	// +optional
 	HealthCheck *HealthCheckSpec `json:"healthCheck,omitempty"`
+
+	Delegate bool `json:"delegate,omitempty"`
 }
 
 // DNSRecordStatus defines the observed state of DNSRecord
@@ -272,6 +278,14 @@ func (s *DNSRecord) HasOwnerIDAssigned() bool {
 }
 
 func (s *DNSRecord) HasProviderSecretAssigned() bool { return s.Status.ProviderRef.Name != "" }
+
+func (s *DNSRecord) IsDelegating() bool {
+	return s.Spec.Delegate
+}
+
+func (s *DNSRecord) GetRootHost() string {
+	return s.Spec.RootHost
+}
 
 func init() {
 	SchemeBuilder.Register(&DNSRecord{}, &DNSRecordList{})

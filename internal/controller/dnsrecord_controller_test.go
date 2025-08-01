@@ -145,6 +145,42 @@ var _ = Describe("DNSRecordReconciler", func() {
 			Expect(err).To(MatchError(ContainSubstring("Only HTTP or HTTPS protocols are allowed")))
 			Expect(err).To(MatchError(ContainSubstring("Failure threshold must be greater than 0")))
 		})
+
+		It("prevents the creation of records with both a providerRef and delegation true", func(ctx SpecContext) {
+			dnsRecord.Spec.Delegate = true
+			err := k8sClient.Create(ctx, dnsRecord)
+			Expect(err).To(MatchError(ContainSubstring("delegate=true and providerRef are mutually exclusive")))
+		})
+
+		It("prevents delegate being set if it was previously unset", func(ctx SpecContext) {
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				dnsRecord.Spec.ProviderRef = nil
+				dnsRecord.Spec.Delegate = true
+				err = k8sClient.Update(ctx, dnsRecord)
+				g.Expect(err).To(MatchError(ContainSubstring("Delegate can't be set if it was previously unset")))
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
+		It("prevents delegate being unset if it was previously set", func(ctx SpecContext) {
+			dnsRecord.Spec.ProviderRef = nil
+			dnsRecord.Spec.Delegate = true
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				dnsRecord.Spec.Delegate = false
+				err = k8sClient.Update(ctx, dnsRecord)
+				g.Expect(err).To(MatchError(ContainSubstring("Delegate can't be unset if it was previously set")))
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
 	})
 
 	It("handles records with similar root hosts", func(ctx SpecContext) {
@@ -958,6 +994,134 @@ var _ = Describe("DNSRecordReconciler", func() {
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
 
+	})
+
+	// Delegation specific test cases
+	Context("delegation", func() {
+		It("should default to false if not specified", func(ctx SpecContext) {
+			dnsRecord.Spec = v1alpha1.DNSRecordSpec{
+				RootHost: testHostname,
+				ProviderRef: &v1alpha1.ProviderRef{
+					Name: dnsProviderSecret.Name,
+				},
+				Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.1"}),
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.IsDelegating()).To(BeFalse())
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		})
+
+		It("should create authoritative record and assign as zone", func(ctx SpecContext) {
+			var authRecord *v1alpha1.DNSRecord
+			dnsRecord.Spec = v1alpha1.DNSRecordSpec{
+				RootHost: testHostname,
+				Delegate: true,
+				Endpoints: []*externaldnsendpoint.Endpoint{
+					{
+						DNSName:       testHostname,
+						Targets:       []string{"127.0.0.1"},
+						RecordType:    "A",
+						SetIdentifier: "foo",
+						RecordTTL:     60,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				// Find the record
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Verify the expected state of the record
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"Message":            Equal("Provider ensured the dns record"),
+						"ObservedGeneration": Equal(dnsRecord.Generation),
+					})),
+				)
+				g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+				g.Expect(dnsRecord.IsDelegating()).To(BeTrue())
+				g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
+
+				// Find the authoritative record
+				authRecords := &v1alpha1.DNSRecordList{}
+				g.Expect(k8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: testHostname})).To(Succeed())
+				g.Expect(authRecords.Items).To(HaveLen(1))
+				authRecord = &authRecords.Items[0]
+
+				// Verify the expected state of the authoritative record
+				g.Expect(authRecord.IsDelegating()).To(BeFalse())
+				g.Expect(authRecord.Spec.RootHost).To(Equal(testHostname))
+				// no default secret yet
+				g.Expect(authRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":  Equal(metav1.ConditionFalse),
+						"Reason":  Equal("DNSProviderError"),
+						"Message": Equal("No default provider secret labeled kuadrant.io/default-provider was found"),
+					})),
+				)
+				//authoritative record should contain the expected endpoint and registry record
+				g.Expect(authRecord.Spec.Endpoints).To(HaveLen(2))
+				g.Expect(authRecord.Spec.Endpoints).To(ContainElements(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       Equal(testHostname),
+						"Targets":       ConsistOf("127.0.0.1"),
+						"RecordType":    Equal("A"),
+						"SetIdentifier": Equal("foo"),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":       HaveSuffix(testHostname),
+						"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
+						"RecordType":    Equal("TXT"),
+						"SetIdentifier": Equal("foo"),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(0)),
+					})),
+				))
+
+				// Verify record status has authoritative record referenced
+				g.Expect(dnsRecord.Status.ZoneID).To(Equal(authRecord.Name))
+				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(authRecord.Spec.RootHost))
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsProviderSecret), dnsProviderSecret)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Set the default-provider label on the provider secret
+				labels := dnsProviderSecret.GetLabels()
+				if labels == nil {
+					labels = map[string]string{}
+				}
+				labels[v1alpha1.DefaultProviderSecretLabel] = "true"
+				dnsProviderSecret.SetLabels(labels)
+				err = k8sClient.Update(ctx, dnsProviderSecret)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Get the authoritative record
+				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Verify the authoritative record becomes ready
+				g.Expect(authRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":  Equal(metav1.ConditionTrue),
+						"Reason":  Equal("ProviderSuccess"),
+						"Message": Equal("Provider ensured the dns record"),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+		})
 	})
 
 })
