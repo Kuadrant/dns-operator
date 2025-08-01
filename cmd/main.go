@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -52,10 +53,11 @@ import (
 )
 
 var (
-	setupLog = ctrl.Log.WithName("setup")
-	gitSHA   string // pass ldflag here to display gitSHA hash
-	dirty    string // must be string as passed in by ldflag to determine display .
-	version  string // must be string as passed in by ldflag to determine display .
+	setupLog        = ctrl.Log.WithName("setup")
+	gitSHA          string // pass ldflag here to display gitSHA hash
+	dirty           string // must be string as passed in by ldflag to determine display .
+	version         string // must be string as passed in by ldflag to determine display .
+	delegationRoles = []string{controller.DelegationRolePrimary, controller.DelegationRoleSecondary}
 )
 
 const (
@@ -87,6 +89,8 @@ func main() {
 	var clusterSecretNamespace string
 	var clusterSecretLabel string
 
+	var delegationRole string
+
 	flag.BoolVar(&dnsProbesEnabled, "enable-probes", true, "Enable DNSHealthProbes controller.")
 	flag.BoolVar(&allowInsecureCerts, "insecure-health-checks", true, "Allow DNSHealthProbes to use insecure certificates")
 
@@ -108,6 +112,8 @@ func main() {
 
 	flag.StringVar(&clusterSecretNamespace, "cluster-secret-namespace", "dns-operator-system", "The Namespace to look for cluster secrets.")
 	flag.StringVar(&clusterSecretLabel, "cluster-secret-label", "kuadrant.io/multicluster-kubeconfig", "The label that identifies a Secret resource as a cluster secret.")
+
+	flag.Var(newDelegationRoleValue(controller.DelegationRolePrimary, &delegationRole), "delegation-role", "The delegation role for this controller. Must be one of 'primary'(default), or 'secondary'")
 
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -148,30 +154,45 @@ func main() {
 		defaultOptions.Cache = cacheOpts
 	}
 
-	// Create the kubeconfig provider with options
-	clusterProviderOpts := kubeconfigprovider.Options{
-		Namespace:             clusterSecretNamespace,
-		KubeconfigSecretLabel: clusterSecretLabel,
-		KubeconfigSecretKey:   "kubeconfig",
-	}
+	var mgr ctrl.Manager
+	var mcmgr mcmanager.Manager
+	var err error
+	if delegationRole == controller.DelegationRoleSecondary {
+		setupLog.Info("Creating manager")
+		// Use the normal controller runtime manager when in remote mode
+		mgr, err = ctrl.NewManager(ctrl.GetConfigOrDie(), defaultOptions)
+		if err != nil {
+			setupLog.Error(err, "unable to start manager")
+			os.Exit(1)
+		}
+	} else {
+		// Create the kubeconfig provider with options
+		clusterProviderOpts := kubeconfigprovider.Options{
+			Namespace:             clusterSecretNamespace,
+			KubeconfigSecretLabel: clusterSecretLabel,
+			KubeconfigSecretKey:   "kubeconfig",
+		}
 
-	// Create the provider first, then the manager with the provider
-	setupLog.Info("Creating cluster provider")
-	clusterProvider := kubeconfigprovider.New(clusterProviderOpts)
+		// Create the provider first, then the manager with the provider
+		setupLog.Info("Creating cluster provider")
+		clusterProvider := kubeconfigprovider.New(clusterProviderOpts)
 
-	// Setup a cluster-aware Manager, with the provider to lookup clusters.
-	setupLog.Info("Creating cluster aware manager")
-	mgr, err := mcmanager.New(ctrl.GetConfigOrDie(), clusterProvider, defaultOptions)
-	if err != nil {
-		setupLog.Error(err, "unable to start multi cluster manager")
-		os.Exit(1)
-	}
+		// Setup a cluster-aware Manager, with the provider to lookup clusters.
+		setupLog.Info("Creating cluster aware manager")
+		mcmgr, err = mcmanager.New(ctrl.GetConfigOrDie(), clusterProvider, defaultOptions)
+		if err != nil {
+			setupLog.Error(err, "unable to start multi cluster manager")
+			os.Exit(1)
+		}
 
-	// Setup provider controller with the manager.
-	err = clusterProvider.SetupWithManager(ctx, mgr)
-	if err != nil {
-		setupLog.Error(err, "Unable to setup provider with manager")
-		os.Exit(1)
+		// Setup provider controller with the manager.
+		err = clusterProvider.SetupWithManager(ctx, mcmgr)
+		if err != nil {
+			setupLog.Error(err, "Unable to setup provider with manager")
+			os.Exit(1)
+		}
+
+		mgr = mcmgr.GetLocalManager()
 	}
 
 	if len(providers) == 0 {
@@ -183,46 +204,49 @@ func main() {
 		providers = defaultProviders
 	}
 
-	dynamicClient, err := dynamic.NewForConfig(mgr.GetLocalManager().GetConfig())
+	dynamicClient, err := dynamic.NewForConfig(mgr.GetConfig())
 	if err != nil {
 		setupLog.Error(err, "unable to create dynamic client for cluster")
 		os.Exit(1)
 	}
 
 	setupLog.Info("init provider factory", "providers", providers)
-	providerFactory, err := provider.NewFactory(mgr.GetLocalManager().GetClient(), dynamicClient, providers)
+	providerFactory, err := provider.NewFactory(mgr.GetClient(), dynamicClient, providers)
 	if err != nil {
 		setupLog.Error(err, "unable to create provider factory")
 		os.Exit(1)
 	}
 
 	dnsRecordController := &controller.DNSRecordReconciler{
-		Client:          mgr.GetLocalManager().GetClient(),
-		Scheme:          mgr.GetLocalManager().GetScheme(),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
+		DelegationRole:  delegationRole,
 	}
 
-	remoteDNSRecordController := &controller.RemoteDNSRecordReconciler{
-		DNSRecordReconciler: *dnsRecordController,
-	}
-
-	if err = dnsRecordController.SetupWithManager(mgr.GetLocalManager(), maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
+	if err = dnsRecordController.SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSRecord")
 		os.Exit(1)
 	}
 
-	if err = remoteDNSRecordController.SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "RemoteDNSRecord")
-		os.Exit(1)
+	if mcmgr != nil {
+		remoteDNSRecordController := &controller.RemoteDNSRecordReconciler{
+			DNSRecordReconciler: *dnsRecordController,
+		}
+
+		if err = remoteDNSRecordController.SetupWithManager(mcmgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "RemoteDNSRecord")
+			os.Exit(1)
+		}
 	}
 
 	if dnsProbesEnabled {
 		probeManager := probes.NewProbeManager()
 		if err = (&controller.DNSProbeReconciler{
-			Client:       mgr.GetLocalManager().GetClient(),
-			Scheme:       mgr.GetLocalManager().GetScheme(),
+			Client:       mgr.GetClient(),
+			Scheme:       mgr.GetScheme(),
 			ProbeManager: probeManager,
-		}).SetupWithManager(mgr.GetLocalManager(), maxRequeueTime, validFor, minRequeueTime); err != nil {
+		}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "DNSProbe")
 			os.Exit(1)
 		}
@@ -265,4 +289,21 @@ func (n *stringSliceFlags) Set(s string) error {
 		*n = append(*n, strVal)
 	}
 	return nil
+}
+
+type delegationRoleValue string
+
+func (f *delegationRoleValue) String() string { return string(*f) }
+
+func (f *delegationRoleValue) Set(val string) error {
+	if !slices.Contains(delegationRoles, val) {
+		return fmt.Errorf("must be one of %v", delegationRoles)
+	}
+	*f = delegationRoleValue(val)
+	return nil
+}
+
+func newDelegationRoleValue(val string, p *string) *delegationRoleValue {
+	*p = val
+	return (*delegationRoleValue)(p)
 }
