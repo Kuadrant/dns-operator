@@ -107,8 +107,11 @@ var _ = BeforeSuite(func() {
 
 	err = (&DNSRecordReconciler{
 		Client:          mgr.GetClient(),
+		LocalClient:     mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
+		DelegationRole:  DelegationRolePrimary,
+		remoteClient:    false,
 	}).SetupWithManager(mgr, RequeueDuration, ValidityDuration, DefaultValidationDuration, true, true)
 	Expect(err).ToNot(HaveOccurred())
 
