@@ -245,7 +245,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 	It("uses default provider secret", func(ctx SpecContext) {
 		// remove provider ref to force default secret
-		dnsRecord.Spec.ProviderRef.Name = ""
+		dnsRecord.Spec.ProviderRef = nil
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 		// can't find secret - no label
