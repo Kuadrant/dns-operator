@@ -109,6 +109,8 @@ var _ = BeforeSuite(func() {
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
+		DelegationRole:  DelegationRolePrimary,
+		remoteClient:    false,
 	}).SetupWithManager(mgr, RequeueDuration, ValidityDuration, DefaultValidationDuration, true, true)
 	Expect(err).ToNot(HaveOccurred())
 

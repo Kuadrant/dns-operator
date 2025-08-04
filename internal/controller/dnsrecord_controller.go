@@ -53,7 +53,11 @@ import (
 )
 
 const (
-	DNSRecordFinalizer        = "kuadrant.io/dns-record"
+	DNSRecordFinalizer = "kuadrant.io/dns-record"
+
+	DelegationRolePrimary   = "primary"
+	DelegationRoleSecondary = "secondary"
+
 	validationRequeueVariance = 0.5
 
 	txtRegistryPrefix              = "kuadrant-"
@@ -80,6 +84,7 @@ type DNSRecordReconciler struct {
 	client.Client
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
+	DelegationRole  string
 	remoteClient    bool
 }
 
@@ -90,6 +95,14 @@ func postReconcile(ctx context.Context, name, ns string) {
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/finalizers,verbs=update
+
+func (r *DNSRecordReconciler) IsPrimary() bool {
+	return r.DelegationRole == DelegationRolePrimary
+}
+
+func (r *DNSRecordReconciler) IsSecondary() bool {
+	return r.DelegationRole == DelegationRoleSecondary
+}
 
 func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	// Keep a reference to the initial logger(baseLogger) so we can update it throughout the reconcile
