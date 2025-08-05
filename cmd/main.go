@@ -113,9 +113,6 @@ func main() {
 	flag.BoolVar(&dnsProbesEnabled, dnsProbesEnabledKey.Flag(), true, "Enable DNSHealthProbes controller.")
 	flag.BoolVar(&allowInsecureCerts, allowInsecureCertsKey.Flag(), true, "Allow DNSHealthProbes to use insecure certificates")
 
-	flag.BoolVar(&dnsProbesEnabled, dnsProbesEnabledKey.Flag(), true, "Enable DNSHealthProbes controller.")
-	flag.BoolVar(&allowInsecureCerts, allowInsecureCertsKey.Flag(), true, "Allow DNSHealthProbes to use insecure certificates")
-
 	flag.StringVar(&metricsAddr, metricsAddrKey.Flag(), ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, probeAddrKey.Flag(), ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, enableLeaderElectionKey.Flag(), false,
