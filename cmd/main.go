@@ -232,6 +232,7 @@ func main() {
 
 	dnsRecordController := &controller.DNSRecordReconciler{
 		Client:          mgr.GetClient(),
+		LocalClient:     mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
 		DelegationRole:  delegationRole,
