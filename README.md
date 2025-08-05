@@ -99,11 +99,11 @@ The e2e test suite can be executed against any cluster running the DNS Operator 
 make test-e2e TEST_DNS_ZONE_DOMAIN_NAME=<My domain name> TEST_DNS_PROVIDER_SECRET_NAME=<My provider secret name> TEST_DNS_NAMESPACES=<My test namespace(s)>
 ```
 
-| Environment Variable       | Description                                                                                                                                                                        |
-|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Environment Variable          | Description                                                                                                                                                                         |
+|-------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | TEST_DNS_PROVIDER_SECRET_NAME | Name of the provider secret to use. If using local-setup provider secrets zones, one of [dns-provider-credentials-aws; dns-provider-credentials-gcp;dns-provider-credentials-azure] | 
-| TEST_DNS_ZONE_DOMAIN_NAME        | The Domain name to use in the test. Must be a zone accessible with the (TEST_DNS_PROVIDER_SECRET_NAME) credentials with the same domain name                                       | 
-| TEST_DNS_NAMESPACES        | The namespace(s) where the provider secret(s) can be found                                                                                                                         | 
+| TEST_DNS_ZONE_DOMAIN_NAME     | The Domain name to use in the test. Must be a zone accessible with the (TEST_DNS_PROVIDER_SECRET_NAME) credentials with the same domain name                                        | 
+| TEST_DNS_NAMESPACES           | The namespace(s) where the provider secret(s) can be found                                                                                                                          | 
 
 ### Modifying the API definitions
 If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
@@ -115,6 +115,25 @@ make manifests
 **NOTE:** Run `make --help` for more information on all potential `make` targets
 
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+
+## Controller flags and environmental variables
+The controller can be started with any of the following flags or environmental variables. Upon the start of the controller operator give precedence to envars (i.e. `PROVIDER` envar will override `--provider` flag). If neither is set the default value will be used. Envars are parsed into their types from a string where applicable. If parsing fails - envar is ignored
+
+| Flag Name                 | Flag Type     | Envar Name                | Description                                                                                                           | Default                               |
+|---------------------------|---------------|---------------------------|-----------------------------------------------------------------------------------------------------------------------|---------------------------------------|
+| metrics-bind-address      | string        | METRICS_BIND_ADDRESS      | The address the metric endpoint binds to.                                                                             | ":8080"                               |
+| health-probe-bind-address | string        | HEALTH_PROBE_BIND_ADDRESS | The address the probe endpoint binds to.                                                                              | ":8081"                               |
+| leader-elect              | bool          | LEADER_ELECT              | Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager. | "false"                               |
+| min-requeue-time          | time.Duration | MIN_REQUEUE_TIME          | The minimal timeout between calls to the DNS Provider. Controls if we commit to the full reconcile loop               | "5s"                                  |
+| max-requeue-time          | time.Duration | MAX_REQUEUE_TIME          | The maximum times it takes between reconciliations of DNS Record. Controls how ofter record is reconciled.            | "15m"                                 |
+| valid-for                 | time.Duration | VALID_FOR                 | Duration when the record is considered to hold valid information. Controls if we commit to the full reconcile loop    | "14m"                                 |
+| provider                  | string        | PROVIDER                  | DNS Provider(s) to enable.                                                                                            | "aws,google,azure,coredns,endpoints"  |
+| enable-probes             | bool          | ENABLE_PROBES             | Enable DNSHealthProbes controller.                                                                                    | "true"                                |
+| insecure-health-checks    | bool          | INSECURE_HEALTH_CHECKS    | DNS Health Probes will ignore insecure certificates when true                                                         | "true"                                |
+| cluster-secret-namespace  | string        | CLUSTER_SECRET_NAMESPACE  | The namespace in which cluster secrets are located                                                                    | "dns-operator-system"                 |
+| cluster-secret-label      | string        | CLUSTER_SECRET_LABEL      | The label that identifies a Secret resource as a cluster secret.                                                      | "kuadrant.io/multicluster-kubeconfig" |
+| watch-namespaces          | string        | WATCH_NAMESPACES          | Comma separated list of default namespaces.                                                                           | \<empty string\>                      |
+| delegation-role           | string        | DELEGATION_ROLE           | The delegation role for this controller. Must be one of 'primary'(default), or 'secondary'                            | "primary"                             |
 
 ## Logging
 Logs are following the general guidelines: 

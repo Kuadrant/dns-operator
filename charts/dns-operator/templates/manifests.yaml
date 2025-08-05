@@ -959,6 +959,14 @@ subjects:
   namespace: '{{ .Release.Namespace }}'
 ---
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: helm
+  name: dns-operator-controller-env
+  namespace: '{{ .Release.Namespace }}'
+---
+apiVersion: v1
 kind: Service
 metadata:
   labels:
@@ -1013,6 +1021,9 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        envFrom:
+        - configMapRef:
+            name: dns-operator-controller-env
         image: quay.io/kuadrant/dns-operator:latest
         livenessProbe:
           httpGet:
