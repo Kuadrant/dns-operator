@@ -316,6 +316,15 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
 	}
 
+	if common.MergeLabels(dnsRecord, dnsProvider.Labels()) {
+		logger.Info("Adding provider labels")
+		err = r.Update(ctx, dnsRecord)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+	}
+
 	if probesEnabled {
 		if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
 			return ctrl.Result{}, err

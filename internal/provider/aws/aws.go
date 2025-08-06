@@ -65,6 +65,12 @@ func (*Route53DNSProvider) Name() provider.DNSProviderName {
 	return provider.DNSProviderAWS
 }
 
+func (p *Route53DNSProvider) Labels() map[string]string {
+	return map[string]string{
+		provider.DNSProviderLabel: p.Name().String(),
+	}
+}
+
 func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	config := aws.NewConfig()
 
