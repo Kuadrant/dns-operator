@@ -374,20 +374,25 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 		return reconcile.Result{RequeueAfter: requeueIn}, nil
 	}
 
+	readyCond := meta.FindStatusCondition(current.Status.Conditions, string(v1alpha1.ConditionTypeReady))
+
 	// success
 	if hadChanges {
 		// generation has not changed but there are changes.
 		// implies that they were overridden - bump write counter
+		requeueTime = randomizedValidationRequeue
 		if !generationChanged(current) {
 			current.Status.WriteCounter++
 			metrics.WriteCounter.WithLabelValues(current.Name, current.Namespace).Inc()
 			logger.V(1).Info("Changes needed on the same generation of record")
+
+			// we weren't ready before - back off
+			if readyCond.Status == metav1.ConditionFalse {
+				requeueTime = exponentialRequeueTime(current.Status.ValidFor)
+			}
 		}
-		requeueTime = randomizedValidationRequeue
 	} else {
 		logger.Info("All records are already up to date")
-
-		readyCond := meta.FindStatusCondition(current.Status.Conditions, string(v1alpha1.ConditionTypeReady))
 
 		// this is the first reconciliation current.Status.ValidFor is not set
 		if readyCond == nil {
