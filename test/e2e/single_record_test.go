@@ -16,6 +16,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/hash"
+	"github.com/kuadrant/dns-operator/internal/controller"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
@@ -41,6 +43,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 	var k8sClient client.Client
 	var dynamicClient dynamic.Interface
 	var testDNSProviderSecret *v1.Secret
+	var testNamespace string
 	var geoCode string
 
 	var dnsRecord *v1alpha1.DNSRecord
@@ -52,6 +55,12 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		k8sClient = testClusters[0].k8sClient
 		dynamicClient = testClusters[0].dynamicClient
+
+		testNamespace = testClusters[0].testNamespaces[0]
+		By("setting test namespace to: " + testNamespace)
+		if testControllerRunMode == controller.DelegationRoleSecondary {
+			return
+		}
 		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
 		if testDNSProvider == provider.DNSProviderGCP.String() {
 			geoCode = "us-east1"
@@ -66,7 +75,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			zoneRecord := &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "zone-record",
-					Namespace: testDNSProviderSecret.Namespace,
+					Namespace: testNamespace,
 					Labels: map[string]string{
 						"kuadrant.io/zone-record": "true",
 					},
@@ -113,7 +122,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			zoneRecord := &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "zone-record",
-					Namespace: testDNSProviderSecret.Namespace,
+					Namespace: testNamespace,
 				},
 			}
 			Expect(k8sClient.Delete(ctx, zoneRecord, &client.DeleteOptions{})).To(BeNil())
@@ -135,7 +144,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      testID,
-				Namespace: testDNSProviderSecret.Namespace,
+				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.DNSRecordSpec{
 				RootHost: testWCHostname,
@@ -163,28 +172,48 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				HealthCheck: nil,
 			},
 		}
+		if testControllerRunMode == controller.DelegationRoleSecondary {
+			dnsRecord.Spec.Delegate = true
+			dnsRecord.Spec.ProviderRef = nil
+		}
 
-		By("creating dnsrecord " + dnsRecord.Name)
+		By("creating dnsrecord " + dnsRecord.Name + " for host: " + testWCHostname)
 		err := k8sClient.Create(ctx, dnsRecord)
 		Expect(err).ToNot(HaveOccurred())
 
-		By("checking " + dnsRecord.Name + " becomes ready")
+		By("checking " + dnsRecord.Name + " becomes ready and has finalizers")
 		Eventually(func(g Gomega, ctx context.Context) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.Conditions).To(
-				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status": Equal(metav1.ConditionTrue),
-				})),
+			g.Expect(dnsRecord.Finalizers).To(
+				ContainElement(controller.DNSRecordFinalizer),
 			)
-			if txtRegistryEnabled {
+
+			if testControllerRunMode == controller.DelegationRoleSecondary {
+				// test for delegation ready status
+				readyCondition := meta.FindStatusCondition(dnsRecord.Status.Conditions, v1alpha1.DelegationReadyCondition)
+				g.Expect(readyCondition).NotTo(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+			} else {
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status": Equal(metav1.ConditionTrue),
+					})),
+				)
+			}
+			if txtRegistryEnabled && testControllerRunMode != controller.DelegationRoleSecondary {
 				g.Expect(dnsRecord.Status.DomainOwners).NotTo(BeEmpty())
 				g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
 			} else {
 				g.Expect(dnsRecord.Status.DomainOwners).To(BeEmpty())
 			}
 		}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
+
+		//nothing beyond here is supported for secondary role
+		if testControllerRunMode == controller.DelegationRoleSecondary {
+			return
+		}
 
 		By("checking " + dnsRecord.Name + " ownerID is set correctly")
 		Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
@@ -244,7 +273,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testID,
-					Namespace: testDNSProviderSecret.Namespace,
+					Namespace: testNamespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
 					RootHost: testHostname,
@@ -264,21 +293,58 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					HealthCheck: nil,
 				},
 			}
-			By("creating dnsrecord " + dnsRecord.Name)
+			if testControllerRunMode == controller.DelegationRoleSecondary {
+				dnsRecord.Spec.Delegate = true
+				dnsRecord.Spec.ProviderRef = nil
+			}
+			By("creating dnsrecord " + dnsRecord.Name + " for host: " + testHostname)
 			err := k8sClient.Create(ctx, dnsRecord)
 			Expect(err).ToNot(HaveOccurred())
-
 			By("checking " + dnsRecord.Name + " becomes ready")
 			Eventually(func(g Gomega, ctx context.Context) {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(dnsRecord.Status.Conditions).To(
-					ContainElement(MatchFields(IgnoreExtras, Fields{
-						"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
-						"Status": Equal(metav1.ConditionTrue),
-					})),
+				g.Expect(dnsRecord.Finalizers).To(
+					ContainElement(controller.DNSRecordFinalizer),
 				)
+
+				if testControllerRunMode == controller.DelegationRoleSecondary {
+					// test for delegation ready status
+					readyCondition := meta.FindStatusCondition(dnsRecord.Status.Conditions, v1alpha1.DelegationReadyCondition)
+					g.Expect(readyCondition).NotTo(BeNil())
+					g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+				} else {
+					g.Expect(dnsRecord.Status.Conditions).To(
+						ContainElement(MatchFields(IgnoreExtras, Fields{
+							"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status": Equal(metav1.ConditionTrue),
+						})),
+					)
+				}
 			}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
+
+			By("adding healthcheck to spec")
+			patch := client.MergeFrom(dnsRecord.DeepCopy())
+			dnsRecord.Spec.HealthCheck = &v1alpha1.HealthCheckSpec{
+				Path: "/health",
+			}
+			err = k8sClient.Patch(ctx, dnsRecord, patch, &client.PatchOptions{})
+			Expect(err).To(BeNil())
+
+			By("Confirming health checks are created")
+			Eventually(func(g Gomega, ctx context.Context) {
+				healthchecksList := &v1alpha1.DNSHealthCheckProbeList{}
+				err := k8sClient.List(ctx, healthchecksList)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(len(healthchecksList.Items)).NotTo(BeZero())
+
+			}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
+
+			//nothing beyond here is supported for secondary role
+			if testControllerRunMode == controller.DelegationRoleSecondary {
+				return
+			}
 
 			By("checking " + dnsRecord.Name + " ownerID is set correctly")
 			Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
@@ -361,7 +427,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      testID,
-					Namespace: testDNSProviderSecret.Namespace,
+					Namespace: testNamespace,
 				},
 				Spec: v1alpha1.DNSRecordSpec{
 					RootHost: testHostname,
@@ -434,6 +500,10 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					HealthCheck: nil,
 				},
 			}
+			if testControllerRunMode == controller.DelegationRoleSecondary {
+				dnsRecord.Spec.Delegate = true
+				dnsRecord.Spec.ProviderRef = nil
+			}
 			By("creating dnsrecord " + dnsRecord.Name)
 			err := k8sClient.Create(ctx, dnsRecord)
 			Expect(err).ToNot(HaveOccurred())
@@ -442,13 +512,29 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Eventually(func(g Gomega, ctx context.Context) {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(dnsRecord.Status.Conditions).To(
-					ContainElement(MatchFields(IgnoreExtras, Fields{
-						"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
-						"Status": Equal(metav1.ConditionTrue),
-					})),
+				g.Expect(dnsRecord.Finalizers).To(
+					ContainElement(controller.DNSRecordFinalizer),
 				)
+
+				if testControllerRunMode == controller.DelegationRoleSecondary {
+					// test for delegation ready status
+					readyCondition := meta.FindStatusCondition(dnsRecord.Status.Conditions, v1alpha1.DelegationReadyCondition)
+					g.Expect(readyCondition).NotTo(BeNil())
+					g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+				} else {
+					g.Expect(dnsRecord.Status.Conditions).To(
+						ContainElement(MatchFields(IgnoreExtras, Fields{
+							"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status": Equal(metav1.ConditionTrue),
+						})),
+					)
+				}
 			}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
+
+			//nothing beyond here is supported for secondary role
+			if testControllerRunMode == controller.DelegationRoleSecondary {
+				return
+			}
 
 			By("checking " + dnsRecord.Name + " ownerID is set correctly")
 			Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
@@ -757,23 +843,27 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 
 		It("handles multiple DNS Records for the same zone at the same time", func(ctx SpecContext) {
 			By("creating " + strconv.Itoa(testConcurrentRecords) + " DNS Records")
-			SetTestEnv("testNamespace", testDNSProviderSecret.Namespace)
+			SetTestEnv("testNamespace", testNamespace)
 
 			if testDNSProvider == provider.DNSProviderGCP.String() {
 				SetTestEnv("testGeoCode", "europe-west1")
-			} else if testDNSProvider == provider.DNSProviderAzure.String() {
-				SetTestEnv("testGeoCode", "GEO-EU")
 			} else {
 				SetTestEnv("testGeoCode", "GEO-EU")
 			}
 
-			SetTestEnv("TEST_DNS_PROVIDER_SECRET_NAME", testDNSProviderSecret.Name)
 			for i := 1; i <= testConcurrentRecords; i++ {
 				testRecord := &v1alpha1.DNSRecord{}
 				SetTestEnv("testHostname", strings.Join([]string{testID + "-" + strconv.Itoa(i), testDomainName}, "."))
 				SetTestEnv("testID", testID+"-"+strconv.Itoa(i))
 
 				err := ResourceFromFile("./fixtures/healthcheck_test/geo-dnsrecord-healthchecks.yaml", testRecord, GetTestEnv)
+				if testControllerRunMode == controller.DelegationRoleSecondary {
+					testRecord.Spec.Delegate = true
+				} else {
+					testRecord.Spec.ProviderRef = &v1alpha1.ProviderRef{
+						Name: testDNSProviderSecret.Name,
+					}
+				}
 				By("creating DNS Record for host " + GetTestEnv("testHostname"))
 				Expect(err).ToNot(HaveOccurred())
 				err = k8sClient.Create(ctx, testRecord)
@@ -787,12 +877,23 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					testRecord := &v1alpha1.DNSRecord{}
 					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(record), testRecord)
 					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(testRecord.Status.Conditions).To(
-						ContainElement(MatchFields(IgnoreExtras, Fields{
-							"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
-							"Status": Equal(metav1.ConditionTrue),
-						})),
+					g.Expect(testRecord.Finalizers).To(
+						ContainElement(controller.DNSRecordFinalizer),
 					)
+
+					if testControllerRunMode == controller.DelegationRoleSecondary {
+						// test for delegation ready status
+						readyCondition := meta.FindStatusCondition(testRecord.Status.Conditions, v1alpha1.DelegationReadyCondition)
+						g.Expect(readyCondition).NotTo(BeNil())
+						g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+					} else {
+						g.Expect(testRecord.Status.Conditions).To(
+							ContainElement(MatchFields(IgnoreExtras, Fields{
+								"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+								"Status": Equal(metav1.ConditionTrue),
+							})),
+						)
+					}
 				}
 			}, recordsReadyMaxDuration*time.Duration(testConcurrentRecords), 5*time.Second, ctx).Should(Succeed())
 			By(fmt.Sprintf("Total time for %d records to become ready: %s", testConcurrentRecords, time.Since(startedTime)))

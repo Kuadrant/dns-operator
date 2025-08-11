@@ -1,6 +1,7 @@
 package common
 
 import (
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -26,4 +27,17 @@ func RandomizeDuration(variance, duration float64) time.Duration {
 	return time.Millisecond * time.Duration(rand.Int63nRange(
 		int64(lowerLimit),
 		int64(upperLimit)))
+}
+
+func FormatRootHost(rootHost string) string {
+	formatted := strings.Replace(rootHost, "*", "w", 1)
+	if len([]byte(formatted)) > 63 {
+		formatted = string([]byte(formatted)[:63])
+	}
+
+	for []byte(formatted)[len([]byte(formatted))-1] == []byte(".")[0] {
+		formatted = string([]byte(formatted)[:len([]byte(formatted))-2])
+	}
+
+	return formatted
 }

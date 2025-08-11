@@ -17,6 +17,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/controller"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/pkg/builder"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
@@ -40,18 +41,30 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 	var dnsRecord *v1alpha1.DNSRecord
 
 	BeforeEach(func(ctx SpecContext) {
+		if testControllerRunMode == controller.DelegationRoleSecondary {
+			Skip("not covered for secondary delegation")
+		}
+
 		testID = "t-errors-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")
 		k8sClient = testClusters[0].k8sClient
 		testDNSProviderSecret = testClusters[0].testDNSProviderSecrets[0]
+
 	})
 
 	AfterEach(func(ctx SpecContext) {
 		if dnsRecord != nil {
+			By("Deleting DNS Record")
 			err := k8sClient.Delete(ctx, dnsRecord,
 				client.PropagationPolicy(metav1.DeletePropagationForeground))
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+
+			By("checking dns record is removed")
+			Eventually(func(g Gomega, ctx context.Context) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).To(MatchError(ContainSubstring("not found")))
+			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
 		}
 		if invalidProviderSecret != nil {
 			err := k8sClient.Delete(ctx, invalidProviderSecret,

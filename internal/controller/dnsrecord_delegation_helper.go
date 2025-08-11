@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 )
 
 type DNSRecordDelegationHelper struct {
@@ -32,7 +33,7 @@ func (r *DNSRecordDelegationHelper) EnsureAuthoritativeRecord(ctx context.Contex
 func (r *DNSRecordDelegationHelper) getAuthoritativeRecordFor(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
 	aRecords := v1alpha1.DNSRecordList{}
 
-	labelSelector, err := labels.Parse(fmt.Sprintf("%s=%s", v1alpha1.DelegationAuthoritativeRecordLabel, record.Spec.RootHost))
+	labelSelector, err := labels.Parse(fmt.Sprintf("%s=%s", v1alpha1.DelegationAuthoritativeRecordLabel, common.FormatRootHost(record.Spec.RootHost)))
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +65,7 @@ func authoritativeRecordFor(rec v1alpha1.DNSRecord) *v1alpha1.DNSRecord {
 			GenerateName: "delegation-authoritative-record-",
 			Namespace:    rec.Namespace,
 			Labels: map[string]string{
-				v1alpha1.DelegationAuthoritativeRecordLabel: rec.Spec.RootHost,
+				v1alpha1.DelegationAuthoritativeRecordLabel: common.FormatRootHost(rec.Spec.RootHost),
 			},
 		},
 		Spec: v1alpha1.DNSRecordSpec{
