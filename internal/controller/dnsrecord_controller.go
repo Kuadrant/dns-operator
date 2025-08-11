@@ -149,7 +149,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	if dnsRecord.DeletionTimestamp != nil && !dnsRecord.DeletionTimestamp.IsZero() {
+	if dnsRecord.IsDeleting() {
 		logger.Info("Deleting DNSRecord")
 		if r.IsLocalRecord() && dnsRecord.Status.ProviderEndpointsRemoved() {
 			logger.V(1).Info("Status ProviderEndpointRemoved is true, finalizer can be removed")
@@ -232,12 +232,37 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 			return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
 		}
-		//ToDo Set a "ready for processing" status here
+
+		if probesEnabled {
+			if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
+				return ctrl.Result{}, err
+			}
+			// get all probes owned by this record
+			if err := r.List(ctx, probes, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
+				}),
+				Namespace: dnsRecord.Namespace,
+			}); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		if r.IsSecondary() && dnsRecord.IsDelegating() {
+			// finalizers are present, set delegation status ready
+			if c := meta.FindStatusCondition(dnsRecord.Status.Conditions, string(v1alpha1.ConditionTypeReadyForDelegation)); c == nil || c.Status == metav1.ConditionFalse {
+				logger.Info("Finalizers present, setting delegation condition", "condition_type", v1alpha1.ConditionTypeReadyForDelegation)
+				meta.SetStatusCondition(&dnsRecord.Status.Conditions, metav1.Condition{Type: string(v1alpha1.ConditionTypeReadyForDelegation), Reason: string(v1alpha1.ConditionReasonFinalizersSet), Status: metav1.ConditionTrue})
+				err := r.Status().Update(ctx, dnsRecord)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+			}
+		}
 	} else {
-		//ToDo Use the "ready for processing" status here instead of checking the finalizer
-		if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
+		if !dnsRecord.Status.ReadyForDelegation() {
 			logger.Info("remote record no ready for processing, skipping")
-			// Remote records must have had a finalizer set before continuing
 			return ctrl.Result{}, nil
 		}
 	}
@@ -349,15 +374,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			"DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
 		return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
-	}
-
-	if common.MergeLabels(dnsRecord, dnsProvider.Labels()) {
-		logger.Info("Adding provider labels")
-		err = r.Update(ctx, dnsRecord)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
 	}
 
 	if common.MergeLabels(dnsRecord, dnsProvider.Labels()) {

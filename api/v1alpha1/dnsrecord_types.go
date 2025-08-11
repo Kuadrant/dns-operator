@@ -171,10 +171,18 @@ type DNSRecordStatus struct {
 	ZoneDomainName string `json:"zoneDomainName,omitempty"`
 }
 
+func (s *DNSRecordStatus) ReadyForDelegation() bool {
+	delegationReadyCond := meta.FindStatusCondition(s.Conditions, string(ConditionTypeReadyForDelegation))
+	if delegationReadyCond != nil && delegationReadyCond.Status == metav1.ConditionTrue {
+		return true
+	}
+	return false
+}
+
 // ProviderEndpointsRemoved return true if the ready status condition has the reason set to "ProviderEndpointsRemoved"
 func (s *DNSRecordStatus) ProviderEndpointsRemoved() bool {
 	readyCond := meta.FindStatusCondition(s.Conditions, string(ConditionTypeReady))
-	if readyCond != nil && readyCond.Reason == string(ConditionReasonProviderEndpointsRemoved) {
+	if readyCond == nil || readyCond.Reason == string(ConditionReasonProviderEndpointsRemoved) {
 		return true
 	}
 	return false
@@ -183,7 +191,7 @@ func (s *DNSRecordStatus) ProviderEndpointsRemoved() bool {
 // ProviderEndpointsDeletion return true if the ready status condition has the reason set to "ProviderEndpointsDeletion"
 func (s *DNSRecordStatus) ProviderEndpointsDeletion() bool {
 	readyCond := meta.FindStatusCondition(s.Conditions, string(ConditionTypeReady))
-	if readyCond != nil && readyCond.Reason == string(ConditionReasonProviderEndpointsDeletion) {
+	if readyCond == nil || readyCond.Reason == string(ConditionReasonProviderEndpointsDeletion) {
 		return true
 	}
 	return false
@@ -290,4 +298,8 @@ func (s *DNSRecord) GetRootHost() string {
 
 func init() {
 	SchemeBuilder.Register(&DNSRecord{}, &DNSRecordList{})
+}
+
+func (s *DNSRecord) IsDeleting() bool {
+	return s.DeletionTimestamp != nil && !s.DeletionTimestamp.IsZero()
 }

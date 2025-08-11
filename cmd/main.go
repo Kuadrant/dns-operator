@@ -170,6 +170,7 @@ func main() {
 	var mgr ctrl.Manager
 	var mcmgr mcmanager.Manager
 	var err error
+	setupLog.Info("using delegation role: ", "delegationRole", delegationRole)
 	if delegationRole == controller.DelegationRoleSecondary {
 		setupLog.Info("Creating manager")
 		// Use the normal controller runtime manager when running with the secondary delegation role

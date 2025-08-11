@@ -34,6 +34,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 	"github.com/kuadrant/dns-operator/pkg/builder"
 )
 
@@ -1064,7 +1065,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 				// Find the authoritative record
 				authRecords := &v1alpha1.DNSRecordList{}
-				g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: testHostname})).To(Succeed())
+				g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.FormatRootHost(testHostname)})).To(Succeed())
 				g.Expect(authRecords.Items).To(HaveLen(1))
 				authRecord = &authRecords.Items[0]
 

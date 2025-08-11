@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 )
 
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -99,7 +100,7 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 			},
 			Type: v1alpha1.SecretTypeKuadrantEndpoint,
 			Data: map[string][]byte{
-				v1alpha1.EndpointLabelSelectorKey: []byte(fmt.Sprintf("%s=%s", v1alpha1.DelegationAuthoritativeRecordLabel, pa.GetRootHost())),
+				v1alpha1.EndpointLabelSelectorKey: []byte(fmt.Sprintf("%s=%s", v1alpha1.DelegationAuthoritativeRecordLabel, common.FormatRootHost(pa.GetRootHost()))),
 			},
 		}
 	} else {
