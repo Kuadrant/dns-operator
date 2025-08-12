@@ -285,6 +285,9 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(dnsRecord.Status.OwnerID).ToNot(BeEmpty())
 			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
+			By("checking dns provider label 'kuadrant.io/dns-provider-name=" + testDNSProvider + "' is set correctly")
+			Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", testDNSProvider))
+
 			By("ensuring zone records are created as expected")
 			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient, dynamicClient)
 			Expect(err).NotTo(HaveOccurred())
@@ -451,6 +454,9 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
 			Expect(dnsRecord.Status.OwnerID).ToNot(BeEmpty())
 			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
+
+			By("checking dns provider label 'kuadrant.io/dns-provider-name=" + testDNSProvider + "' is set correctly")
+			Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", testDNSProvider))
 
 			By("ensuring zone records are created as expected")
 			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient, dynamicClient)
