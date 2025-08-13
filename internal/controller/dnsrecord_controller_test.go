@@ -76,7 +76,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ProviderRef: &v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.1"}),
+				Endpoints: NewTestEndpoints(testHostname).Endpoints(),
 			},
 		}
 	})
@@ -94,7 +94,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					ProviderRef: &v1alpha1.ProviderRef{
 						Name: dnsProviderSecret.Name,
 					},
-					Endpoints:   getTestEndpoints(testHostname, []string{"127.0.0.1"}),
+					Endpoints:   NewTestEndpoints(testHostname).Endpoints(),
 					HealthCheck: nil,
 				},
 			}
@@ -129,7 +129,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					ProviderRef: &v1alpha1.ProviderRef{
 						Name: dnsProviderSecret.Name,
 					},
-					Endpoints: getTestEndpoints("bar.example.com", []string{"127.0.0.1"}),
+					Endpoints: NewTestEndpoints("bar.example.com").Endpoints(),
 					HealthCheck: &v1alpha1.HealthCheckSpec{
 						Path:             "health",
 						Port:             5,
@@ -214,7 +214,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ProviderRef: &v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints:   getTestEndpoints(testHostname2, []string{"127.0.0.1"}),
+				Endpoints:   NewTestEndpoints(testHostname2).Endpoints(),
 				HealthCheck: nil,
 			},
 		}
@@ -478,7 +478,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ProviderRef: &v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.1"}),
+				Endpoints: NewTestEndpoints(testHostname).Endpoints(),
 			},
 		}
 
@@ -493,7 +493,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ProviderRef: &v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints: getTestEndpoints("sub."+testHostname, []string{"127.0.0.1"}),
+				Endpoints: NewTestEndpoints("sub." + testHostname).Endpoints(),
 			},
 		}
 
@@ -508,7 +508,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ProviderRef: &v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.1"}),
+				Endpoints: NewTestEndpoints(testHostname).Endpoints(),
 			},
 		}
 
@@ -524,7 +524,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ProviderRef: &v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints: getTestEndpoints(testHostname2, []string{"127.0.0.1"}),
+				Endpoints: NewTestEndpoints(testHostname2).Endpoints(),
 			},
 		}
 
@@ -582,7 +582,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ProviderRef: &v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.1"}),
+				Endpoints: NewTestEndpoints(testHostname).Endpoints(),
 			},
 		}
 		dnsRecord2 = &v1alpha1.DNSRecord{
@@ -595,11 +595,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 				ProviderRef: &v1alpha1.ProviderRef{
 					Name: dnsProviderSecret.Name,
 				},
-				Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.2"}),
+				Endpoints: NewTestEndpoints(testHostname).WithTTL(120).Endpoints(),
 			},
 		}
 
-		By("creating dnsrecord " + dnsRecord.Name + " with endpoint dnsName: " + testHostname + " and target: `127.0.0.1`")
+		By("creating dnsrecord " + dnsRecord.Name + " with endpoint dnsName: " + testHostname + " and TTL: `60`")
 		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		By("checking dnsrecord " + dnsRecord.Name + " becomes ready")
 		Eventually(func(g Gomega) {
@@ -621,10 +621,26 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
-		By("creating dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: " + testHostname + " and target: `127.0.0.2`")
+		By("creating dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: " + testHostname + " and TTL: `120`")
 		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
 
 		By("checking dnsrecord " + dnsRecord.Name + " and " + dnsRecord2.Name + " conflict")
+		Eventually(func(g Gomega) {
+			var oldRequeue, newRequeue time.Duration
+			var err error
+
+			oldRequeue, err = time.ParseDuration(dnsRecord.Status.ValidFor)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			newRequeue, err = time.ParseDuration(dnsRecord.Status.ValidFor)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			g.Expect(oldRequeue.Milliseconds()).To(BeNumerically("<", newRequeue.Milliseconds()))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -655,12 +671,12 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord2.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
 		}, TestTimeoutLong, time.Second).Should(Succeed())
 
-		By("fixing conflict with dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: " + testHostname + " and target: `127.0.0.1`")
+		By("fixing conflict with dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: " + testHostname + " and TTL: `60`")
 		Eventually(func(g Gomega) {
 			// refresh the second record CR
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
-			dnsRecord2.Spec.Endpoints = getTestEndpoints(testHostname, []string{"127.0.0.1"})
+			dnsRecord2.Spec.Endpoints = NewTestEndpoints(testHostname).Endpoints()
 			Expect(k8sClient.Update(ctx, dnsRecord2)).To(Succeed())
 		}, TestTimeoutShort, time.Second).Should(Succeed())
 
@@ -853,7 +869,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					ProviderRef: &v1alpha1.ProviderRef{
 						Name: pSecret.Name,
 					},
-					Endpoints: getTestEndpoints(testHostname2, []string{"127.0.0.1"}),
+					Endpoints: NewTestEndpoints(testHostname2).Endpoints(),
 				},
 			}
 			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
@@ -881,7 +897,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					ProviderRef: &v1alpha1.ProviderRef{
 						Name: pSecret.Name,
 					},
-					Endpoints: getTestEndpoints("foo.noexist.com", []string{"127.0.0.1"}),
+					Endpoints: NewTestEndpoints("foo.noexist.com").Endpoints(),
 				},
 			}
 			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
@@ -918,7 +934,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					ProviderRef: &v1alpha1.ProviderRef{
 						Name: pSecret.Name,
 					},
-					Endpoints: getTestEndpoints(testZoneDomainName, []string{"127.0.0.1"}),
+					Endpoints: NewTestEndpoints(testZoneDomainName).Endpoints(),
 				},
 			}
 			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
@@ -959,7 +975,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					ProviderRef: &v1alpha1.ProviderRef{
 						Name: pSecret.Name,
 					},
-					Endpoints: getTestEndpoints(testHostname2, []string{"127.0.0.1"}),
+					Endpoints: NewTestEndpoints(testHostname2).Endpoints(),
 				},
 			}
 			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
