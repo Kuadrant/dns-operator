@@ -21,6 +21,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/hash"
+	"github.com/kuadrant/dns-operator/internal/controller"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
@@ -43,6 +44,9 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	var testRecords []*testDNSRecord
 
 	BeforeEach(func(ctx SpecContext) {
+		if testControllerRunMode == controller.DelegationRoleSecondary {
+			Skip("not covered for secondary delegation")
+		}
 		testID = "t-multi-" + GenerateName()
 		testDomainName = strings.Join([]string{testSuiteID, testZoneDomainName}, ".")
 		testHostname = strings.Join([]string{testID, testDomainName}, ".")

@@ -32,6 +32,7 @@ type Protocol string
 const HttpProtocol Protocol = "HTTP"
 const HttpsProtocol Protocol = "HTTPS"
 const DelegationAuthoritativeRecordLabel = "kuadrant.io/delegation-authoritative-record"
+const DelegationReadyCondition = "ReadyForDelegation"
 
 // HealthCheckSpec configures health checks in the DNS provider.
 // By default this health check will be applied to each unique DNS A Record for
@@ -170,10 +171,18 @@ type DNSRecordStatus struct {
 	ZoneDomainName string `json:"zoneDomainName,omitempty"`
 }
 
+func (s *DNSRecordStatus) ReadyForDelegation() bool {
+	DelegationReadyCond := meta.FindStatusCondition(s.Conditions, DelegationReadyCondition)
+	if DelegationReadyCond != nil && DelegationReadyCond.Status == metav1.ConditionTrue {
+		return true
+	}
+	return false
+}
+
 // ProviderEndpointsRemoved return true if the ready status condition has the reason set to "ProviderEndpointsRemoved"
 func (s *DNSRecordStatus) ProviderEndpointsRemoved() bool {
 	readyCond := meta.FindStatusCondition(s.Conditions, string(ConditionTypeReady))
-	if readyCond != nil && readyCond.Reason == string(ConditionReasonProviderEndpointsRemoved) {
+	if readyCond == nil || readyCond.Reason == string(ConditionReasonProviderEndpointsRemoved) {
 		return true
 	}
 	return false
@@ -182,7 +191,7 @@ func (s *DNSRecordStatus) ProviderEndpointsRemoved() bool {
 // ProviderEndpointsDeletion return true if the ready status condition has the reason set to "ProviderEndpointsDeletion"
 func (s *DNSRecordStatus) ProviderEndpointsDeletion() bool {
 	readyCond := meta.FindStatusCondition(s.Conditions, string(ConditionTypeReady))
-	if readyCond != nil && readyCond.Reason == string(ConditionReasonProviderEndpointsDeletion) {
+	if readyCond == nil || readyCond.Reason == string(ConditionReasonProviderEndpointsDeletion) {
 		return true
 	}
 	return false
@@ -289,4 +298,8 @@ func (s *DNSRecord) GetRootHost() string {
 
 func init() {
 	SchemeBuilder.Register(&DNSRecord{}, &DNSRecordList{})
+}
+
+func (s *DNSRecord) IsDeleting() bool {
+	return s.DeletionTimestamp != nil && !s.DeletionTimestamp.IsZero()
 }

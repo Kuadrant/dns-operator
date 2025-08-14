@@ -82,6 +82,10 @@ $(LOCAL_SETUP_COREDNS_CREDS):
 	$(call ndef,COREDNS_ZONES)
 	$(call patch-config,${LOCAL_SETUP_COREDNS_CREDS}.template,${LOCAL_SETUP_COREDNS_CREDS})
 
+.PHONY: local-setup-remove-dns-providers
+local-setup-remove-dns-providers:
+	$(KUBECTL) delete secrets -l app.kubernetes.io/part-of=dns-operator -A
+
 .PHONY: local-setup-dns-providers
 local-setup-dns-providers: TARGET_NAMESPACE=dnstest
 local-setup-dns-providers: kustomize ## Create AWS, Azure, GCP, CoreDNS and Endpoints DNS Providers in the 'TARGET_NAMESPACE' namespace
