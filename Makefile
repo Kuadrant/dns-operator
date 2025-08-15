@@ -400,6 +400,7 @@ GINKGO ?= $(LOCALBIN)/ginkgo
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 HELM ?= $(LOCALBIN)/helm
 KUBE_BURNER ?= $(LOCALBIN)/kube-burner
+KUBECTL_DNS ?= $(LOCALBIN)/kubectl-dns
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.5.0
@@ -512,6 +513,12 @@ $(KUBE_BURNER):
 	chmod +x $(KUBE_BURNER) ;\
 	rm -rf $${OS}-$${ARCH} kube-burner.tar.gz ;\
 	}
+
+.PHONY: kubectl-dns
+kubectl-dns: $(KUBECTL_DNS) ## Build the kubectl-dns locally if required.
+$(KUBECTL_DNS):
+	$(MAKE) build-cli
+
 
 .PHONY: bundle
 bundle: manifests manifests-gen-base-csv kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
