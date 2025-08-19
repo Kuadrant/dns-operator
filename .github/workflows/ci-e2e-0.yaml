@@ -48,6 +48,11 @@ on:
         type: boolean
   merge_group:
     types: [ checks_requested ]
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+    branches:
+      - main
+      - gh-498
 
 env:
   TEST_NAMESPACE: e2e-test
@@ -61,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Pre job checks
     outputs:
-      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+      should_skip_e2e: ${{ steps.skip_check.outputs.should_skip }}
     steps:
       - uses: actions/checkout@v4
       - id: skip_check
@@ -69,10 +74,10 @@ jobs:
         with:
           cancel_others: false
           paths_ignore: '["**/*.md", "**/*.adoc", "LICENSE"]'
-          do_not_skip: '["push", "merge_group", "workflow_dispatch", "schedule"]'
+          do_not_skip: '["pull_request", "push", "merge_group", "workflow_dispatch", "schedule"]'
   e2e-test-suite:
     name: E2E Test Suite
-    if: needs.pre-job.outputs.should_skip != 'true'
+    if: ${{ (needs.pre-job.outputs.should_skip_e2e != 'true') && (contains(github.event.pull_request.labels.*.name, 'run-e2e')) }}
     needs: pre-job
     runs-on: ubuntu-latest
     steps:

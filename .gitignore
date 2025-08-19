@@ -9,6 +9,10 @@
 bin/*
 Dockerfile.cross
 
+examples/
+helm.tar.gz
+linux-amd64/
+
 # Test binary, build with `go test -c`
 *.test
 
