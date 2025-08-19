@@ -48,6 +48,11 @@ on:
         type: boolean
   merge_group:
     types: [ checks_requested ]
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+    branches:
+      - main
+      - gh-498
 
 env:
   TEST_NAMESPACE: e2e-test
@@ -61,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Pre job checks
     outputs:
-      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+      should_skip_e2e: ${{ steps.skip_check.outputs.should_skip }}
     steps:
       - uses: actions/checkout@v4
       - id: skip_check
@@ -69,13 +74,28 @@ jobs:
         with:
           cancel_others: false
           paths_ignore: '["**/*.md", "**/*.adoc", "LICENSE"]'
-          do_not_skip: '["push", "merge_group", "workflow_dispatch", "schedule"]'
+          do_not_skip: '["pull_request", "push", "merge_group", "workflow_dispatch", "schedule"]'
   e2e-test-suite:
     name: E2E Test Suite
-    if: needs.pre-job.outputs.should_skip != 'true'
+    if: needs.pre-job.outputs.should_skip_e2e != 'true'
     needs: pre-job
     runs-on: ubuntu-latest
     steps:
+      - name: Get User Permission
+        id: checkAccess
+        uses: actions-cool/check-user-permission@v2
+        with:
+          require: write
+          username: ${{ github.triggering_actor }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check User Permission
+        if: steps.checkAccess.outputs.require-result == 'true'
+        run: |
+          echo "${{ github.triggering_actor }} does not have permissions on this repo."
+          echo "Current permission level is ${{ steps.checkAccess.outputs.user-permission }}"
+          echo "Job originally triggered by ${{ github.actor }}"
+          exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
