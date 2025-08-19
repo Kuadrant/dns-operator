@@ -73,7 +73,7 @@ jobs:
           do_not_skip: '["push", "merge_group", "workflow_dispatch", "schedule"]'
   e2e-test-suite:
     name: E2E Test Suite
-    if: ${{ (needs.pre-job.outputs.should_skip != 'true') || (contains(github.event.pull_request.labels.*.name, 'run-e2e')) }}
+    if: ${{ needs.pre-job.outputs.should_skip != 'true' }}
     needs: pre-job
     runs-on: ubuntu-latest
     steps:
