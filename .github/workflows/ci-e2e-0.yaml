@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - gh-498
       - "release-*"
       - "ci_*"
     tags:
@@ -75,10 +74,8 @@ jobs:
         with:
           cancel_others: false
           paths_ignore: '["**/*.md", "**/*.adoc", "LICENSE"]'
-          do_not_skip: '["pull_request", "push", "merge_group", "workflow_dispatch", "schedule"]'
   e2e-test-suite:
     name: E2E Test Suite
-    if: ${{ (needs.pre-job.outputs.should_skip_e2e != 'true') && (contains(github.event.pull_request.labels.*.name, 'run-e2e')) }}
     needs: pre-job
     runs-on: ubuntu-latest
     steps:

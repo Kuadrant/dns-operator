@@ -33,7 +33,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	var testID string
 	// testDomainName generated domain for this test e.g. t-e2e-12345.e2e.hcpapps.net
 	var testDomainName string
-	// testHostname generated hostname for this test e.g. t-gw-mgc-12345.t-e2e-12345.e2e.hcpapps.net
+	// testHostname generated ho stname for this test e.g. t-gw-mgc-12345.t-e2e-12345.e2e.hcpapps.net
 	var testHostname string
 
 	var geoCode1 string
