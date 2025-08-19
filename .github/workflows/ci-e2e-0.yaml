@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - gh-498
       - "release-*"
       - "ci_*"
     tags:
