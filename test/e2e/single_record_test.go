@@ -164,7 +164,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			},
 		}
 
-		By("creating dnsrecord " + dnsRecord.Name)
+		By("creati ng dnsrecord " + dnsRecord.Name)
 		err := k8sClient.Create(ctx, dnsRecord)
 		Expect(err).ToNot(HaveOccurred())
 
