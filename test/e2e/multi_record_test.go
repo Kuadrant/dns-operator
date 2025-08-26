@@ -31,7 +31,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 	// it is used to name resources and/or namespaces so different
 	// tests can be run in parallel in the same cluster
 	var testID string
-	// testDomainName generated domain for this test e.g. t-e2e-12345.e2e.hcpapps.net
+	// testDomainName generated domain  for this test e.g. t-e2e-12345.e2e.hcpapps.net
 	var testDomainName string
 	// testHostname generated hostname for this test e.g. t-gw-mgc-12345.t-e2e-12345.e2e.hcpapps.net
 	var testHostname string
