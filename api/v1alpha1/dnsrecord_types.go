@@ -120,6 +120,7 @@ type DNSRecordSpec struct {
 	// +optional
 	HealthCheck *HealthCheckSpec `json:"healthCheck,omitempty"`
 
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="delegate is immutable"
 	Delegate bool `json:"delegate,omitempty"`
 }
 
