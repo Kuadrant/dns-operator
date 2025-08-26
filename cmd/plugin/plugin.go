@@ -36,6 +36,7 @@ func main() {
 	root.AddCommand(versionCommand())
 	root.AddCommand(deleteOwnerCommand())
 	root.AddCommand(getZoneRecordsCommand())
+	root.AddCommand(secretGenerationCommand())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
