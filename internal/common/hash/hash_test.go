@@ -45,3 +45,54 @@ func TestToBase36HashLen(t *testing.T) {
 		})
 	}
 }
+
+// TestGetCanonicalString_Consistency verifies that the same data produces identical
+// canonical strings regardless of input ordering (critical for hash stability).
+// AI generated; Claude Sonnet 4
+func TestGetCanonicalString_Consistency(t *testing.T) {
+	// Test that the same data produces the same canonical string regardless of order
+	tests := []struct {
+		name   string
+		input1 any
+		input2 any
+	}{
+		{
+			name:   "slice order independence",
+			input1: []string{"a", "b", "c"},
+			input2: []string{"c", "a", "b"},
+		},
+		{
+			name:   "map order independence",
+			input1: map[string]int{"x": 1, "y": 2, "z": 3},
+			input2: map[string]int{"z": 3, "x": 1, "y": 2},
+		},
+		{
+			name: "complex nested order independence",
+			input1: struct {
+				Tags  []string
+				Props map[string]bool
+			}{
+				Tags:  []string{"tag1", "tag2", "tag3"},
+				Props: map[string]bool{"enabled": true, "visible": false},
+			},
+			input2: struct {
+				Tags  []string
+				Props map[string]bool
+			}{
+				Tags:  []string{"tag3", "tag1", "tag2"},
+				Props: map[string]bool{"visible": false, "enabled": true},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result1, _ := GetCanonicalString(tt.input1)
+			result2, _ := GetCanonicalString(tt.input2)
+			if result1 != result2 {
+				t.Errorf("GetCanonicalString() consistency failed:\nInput1: %v -> %s\nInput2: %v -> %s",
+					tt.input1, result1, tt.input2, result2)
+			}
+		})
+	}
+}

@@ -1,9 +1,14 @@
 package metrics
 
 import (
+	"errors"
+
 	"github.com/prometheus/client_golang/prometheus"
 
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common/hash"
 )
 
 const (
@@ -20,6 +25,13 @@ const (
 )
 
 var (
+	authoritativeRecordSpecInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "dns_record_authoritative_record_spec_info",
+			Help: "Provides information about authoritative DNS records, identified by label values.",
+		},
+		[]string{"root_host", "sha", dnsRecordNameLabel, dnsRecordNamespaceLabel},
+	)
 	WriteCounter = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "dns_provider_write_counter",
@@ -46,9 +58,51 @@ var (
 		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordRootHost, dnsRecordDelegating})
 )
 
+func NewAuthoritativeRecordSpecInfoMetric(dnsRecord *v1alpha1.DNSRecord) (*authoritativeRecordSpecInfoMetric, error) {
+	if dnsRecord == nil {
+		return nil, errors.New("dnsRecord nil pointer")
+	}
+
+	metric := &authoritativeRecordSpecInfoMetric{
+		RootHost:  dnsRecord.Spec.RootHost,
+		Name:      dnsRecord.Name,
+		NameSpace: dnsRecord.Namespace,
+	}
+	err := metric.calculateSha(dnsRecord)
+	if err != nil {
+		return nil, err
+	}
+	return metric, nil
+}
+
+type authoritativeRecordSpecInfoMetric struct {
+	RootHost  string
+	Sha       string
+	Name      string
+	NameSpace string
+}
+
+func (m *authoritativeRecordSpecInfoMetric) calculateSha(dnsRecord *v1alpha1.DNSRecord) error {
+	if dnsRecord == nil {
+		return errors.New("dnsRecord nil pointer")
+	}
+
+	specString, err := hash.GetCanonicalString(dnsRecord.Spec)
+	if err != nil {
+		return err
+	}
+	m.Sha = hash.ToBase36HashLen(specString, 6)
+	return nil
+}
+
+func (m *authoritativeRecordSpecInfoMetric) Publish() {
+	authoritativeRecordSpecInfo.WithLabelValues(m.RootHost, m.Sha, m.Name, m.NameSpace).Set(float64(1))
+}
+
 func init() {
 	metrics.Registry.MustRegister(WriteCounter)
 	metrics.Registry.MustRegister(SecretMissing)
 	metrics.Registry.MustRegister(ProbeCounter)
 	metrics.Registry.MustRegister(RecordReady)
+	metrics.Registry.MustRegister(authoritativeRecordSpecInfo)
 }
