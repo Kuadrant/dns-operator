@@ -284,6 +284,11 @@ func (s *DNSRecord) IsDelegating() bool {
 	return s.Spec.Delegate
 }
 
+func (s *DNSRecord) IsAuthoritativeRecord() bool {
+	_, okay := s.Labels[DelegationAuthoritativeRecordLabel]
+	return okay
+}
+
 func (s *DNSRecord) GetRootHost() string {
 	return s.Spec.RootHost
 }
