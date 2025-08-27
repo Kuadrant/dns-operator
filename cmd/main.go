@@ -172,7 +172,7 @@ func main() {
 	var err error
 	if delegationRole == controller.DelegationRoleSecondary {
 		setupLog.Info("Creating manager")
-		// Use the normal controller runtime manager when in remote mode
+		// Use the normal controller runtime manager when running with the secondary delegation role
 		mgr, err = ctrl.NewManager(ctrl.GetConfigOrDie(), defaultOptions)
 		if err != nil {
 			setupLog.Error(err, "unable to start manager")

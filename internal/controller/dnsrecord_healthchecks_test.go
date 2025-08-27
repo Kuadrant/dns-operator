@@ -28,7 +28,8 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 	)
 
 	BeforeEach(func() {
-		CreateNamespace(&testNamespace)
+		testNamespace = generateTestNamespaceName()
+		CreateNamespace(testNamespace, primaryK8sClient)
 
 		testZoneDomainName := strings.Join([]string{GenerateName(), "example.com"}, ".")
 		testHostname = strings.Join([]string{"foo", testZoneDomainName}, ".")
@@ -37,7 +38,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 			For(v1alpha1.SecretTypeKuadrantInmemory).
 			WithZonesInitialisedFor(testZoneDomainName).
 			Build()
-		Expect(k8sClient.Create(ctx, dnsProviderSecret)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsProviderSecret)).To(Succeed())
 
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
@@ -57,13 +58,13 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 
 	It("Should create valid probe CRs and remove them on DNSRecord deletion", func() {
 		//Create default test dnsrecord
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 		By("Validating created probes")
 		Eventually(func(g Gomega) {
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -117,7 +118,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		Eventually(func(g Gomega) {
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -152,9 +153,9 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				}),
 			))
 
-			g.Expect(k8sClient.Delete(ctx, dnsRecord)).To(Succeed())
+			g.Expect(primaryK8sClient.Delete(ctx, dnsRecord)).To(Succeed())
 			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+				g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 					LabelSelector: labels.SelectorFromSet(map[string]string{
 						ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 					}),
@@ -169,13 +170,13 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 
 	It("Should create valid probe CRs and remove them when definition removed", func() {
 		//Create default test dnsrecord
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 		By("Validating created probes")
 		Eventually(func(g Gomega) {
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -189,14 +190,14 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		By("updating the DNSRecord and and ensuring the healthcheck is removed")
 		Eventually(func(g Gomega) {
 			recordCopy := &v1alpha1.DNSRecord{}
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), recordCopy)).
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), recordCopy)).
 				Should(Succeed())
 			recordCopy.Spec.HealthCheck = nil
-			g.Expect(k8sClient.Update(ctx, recordCopy)).
+			g.Expect(primaryK8sClient.Update(ctx, recordCopy)).
 				Should(Succeed())
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -212,13 +213,13 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		dnsRecord.Spec.HealthCheck = &v1alpha1.HealthCheckSpec{
 			Path: "/health",
 		}
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 		By("Validating created probes")
 		Eventually(func(g Gomega) {
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -267,11 +268,11 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 
 	It("Should not publish unhealthy enpoints", func() {
 		//Create default test dnsrecord
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 		// Until we mark probes as healthy there sohuld be no endpoints published
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 			g.Expect(dnsRecord.Status.Endpoints).To(HaveLen(0))
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -289,13 +290,13 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		// make record a wildcard one
 		dnsRecord.Spec.RootHost = v1alpha1.WildcardPrefix + dnsRecord.Spec.RootHost
 		dnsRecord.Spec.Endpoints = getTestEndpoints(v1alpha1.WildcardPrefix+testHostname, []string{"172.32.200.1", "172.32.200.2"})
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 		// ensure we have no probes
 		Eventually(func(g Gomega) {
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -306,7 +307,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 
 		// make sure dnsrecord succeeded
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
@@ -321,13 +322,13 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 
 	It("Should remove unhealthy endpoints", func() {
 		//Create default test dnsrecord
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 		By("Marking all probes as healthy")
 		Eventually(func(g Gomega) {
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -340,13 +341,13 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				probe.Status.Healthy = ptr.To(true)
 				probe.Status.LastCheckedAt = metav1.Now()
 				probe.Status.ConsecutiveFailures = 0
-				g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
+				g.Expect(primaryK8sClient.Status().Update(ctx, &probe)).To(Succeed())
 			}
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		// make sure we published endpoint
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 			g.Expect(dnsRecord.Status.Endpoints).To(ConsistOf(
 				PointTo(MatchFields(IgnoreExtras, Fields{
 					"DNSName": Equal(testHostname),
@@ -359,7 +360,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		Eventually(func(g Gomega) {
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -372,7 +373,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				if probe.Spec.Address == "172.32.200.1" {
 					probe.Status.Healthy = ptr.To(false)
 					probe.Status.LastCheckedAt = metav1.Now()
-					g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
+					g.Expect(primaryK8sClient.Status().Update(ctx, &probe)).To(Succeed())
 					updated = true
 				}
 			}
@@ -382,7 +383,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 
 		By("Ensure unhealthy endpoints are gone and status is updated")
 		Eventually(func(g Gomega) {
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 
 			g.Expect(dnsRecord.Status.Endpoints).To(ConsistOf(
 				PointTo(MatchFields(IgnoreExtras, Fields{
@@ -405,7 +406,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		Eventually(func(g Gomega) {
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -417,7 +418,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				if probe.Spec.Address == "172.32.200.2" {
 					probe.Status.Healthy = ptr.To(false)
 					probe.Status.LastCheckedAt = metav1.Now()
-					g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
+					g.Expect(primaryK8sClient.Status().Update(ctx, &probe)).To(Succeed())
 					updated = true
 				}
 			}
@@ -429,7 +430,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		By("Ensure endpoints are not changed and status is updated")
 		Eventually(func(g Gomega) {
 			newRecord := &v1alpha1.DNSRecord{}
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), newRecord)).To(Succeed())
+			Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), newRecord)).To(Succeed())
 			g.Expect(dnsRecord.Status.Endpoints).To(BeEquivalentTo(newRecord.Status.Endpoints))
 
 			g.Expect(newRecord.Status.Conditions).To(ContainElements(
@@ -451,13 +452,13 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 
 	It("Should remove healthy condition when healthchecks removed", func() {
 		//Create default test dnsrecord
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 		By("Marking all probes as healthy")
 		Eventually(func(g Gomega) {
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -470,13 +471,13 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				probe.Status.Healthy = ptr.To(true)
 				probe.Status.LastCheckedAt = metav1.Now()
 				probe.Status.ConsecutiveFailures = 0
-				g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
+				g.Expect(primaryK8sClient.Status().Update(ctx, &probe)).To(Succeed())
 			}
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		// make sure we published endpoint
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 			g.Expect(dnsRecord.Status.Endpoints).To(ConsistOf(
 				PointTo(MatchFields(IgnoreExtras, Fields{
 					"DNSName": Equal(testHostname),
@@ -489,7 +490,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		Eventually(func(g Gomega) {
 			probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-			g.Expect(k8sClient.List(ctx, probes, &client.ListOptions{
+			g.Expect(primaryK8sClient.List(ctx, probes, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
 				}),
@@ -502,7 +503,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 				if probe.Spec.Address == "172.32.200.1" {
 					probe.Status.Healthy = ptr.To(false)
 					probe.Status.LastCheckedAt = metav1.Now()
-					g.Expect(k8sClient.Status().Update(ctx, &probe)).To(Succeed())
+					g.Expect(primaryK8sClient.Status().Update(ctx, &probe)).To(Succeed())
 					updated = true
 				}
 			}
@@ -512,7 +513,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 
 		By("Ensure unhealthy endpoints are gone and status is updated")
 		Eventually(func(g Gomega) {
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 
 			g.Expect(dnsRecord.Status.Endpoints).To(ConsistOf(
 				PointTo(MatchFields(IgnoreExtras, Fields{
@@ -532,16 +533,16 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 
 		By("Remove health spec")
 		Eventually(func(g Gomega) {
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 			cpRecord := dnsRecord.DeepCopy()
 			cpRecord.Spec.HealthCheck = nil
-			g.Expect(k8sClient.Update(ctx, cpRecord)).To(Succeed())
+			g.Expect(primaryK8sClient.Update(ctx, cpRecord)).To(Succeed())
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		// we don't remove EPs if this leads to empty EPs
 		By("Ensure endpoints are published and a health condition is gone")
 		Eventually(func(g Gomega) {
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 			g.Expect(dnsRecord.Status.Endpoints).To(ConsistOf(
 				PointTo(MatchFields(IgnoreExtras, Fields{
 					"DNSName": Equal(testHostname),

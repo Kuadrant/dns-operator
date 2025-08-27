@@ -52,7 +52,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 	)
 
 	BeforeEach(func() {
-		CreateNamespace(&testNamespace)
+		testNamespace = generateTestNamespaceName()
+		CreateNamespace(testNamespace, primaryK8sClient)
 
 		testZoneDomainName = strings.Join([]string{GenerateName(), "example.com"}, ".")
 		testHostname = strings.Join([]string{"foo", testZoneDomainName}, ".")
@@ -64,7 +65,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			For(v1alpha1.SecretTypeKuadrantInmemory).
 			WithZonesInitialisedFor(testZoneDomainName).
 			Build()
-		Expect(k8sClient.Create(ctx, dnsProviderSecret)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsProviderSecret)).To(Succeed())
 
 		dnsRecord = &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
@@ -98,22 +99,22 @@ var _ = Describe("DNSRecordReconciler", func() {
 					HealthCheck: nil,
 				},
 			}
-			err := k8sClient.Create(ctx, dnsRecord)
+			err := primaryK8sClient.Create(ctx, dnsRecord)
 			// as above
 			// The error in this case when created via the json openapi would actually be `spec.providerRef: Required value`
 			Expect(err).To(MatchError(ContainSubstring("spec.rootHost in body should be at least 1 chars long")))
 		})
 
 		It("prevents updating rootHost", func(ctx SpecContext) {
-			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 			//Does not allow rootHost to change once set
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				dnsRecord.Spec.RootHost = "bar.example.com"
-				err = k8sClient.Update(ctx, dnsRecord)
+				err = primaryK8sClient.Update(ctx, dnsRecord)
 				g.Expect(err).To(MatchError(ContainSubstring("RootHost is immutable")))
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
@@ -138,7 +139,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					},
 				},
 			}
-			err := k8sClient.Create(ctx, dnsRecord)
+			err := primaryK8sClient.Create(ctx, dnsRecord)
 			Expect(err).To(MatchError(ContainSubstring("spec.rootHost: Invalid value")))
 			Expect(err).To(MatchError(ContainSubstring("spec.healthCheck.path: Invalid value")))
 			Expect(err).To(MatchError(ContainSubstring("Only ports 80, 443, 1024-49151 are allowed")))
@@ -148,20 +149,20 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		It("prevents the creation of records with both a providerRef and delegation true", func(ctx SpecContext) {
 			dnsRecord.Spec.Delegate = true
-			err := k8sClient.Create(ctx, dnsRecord)
+			err := primaryK8sClient.Create(ctx, dnsRecord)
 			Expect(err).To(MatchError(ContainSubstring("delegate=true and providerRef are mutually exclusive")))
 		})
 
 		It("prevents delegate being set if it was previously unset", func(ctx SpecContext) {
-			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				dnsRecord.Spec.ProviderRef = nil
 				dnsRecord.Spec.Delegate = true
-				err = k8sClient.Update(ctx, dnsRecord)
+				err = primaryK8sClient.Update(ctx, dnsRecord)
 				g.Expect(err).To(MatchError(ContainSubstring("Delegate can't be set if it was previously unset")))
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
@@ -169,25 +170,24 @@ var _ = Describe("DNSRecordReconciler", func() {
 		It("prevents delegate being unset if it was previously set", func(ctx SpecContext) {
 			dnsRecord.Spec.ProviderRef = nil
 			dnsRecord.Spec.Delegate = true
-			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				dnsRecord.Spec.Delegate = false
-				err = k8sClient.Update(ctx, dnsRecord)
+				err = primaryK8sClient.Update(ctx, dnsRecord)
 				g.Expect(err).To(MatchError(ContainSubstring("Delegate can't be unset if it was previously set")))
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
-
 	})
 
 	It("handles records with similar root hosts", func(ctx SpecContext) {
 		//Create default test dnsrecord with root host e.g. foo.xyz.example.com
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Status.Conditions).To(
@@ -218,9 +218,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 				HealthCheck: nil,
 			},
 		}
-		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord2)).To(Succeed())
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord2.Status.Conditions).To(
@@ -235,11 +235,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		Consistently(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.WriteCounter).To(Not(BeNumerically(">", int64(1))))
 
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			err = primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord2.Status.WriteCounter).To(Not(BeNumerically(">", int64(1))))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
@@ -248,11 +248,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 	It("uses default provider secret", func(ctx SpecContext) {
 		// remove provider ref to force default secret
 		dnsRecord.Spec.ProviderRef = nil
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 		// can't find secret - no label
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -271,9 +271,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 				dnsProviderSecret.Labels = map[string]string{}
 			}
 			dnsProviderSecret.Labels[v1alpha1.DefaultProviderSecretLabel] = "true"
-			g.Expect(k8sClient.Update(ctx, dnsProviderSecret)).To(Succeed())
+			g.Expect(primaryK8sClient.Update(ctx, dnsProviderSecret)).To(Succeed())
 
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -286,10 +286,10 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		// delete record - we already have provider assigned
 		Eventually(func(g Gomega) {
-			g.Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, dnsRecord))).To(Succeed())
+			g.Expect(client.IgnoreNotFound(primaryK8sClient.Delete(ctx, dnsRecord))).To(Succeed())
 
 			dnsRecords := &v1alpha1.DNSRecordList{}
-			g.Expect(k8sClient.List(ctx, dnsRecords, client.InNamespace(testNamespace))).To(Succeed())
+			g.Expect(primaryK8sClient.List(ctx, dnsRecords, client.InNamespace(testNamespace))).To(Succeed())
 			g.Expect(dnsRecords.Items).To(HaveLen(0))
 		}, TestTimeoutShort, time.Second).Should(Succeed())
 
@@ -298,15 +298,15 @@ var _ = Describe("DNSRecordReconciler", func() {
 			secretCopy := dnsProviderSecret.DeepCopy()
 			secretCopy.Name = secretCopy.Name + "-copy"
 			secretCopy.ResourceVersion = ""
-			g.Expect(k8sClient.Create(ctx, secretCopy)).To(Succeed())
+			g.Expect(primaryK8sClient.Create(ctx, secretCopy)).To(Succeed())
 		}, TestTimeoutShort, time.Second).Should(Succeed())
 
 		// re-create record and fail on multiple default secrets
 		Eventually(func(g Gomega) {
 			dnsRecord.ResourceVersion = ""
-			g.Expect(client.IgnoreAlreadyExists(k8sClient.Create(ctx, dnsRecord))).To(Succeed())
+			g.Expect(client.IgnoreAlreadyExists(primaryK8sClient.Create(ctx, dnsRecord))).To(Succeed())
 
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
 			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -321,9 +321,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 	})
 
 	It("can delete a record with a valid dns provider secret", func(ctx SpecContext) {
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -338,20 +338,20 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
-		err := k8sClient.Delete(ctx, dnsRecord)
+		err := primaryK8sClient.Delete(ctx, dnsRecord)
 		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func(g Gomega, ctx context.Context) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).To(HaveOccurred())
 			g.Expect(err).To(MatchError(ContainSubstring("not found")))
 		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
 	})
 
 	It("should have ready condition with status true", func() {
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -373,9 +373,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 	It("should use dnsrecord UID for ownerID if none set in spec and not allow it to be updated after", func() {
 		//Create default test dnsrecord (foo.xyz.example.com)
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
 			g.Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
@@ -398,15 +398,15 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		//Does not allow ownerID to change once set
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
 			dnsRecord.Spec.OwnerID = "foobarbaz"
-			err = k8sClient.Update(ctx, dnsRecord)
+			err = primaryK8sClient.Update(ctx, dnsRecord)
 			g.Expect(err).To(MatchError(ContainSubstring("OwnerID can't be set if it was previously unset")))
 
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err = primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
@@ -416,9 +416,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 	It("should allow ownerID to be set explicitly and not allow it to be updated after", func() {
 		dnsRecord.Spec.OwnerID = "owner1"
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Spec.OwnerID).To(Equal("owner1"))
 			g.Expect(dnsRecord.Status.OwnerID).To(Equal("owner1"))
@@ -440,19 +440,19 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		//Does not allow ownerID to change once set
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.OwnerID).To(Equal("owner1"))
 
 			dnsRecord.Spec.OwnerID = "foobarbaz"
-			err = k8sClient.Update(ctx, dnsRecord)
+			err = primaryK8sClient.Update(ctx, dnsRecord)
 			g.Expect(err).To(MatchError(ContainSubstring("OwnerID is immutable")))
 
 			dnsRecord.Spec.OwnerID = ""
-			err = k8sClient.Update(ctx, dnsRecord)
+			err = primaryK8sClient.Update(ctx, dnsRecord)
 			g.Expect(err).To(MatchError(ContainSubstring("OwnerID can't be unset if it was previously set")))
 
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err = primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.OwnerID).To(Equal("owner1"))
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf("owner1"))
@@ -529,17 +529,17 @@ var _ = Describe("DNSRecordReconciler", func() {
 		}
 
 		// create all records
-		Expect(k8sClient.Create(ctx, dnsRecord1)).To(Succeed())
-		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
-		Expect(k8sClient.Create(ctx, dnsRecord3)).To(Succeed())
-		Expect(k8sClient.Create(ctx, dnsRecord4)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord1)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord2)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord3)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord4)).To(Succeed())
 
 		// check first record to have EP from second record and not have EPs from third
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord1), dnsRecord1)).To(Succeed())
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)).To(Succeed())
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord3), dnsRecord3)).To(Succeed())
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord4), dnsRecord4)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord1), dnsRecord1)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord3), dnsRecord3)).To(Succeed())
+			g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord4), dnsRecord4)).To(Succeed())
 
 			g.Expect(dnsRecord1.Status.ZoneEndpoints).ToNot(BeNil())
 
@@ -600,10 +600,10 @@ var _ = Describe("DNSRecordReconciler", func() {
 		}
 
 		By("creating dnsrecord " + dnsRecord.Name + " with endpoint dnsName: " + testHostname + " and target: `127.0.0.1`")
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		By("checking dnsrecord " + dnsRecord.Name + " becomes ready")
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -622,11 +622,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		By("creating dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: " + testHostname + " and target: `127.0.0.2`")
-		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord2)).To(Succeed())
 
 		By("checking dnsrecord " + dnsRecord.Name + " and " + dnsRecord2.Name + " conflict")
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -640,7 +640,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(1)))
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
 
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			err = primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord2.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -658,14 +658,14 @@ var _ = Describe("DNSRecordReconciler", func() {
 		By("fixing conflict with dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: " + testHostname + " and target: `127.0.0.1`")
 		Eventually(func(g Gomega) {
 			// refresh the second record CR
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
 			dnsRecord2.Spec.Endpoints = getTestEndpoints(testHostname, []string{"127.0.0.1"})
-			Expect(k8sClient.Update(ctx, dnsRecord2)).To(Succeed())
+			Expect(primaryK8sClient.Update(ctx, dnsRecord2)).To(Succeed())
 		}, TestTimeoutShort, time.Second).Should(Succeed())
 
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -677,7 +677,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			)
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
 
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			err = primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord2.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -693,9 +693,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 	It("should not allow second record to change the type", func() {
 		//Create default test dnsrecord (foo.xyz.example.com)
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -738,9 +738,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 				HealthCheck: nil,
 			},
 		}
-		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord2)).To(Succeed())
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord2.Status.OwnerID).To(Equal(dnsRecord2.GetUIDHash()))
 			g.Expect(dnsRecord2.Status.Conditions).To(
@@ -757,9 +757,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 	It("should not allow a record to have a target that matches the root host if an endpoint doesn't exist for the target dns name", func() {
 		//Create default test dnsrecord (foo.xyz.example.com)
-		Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -806,9 +806,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, dnsRecord2)).To(Succeed())
+		Expect(primaryK8sClient.Create(ctx, dnsRecord2)).To(Succeed())
 		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord2.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
@@ -841,7 +841,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			pSecret = pBuilder.
 				WithZonesInitialisedFor(testZoneDomainName, testZoneDomainName2).
 				Build()
-			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, pSecret)).To(Succeed())
 
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
@@ -856,9 +856,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 					Endpoints: getTestEndpoints(testHostname2, []string{"127.0.0.1"}),
 				},
 			}
-			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneDomainName2))
 				g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName2))
@@ -869,7 +869,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			pSecret = pBuilder.
 				WithZonesInitialisedFor(testZoneDomainName).
 				Build()
-			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, pSecret)).To(Succeed())
 
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
@@ -884,9 +884,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 					Endpoints: getTestEndpoints("foo.noexist.com", []string{"127.0.0.1"}),
 				},
 			}
-			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(dnsRecord.Status.ZoneID).To(BeEmpty())
 				g.Expect(dnsRecord.Status.ZoneDomainName).To(BeEmpty())
@@ -906,7 +906,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			pSecret = pBuilder.
 				WithZonesInitialisedFor(testZoneDomainName).
 				Build()
-			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, pSecret)).To(Succeed())
 
 			dnsRecord = &v1alpha1.DNSRecord{
 				ObjectMeta: metav1.ObjectMeta{
@@ -921,9 +921,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 					Endpoints: getTestEndpoints(testZoneDomainName, []string{"127.0.0.1"}),
 				},
 			}
-			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(dnsRecord.Status.ZoneID).To(BeEmpty())
 				g.Expect(dnsRecord.Status.ZoneDomainName).To(BeEmpty())
@@ -943,7 +943,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			pSecret = pBuilder.
 				WithZonesInitialisedFor(testZoneDomainName).
 				Build()
-			Expect(k8sClient.Create(ctx, pSecret)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, pSecret)).To(Succeed())
 
 			testZoneDomainName2 := strings.Join([]string{GenerateName(), "otherdomain.com"}, ".")
 			testZoneID2 := testZoneDomainName2
@@ -962,9 +962,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 					Endpoints: getTestEndpoints(testHostname2, []string{"127.0.0.1"}),
 				},
 			}
-			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(dnsRecord.Status.ZoneID).To(BeEmpty())
 				g.Expect(dnsRecord.Status.ZoneDomainName).To(BeEmpty())
@@ -986,10 +986,10 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 			// Update the provider secrets init zones to include the other domain, now matches for record with root host `foo.example.com`
 			pSecret.StringData = pSecretUpdate.StringData
-			Expect(k8sClient.Update(ctx, pSecret)).NotTo(HaveOccurred())
+			Expect(primaryK8sClient.Update(ctx, pSecret)).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 				g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID2))
@@ -1018,15 +1018,15 @@ var _ = Describe("DNSRecordReconciler", func() {
 				},
 				Endpoints: getTestEndpoints(testHostname, []string{"127.0.0.1"}),
 			}
-			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(dnsRecord.IsDelegating()).To(BeFalse())
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
 
-		It("should create authoritative record and assign as zone", func(ctx SpecContext) {
+		It("should create authoritative record and assign as zone", Labels{"primary"}, func(ctx SpecContext) {
 			var authRecord *v1alpha1.DNSRecord
 			dnsRecord.Spec = v1alpha1.DNSRecordSpec{
 				RootHost: testHostname,
@@ -1041,11 +1041,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, dnsRecord)).To(Succeed())
+			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				// Find the record
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Verify the expected state of the record
@@ -1064,7 +1064,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 				// Find the authoritative record
 				authRecords := &v1alpha1.DNSRecordList{}
-				g.Expect(k8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: testHostname})).To(Succeed())
+				g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: testHostname})).To(Succeed())
 				g.Expect(authRecords.Items).To(HaveLen(1))
 				authRecord = &authRecords.Items[0]
 
@@ -1105,7 +1105,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsProviderSecret), dnsProviderSecret)
+				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsProviderSecret), dnsProviderSecret)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Set the default-provider label on the provider secret
@@ -1115,11 +1115,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 				}
 				labels[v1alpha1.DefaultProviderSecretLabel] = "true"
 				dnsProviderSecret.SetLabels(labels)
-				err = k8sClient.Update(ctx, dnsProviderSecret)
+				err = primaryK8sClient.Update(ctx, dnsProviderSecret)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Get the authoritative record
-				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
+				err = primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Verify the authoritative record becomes ready
