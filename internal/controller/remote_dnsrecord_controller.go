@@ -18,8 +18,12 @@ package controller
 
 import (
 	"context"
+	"strings"
 
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
@@ -33,6 +37,7 @@ import (
 type RemoteDNSRecordReconciler struct {
 	DNSRecordReconciler
 	mgr mcmanager.Manager
+	gvk schema.GroupVersionKind
 }
 
 var _ reconcile.TypedReconciler[mcreconcile.Request] = &RemoteDNSRecordReconciler{}
@@ -54,15 +59,34 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		Scheme:          r.Scheme,
 		ProviderFactory: r.ProviderFactory,
 		remoteClient:    true,
+		DelegationRole:  r.DelegationRole,
 	}
-	return reconciler.Reconcile(ctx, req.Request)
+
+	//For consistency in log statements, we need to build up the correct logger and pass it to Reconcile via the context
+	logger = r.mgr.GetLocalManager().GetLogger().WithValues(
+		"controller", strings.ToLower(r.gvk.Kind),
+		"controllerGroup", r.gvk.Group,
+		"controllerKind", r.gvk.Kind,
+		r.gvk.Kind, klog.KRef(req.Namespace, req.Name),
+		"namespace", req.Namespace,
+		"name", req.Name)
+
+	return reconciler.Reconcile(log.IntoContext(ctx, logger), req.Request)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RemoteDNSRecordReconciler) SetupWithManager(mgr mcmanager.Manager) error {
+	var gvk schema.GroupVersionKind
+	var err error
+	gvk, err = apiutil.GVKForObject(&v1alpha1.DNSRecord{}, mgr.GetLocalManager().GetScheme())
+	if err != nil {
+		return err
+	}
 	r.mgr = mgr
+	r.gvk = gvk
+
 	return mcbuilder.ControllerManagedBy(mgr).
-		Named("remote-dnsrecord-controller").
+		Named("remotednsrecord").
 		For(&v1alpha1.DNSRecord{}).
 		Complete(r)
 }

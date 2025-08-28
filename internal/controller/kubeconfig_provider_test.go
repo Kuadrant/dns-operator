@@ -76,7 +76,7 @@ var _ = Describe("Kubeconfig Provider", Labels{"multicluster"}, func() {
 			},
 		}
 		Expect(primaryK8sClient.Create(ctx, invalidSecret)).To(Succeed())
-		Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("Secret does not contain kubeconfig data, skipping\\s*{\"cluster\": \"%s\", \"secret\": \"%s\\/%s\", \"key\": \"kubeconfig\"}", invalidSecret.Name, invalidSecret.Namespace, invalidSecret.Name)))
+		Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"kubeconfig-provider\".+\"msg\":\"Secret does not contain kubeconfig data, skipping\".+\"cluster\":\"%s\".+\"secret\":\"%s\\/%s\"", invalidSecret.Name, invalidSecret.Namespace, invalidSecret.Name)))
 	})
 
 	It("triggers reconcile of secondary cluster record on primary", Labels{"primary", "secondary"}, func(ctx SpecContext) {
@@ -105,25 +105,23 @@ var _ = Describe("Kubeconfig Provider", Labels{"multicluster"}, func() {
 		}, TestTimeoutShort, time.Second).Should(Succeed())
 
 		//Verify the secondary log contains the expected statements
-		Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("secondary.dnsrecord_controller\\s*Reconciled DNSRecord %s from namespace %s", secondaryRecord.Name, secondaryRecord.Namespace)))
-		//Example: 2025-08-26T17:55:11+01:00     INFO    secondary.dnsrecord_controller  Reconciled DNSRecord foo.hidden-voice.example.com from namespace test-namespace-a874ca2a-19b1-4e38-b040-bb357df7dd8e in 7.031572ms      {"controller": "dnsrecord", "controllerGroup": "kuadrant.io", "controllerKind": "DNSRecord", "DNSRecord": {"name":"foo.hidden-voice.example.com","namespace":"test-namespace-a874ca2a-19b1-4e38-b040-bb357df7dd8e"}, "namespace": "test-namespace-a874ca2a-19b1-4e38-b040-bb357df7dd8e", "name": "foo.hidden-voice.example.com", "reconcileID": "2d512957-50bf-4c75-a701-0f7b4f409ae3"}
+		Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"secondary.dnsrecord_controller\".+\"msg\":\"Reconciled DNSRecord.+\"controller\":\"dnsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryRecord.Name, secondaryRecord.Namespace)))
 
 		//Verify the primary log contains the expected statements
-		Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("primary.remote_dnsrecord_controller\\s+Remote Reconcile\\s+{\"controller\": \"remote-dnsrecord-controller\".+\"cluster\": \"%s\".+\"req\": \"cluster:\\/\\/%s\\/%s\\/%s\"", secondaryClusterSecret.Name, secondaryClusterSecret.Name, secondaryRecord.Namespace, secondaryRecord.Name)))
-		//Example: 2025-08-26T17:55:11+01:00     INFO    primary.remote_dnsrecord_controller     Remote Reconcile        {"controller": "remote-dnsrecord-controller", "controllerGroup": "kuadrant.io", "controllerKind": "DNSRecord", "reconcileID": "728d600c-12b8-4650-9fee-baf635636bad", "cluster": "secondary-cluster-1", "req": "cluster://secondary-cluster-1/test-namespace-a874ca2a-19b1-4e38-b040-bb357df7dd8e/foo.hidden-voice.example.com"}
+		Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary.remote_dnsrecord_controller\".+\"msg\":\"Remote Reconcile\".+\"controller\":\"remotednsrecord\".+\"req\":\"cluster:\\/\\/%s\\/%s\\/%s\"", secondaryClusterSecret.Name, secondaryRecord.Namespace, secondaryRecord.Name)))
 	})
 
 })
 
 func createClusterKubeconfigSecret(k8sClient client.Client, secret *v1.Secret, logBuffer *gbytes.Buffer) {
 	Expect(k8sClient.Create(ctx, secret)).To(Succeed())
-	Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("Creating new cluster from kubeconfig\\s*{\"cluster\": \"%s\", \"secret\": \"%s\\/%s\"}", secret.Name, secret.Namespace, secret.Name)))
-	Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("Successfully added cluster\\s*{\"cluster\": \"%s\", \"secret\": \"%s\\/%s\"}", secret.Name, secret.Namespace, secret.Name)))
-	Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("Successfully engaged manager\\s*{\"cluster\": \"%s\", \"secret\": \"%s\\/%s\"}", secret.Name, secret.Namespace, secret.Name)))
+	Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"kubeconfig-provider\".+\"msg\":\"Creating new cluster from kubeconfig\".+\"cluster\":\"%s\".+\"secret\":\"%s\\/%s\"", secret.Name, secret.Namespace, secret.Name)))
+	Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"kubeconfig-provider\".+\"msg\":\"Successfully added cluster\".+\"cluster\":\"%s\".+\"secret\":\"%s\\/%s\"", secret.Name, secret.Namespace, secret.Name)))
+	Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"kubeconfig-provider\".+\"msg\":\"Successfully engaged manager\".+\"cluster\":\"%s\".+\"secret\":\"%s\\/%s\"", secret.Name, secret.Namespace, secret.Name)))
 }
 
 func deleteClusterKubeconfigSecret(k8sClient client.Client, secret *v1.Secret, logBuffer *gbytes.Buffer) {
 	Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
-	Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("Removing cluster\\s*{\"cluster\": \"%s\"}", secret.Name)))
-	Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("Successfully removed cluster and cancelled cluster context\\s*{\"cluster\": \"%s\"}", secret.Name)))
+	Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"kubeconfig-provider\".+\"msg\":\"Removing cluster\".+\"cluster\":\"%s\"", secret.Name)))
+	Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"kubeconfig-provider\".+\"msg\":\"Successfully removed cluster and cancelled cluster context\".+\"cluster\":\"%s\"", secret.Name)))
 }
