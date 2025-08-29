@@ -376,7 +376,8 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
 	}
 
-	if common.MergeLabels(dnsRecord, dnsProvider.Labels()) {
+	// Ensure provider labels are added
+	if !dnsRecord.IsDelegating() && common.MergeLabels(dnsRecord, dnsProvider.Labels()) {
 		logger.Info("Adding provider labels")
 		err = r.Update(ctx, dnsRecord)
 		if err != nil {
