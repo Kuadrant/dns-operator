@@ -157,8 +157,8 @@ func (f *factory) providerForSecret(ctx context.Context, pSecret *v1.Secret, pCo
 }
 
 // requiresDelegation return true if the given provider requires delegation be enforced for the given resource(DNSRecord)
-func requiresDelegation(_ Provider, _ v1alpha1.ProviderAccessor) bool {
-	return false
+func requiresDelegation(p Provider, pa v1alpha1.ProviderAccessor) bool {
+	return p.Name() == DNSProviderCoreDNS && !pa.IsAuthoritativeRecord()
 }
 
 func NameForProviderSecret(secret *v1.Secret) (string, error) {

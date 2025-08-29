@@ -48,6 +48,8 @@ func TestProviderFor(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	RegisterProvider("inmemory", newFakeInMemoryProvider, false)
+	//CoreDNS provider requires delegation
+	RegisterProvider("coredns", newFakeCoreDNSProvider, false)
 
 	inmemorySecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -57,10 +59,18 @@ func TestProviderFor(t *testing.T) {
 		Type: v1alpha1.SecretTypeKuadrantInmemory,
 	}
 
-	dc := cgfake.NewSimpleDynamicClient(scheme, []runtime.Object{}...)
-	c := crfake.NewClientBuilder().WithScheme(scheme).WithObjects(inmemorySecret).Build()
+	corednsSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-coredns-secret",
+			Namespace: "test-namespace",
+		},
+		Type: v1alpha1.SecretTypeKuadrantCoreDNS,
+	}
 
-	f, err := NewFactory(c, dc, []string{"inmemory"}, newFakeDelegationProvider)
+	dc := cgfake.NewSimpleDynamicClient(scheme, []runtime.Object{}...)
+	c := crfake.NewClientBuilder().WithScheme(scheme).WithObjects(inmemorySecret, corednsSecret).Build()
+
+	f, err := NewFactory(c, dc, []string{"inmemory", "coredns"}, newFakeDelegationProvider)
 	assert.NotNil(t, f)
 	assert.NoError(t, err)
 
@@ -131,13 +141,69 @@ func TestProviderFor(t *testing.T) {
 	})
 
 	t.Run("returns configured delegation provider if provider requires delegation", func(t *testing.T) {
-		t.Run("when accessor requests delegation ", func(t *testing.T) {
-			//Todo mnairn: Will be added as part of the follow on CoreDNS work!!
+		t.Run("when accessor requests delegation and is not authoritative", func(t *testing.T) {
+			pa := &fakeProviderAccessor{
+				namespace: "test-namespace",
+				providerRef: v1alpha1.ProviderRef{
+					Name: "my-coredns-secret",
+				},
+				rootHost:        "example.com",
+				isAuthoritative: false,
+				isDelegating:    true,
+			}
+			p, err := f.ProviderFor(t.Context(), pa, Config{})
+			assert.NotNil(t, p)
+			assert.NoError(t, err)
+			assert.Equal(t, string(p.Name()), "fake-delegation-provider")
 		})
 
-		t.Run("when accessor requests no delegation ", func(t *testing.T) {
-			//Todo mnairn: Will be added as part of the follow on CoreDNS work!!
+		t.Run("when accessor requests delegation and is authoritative", func(t *testing.T) {
+			pa := &fakeProviderAccessor{
+				namespace: "test-namespace",
+				providerRef: v1alpha1.ProviderRef{
+					Name: "my-coredns-secret",
+				},
+				rootHost:        "example.com",
+				isAuthoritative: true,
+				isDelegating:    true,
+			}
+			p, err := f.ProviderFor(t.Context(), pa, Config{})
+			assert.NotNil(t, p)
+			assert.NoError(t, err)
+			assert.Equal(t, string(p.Name()), "fake-delegation-provider")
 		})
+
+		t.Run("when accessor requests no delegation and is not authoritative", func(t *testing.T) {
+			pa := &fakeProviderAccessor{
+				namespace: "test-namespace",
+				providerRef: v1alpha1.ProviderRef{
+					Name: "my-coredns-secret",
+				},
+				rootHost:        "example.com",
+				isAuthoritative: false,
+				isDelegating:    false,
+			}
+			p, err := f.ProviderFor(t.Context(), pa, Config{})
+			assert.NotNil(t, p)
+			assert.NoError(t, err)
+			assert.Equal(t, string(p.Name()), "fake-delegation-provider")
+		})
+	})
+
+	t.Run("returns expected provider if provider requires delegation but is authoritative", func(t *testing.T) {
+		pa := &fakeProviderAccessor{
+			namespace: "test-namespace",
+			providerRef: v1alpha1.ProviderRef{
+				Name: "my-coredns-secret",
+			},
+			rootHost:        "example.com",
+			isAuthoritative: true,
+			isDelegating:    false,
+		}
+		p, err := f.ProviderFor(t.Context(), pa, Config{})
+		assert.NotNil(t, p)
+		assert.NoError(t, err)
+		assert.Equal(t, string(p.Name()), "coredns")
 	})
 
 	t.Run("returns expected provider if no delegation", func(t *testing.T) {
@@ -196,6 +262,10 @@ type fakeProvider struct {
 
 func newFakeInMemoryProvider(_ context.Context, _ *corev1.Secret, _ Config) (Provider, error) {
 	return &fakeProvider{"inmemory"}, nil
+}
+
+func newFakeCoreDNSProvider(_ context.Context, _ *corev1.Secret, _ Config) (Provider, error) {
+	return &fakeProvider{"coredns"}, nil
 }
 
 func newFakeDelegationProvider(_ context.Context, _ client.Client, _ dynamic.Interface, _ v1alpha1.ProviderAccessor, _ Config) (Provider, error) {

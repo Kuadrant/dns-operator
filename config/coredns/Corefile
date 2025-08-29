@@ -1,20 +1,10 @@
-kdrnt {
+k.example.com {
     debug
     errors
     health {
         lameduck 5s
     }
     ready
-    log
-    transfer {
-        to *
-    }
-    kuadrant
-    prometheus 0.0.0.0:9153
-}
-k.example.com {
-    debug
-    errors
     log
     geoip GeoLite2-City-demo.mmdb {
         edns-subnet
