@@ -196,26 +196,32 @@ test-scale: kube-burner
 .PHONY: local-setup-cluster
 local-setup-cluster: DEPLOY=false
 local-setup-cluster: DEPLOYMENT_SCOPE=cluster
+local-setup-cluster: DELEGATION_ROLE=primary
 local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependencies and optionally deploy the dns operator DEPLOY=false|true
-	@echo "local-setup: creating cluster KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOY=${DEPLOY} DEPLOYMENT_SCOPE=${DEPLOYMENT_SCOPE}"
+	@echo "local-setup: creating cluster KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOY=${DEPLOY} DEPLOYMENT_SCOPE=${DEPLOYMENT_SCOPE} DELEGATION_ROLE=${DELEGATION_ROLE}"
 	@$(MAKE) -s kind-delete-cluster
 	@$(MAKE) -s kind-create-cluster
 	@$(MAKE) -s install
 	@$(MAKE) -s install-metallb
-	@$(MAKE) -s install-bind9
 
 	@if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
-		echo "local-setup: installing coredns" ;\
-		$(MAKE) -s coredns-docker-build coredns-kind-load-image;\
-		$(MAKE) -s install-coredns COREDNS_KUSTOMIZATION=config/local-setup/coredns ;\
+		if [ ${DELEGATION_ROLE} = "primary" ]; then\
+			echo "local-setup: installing bind9" ;\
+			$(MAKE) -s install-bind9 ;\
+			echo "local-setup: installing coredns" ;\
+			$(MAKE) -s coredns-docker-build coredns-kind-load-image;\
+			$(MAKE) -s install-coredns COREDNS_KUSTOMIZATION=config/local-setup/coredns ;\
+		fi ;\
 		if [ ${DEPLOY} = "true" ]; then\
 			echo "local-setup: deploying operator (cluster scoped) to ${KIND_CLUSTER_NAME}" ;\
-			$(MAKE) -s local-deploy ;\
+			$(MAKE) -s local-deploy DELEGATION_MODE=${DELEGATION_ROLE} ;\
 		else\
 			echo "local-setup: deploying operator (cluster scoped) to ${KIND_CLUSTER_NAME}, no manager Deployment" ;\
 			$(MAKE) -s deploy DEPLOY_KUSTOMIZATION=config/local-setup/dns-operator/cluster-scoped ;\
 		fi ;\
 	else\
+		echo "local-setup: installing bind9" ;\
+		$(MAKE) -s install-bind9 ;\
 		echo "local-setup: deploying operator (namespace scoped) to ${KIND_CLUSTER_NAME}" ;\
 		$(MAKE) -s local-deploy-namespaced ;\
 	fi ;\
