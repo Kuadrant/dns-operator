@@ -1,10 +1,11 @@
 package common
 
 import (
-	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
+
+	"github.com/kuadrant/dns-operator/internal/common/hash"
 )
 
 // RandomizeValidationDuration randomizes duration for a given variance with a min value of 1 sec
@@ -29,15 +30,7 @@ func RandomizeDuration(variance, duration float64) time.Duration {
 		int64(upperLimit)))
 }
 
-func FormatRootHost(rootHost string) string {
-	formatted := strings.Replace(rootHost, "*", "w", 1)
-	if len([]byte(formatted)) > 63 {
-		formatted = string([]byte(formatted)[:63])
-	}
-
-	for []byte(formatted)[len([]byte(formatted))-1] == []byte(".")[0] {
-		formatted = string([]byte(formatted)[:len([]byte(formatted))-2])
-	}
-
-	return formatted
+// HashRootHost generates a hash value of the given root host with a fixed length of 8
+func HashRootHost(rootHost string) string {
+	return hash.ToBase36HashLen(rootHost, 8)
 }

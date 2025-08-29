@@ -155,7 +155,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			Eventually(func(g Gomega) {
 				// Find the authoritative record
 				authRecords := &v1alpha1.DNSRecordList{}
-				g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.FormatRootHost(testHostname)})).To(Succeed())
+				g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.HashRootHost(testHostname)})).To(Succeed())
 				g.Expect(authRecords.Items).To(HaveLen(1))
 				authRecord = &authRecords.Items[0]
 
@@ -379,7 +379,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Eventually(func(g Gomega) {
 					// Find the authoritative record on the primary
 					authRecords := &v1alpha1.DNSRecordList{}
-					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.FormatRootHost(testHostname)})).To(Succeed())
+					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.HashRootHost(testHostname)})).To(Succeed())
 					g.Expect(authRecords.Items).To(HaveLen(1))
 					authRecord = &authRecords.Items[0]
 					// Verify the expected state of the authoritative record
@@ -488,7 +488,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Eventually(func(g Gomega) {
 					// Find the authoritative record on the primary
 					authRecords := &v1alpha1.DNSRecordList{}
-					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.FormatRootHost(testHostname)})).To(Succeed())
+					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.HashRootHost(testHostname)})).To(Succeed())
 					g.Expect(authRecords.Items).To(HaveLen(1))
 					authRecord = &authRecords.Items[0]
 					// Verify the expected state of the authoritative record
@@ -615,7 +615,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Eventually(func(g Gomega) {
 					// Find the authoritative record on the primary
 					authRecords := &v1alpha1.DNSRecordList{}
-					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.FormatRootHost(testHostname)})).To(Succeed())
+					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.HashRootHost(testHostname)})).To(Succeed())
 					g.Expect(authRecords.Items).To(HaveLen(1))
 					authRecord = &authRecords.Items[0]
 				}, TestTimeoutMedium, time.Second).Should(Succeed())

@@ -5,8 +5,6 @@ package common
 import (
 	"testing"
 	"time"
-
-	. "github.com/onsi/gomega"
 )
 
 func TestRandomizeDuration(t *testing.T) {
@@ -36,55 +34,28 @@ func TestRandomizeDuration(t *testing.T) {
 	}
 }
 
-func Test_FormatRootHost(t *testing.T) {
-	RegisterTestingT(t)
-
-	scenarios := []struct {
-		Name     string
-		RootHost string
-		Verify   func(formatted string)
+func TestFormatRootHost(t *testing.T) {
+	tests := []struct {
+		name     string
+		rootHost string
+		want     string
 	}{
 		{
-			Name:     "regular host is not altered",
-			RootHost: "pb.com",
-			Verify: func(formatted string) {
-				Expect(formatted).To(Equal("pb.com"))
-			},
+			name:     "converts short root host to hash with length 8",
+			rootHost: "pb.com",
+			want:     "jsys0tw1",
 		},
 		{
-			Name:     "long host is shortened",
-			RootHost: "123456789-123456789-123456789-123456789-123456789-123456789-123456789-",
-			Verify: func(formatted string) {
-				Expect(formatted).To(Equal("123456789-123456789-123456789-123456789-123456789-123456789-123"))
-			},
-		},
-		{
-			Name:     "wildcards are replace with 'w'",
-			RootHost: "*.pb.com",
-			Verify: func(formatted string) {
-				Expect(formatted).To(Equal("w.pb.com"))
-			},
-		},
-		{
-			Name:     "long host with wildcard, wildcard is replaced and host is shortened",
-			RootHost: "*.123456789-123456789-123456789-123456789-123456789-123456789-123456789-",
-			Verify: func(formatted string) {
-				Expect(formatted).To(Equal("w.123456789-123456789-123456789-123456789-123456789-123456789-1"))
-			},
-		},
-		{
-			Name:     "long host with wildcard, wildcard is replaced and host is shortened and trailing periods removed",
-			RootHost: "*.123456789.......................................................",
-			Verify: func(formatted string) {
-				Expect(formatted).To(Equal("w.123456789"))
-			},
+			name:     "converts long root host to hash with length 8",
+			rootHost: "123456789-123456789-123456789-123456789-123456789-123456789-123456789-123456789.pb.com",
+			want:     "d4ns4xlx",
 		},
 	}
-
-	for _, scenario := range scenarios {
-		t.Run(scenario.Name, func(t *testing.T) {
-			scenario.Verify(FormatRootHost(scenario.RootHost))
-
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HashRootHost(tt.rootHost); got != tt.want {
+				t.Errorf("HashRootHost() = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }
