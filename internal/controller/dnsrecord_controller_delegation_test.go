@@ -116,6 +116,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(primaryDNSRecord), primaryDNSRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(primaryDNSRecord.IsDelegating()).To(BeFalse())
+				g.Expect(primaryDNSRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
 
@@ -148,7 +149,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				g.Expect(primaryDNSRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 				g.Expect(primaryDNSRecord.IsDelegating()).To(BeTrue())
 				g.Expect(primaryDNSRecord.Status.DomainOwners).To(ConsistOf(primaryDNSRecord.GetUIDHash()))
-				g.Expect(primaryDNSRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "endpoint"))
+				g.Expect(primaryDNSRecord.Labels).Should(Not(HaveKey("kuadrant.io/dns-provider-name")))
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 			By("verifying the authoritative record exists and has the correct spec and status")
@@ -372,7 +373,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(secondaryDNSRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 					g.Expect(secondaryDNSRecord.IsDelegating()).To(BeTrue())
 					g.Expect(secondaryDNSRecord.Status.DomainOwners).To(ConsistOf(secondaryDNSRecord.GetUIDHash()))
-					g.Expect(secondaryDNSRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "endpoint"))
+					g.Expect(secondaryDNSRecord.Labels).Should(Not(HaveKey("kuadrant.io/dns-provider-name")))
 				}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 				By("verifying the authoritative record exists and has the correct spec and status")
@@ -459,7 +460,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(primaryDNSRecord.IsDelegating()).To(BeTrue())
 					g.Expect(primaryDNSRecord.Status.OwnerID).To(Equal(primaryDNSRecord.GetUIDHash()))
 					g.Expect(primaryDNSRecord.Status.DomainOwners).To(ConsistOf(primaryDNSRecord.GetUIDHash(), secondaryDNSRecord.GetUIDHash()))
-					g.Expect(primaryDNSRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "endpoint"))
+					g.Expect(primaryDNSRecord.Labels).Should(Not(HaveKey("kuadrant.io/dns-provider-name")))
 
 					// Verify the expected state of the secondary record
 					g.Expect(secondaryDNSRecord.Status.Conditions).To(
@@ -481,7 +482,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(secondaryDNSRecord.IsDelegating()).To(BeTrue())
 					g.Expect(secondaryDNSRecord.Status.OwnerID).To(Equal(secondaryDNSRecord.GetUIDHash()))
 					g.Expect(secondaryDNSRecord.Status.DomainOwners).To(ConsistOf(primaryDNSRecord.GetUIDHash(), secondaryDNSRecord.GetUIDHash()))
-					g.Expect(secondaryDNSRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "endpoint"))
+					g.Expect(secondaryDNSRecord.Labels).Should(Not(HaveKey("kuadrant.io/dns-provider-name")))
 				}, TestTimeoutLong, time.Second).Should(Succeed())
 
 				By("verifying the authoritative record exists and has the correct spec and status")
@@ -586,7 +587,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(primaryDNSRecord.IsDelegating()).To(BeTrue())
 					g.Expect(primaryDNSRecord.Status.OwnerID).To(Equal(primaryDNSRecord.GetUIDHash()))
 					g.Expect(primaryDNSRecord.Status.DomainOwners).To(ConsistOf(primaryDNSRecord.GetUIDHash(), secondaryDNSRecord.GetUIDHash()))
-					g.Expect(primaryDNSRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "endpoint"))
+					g.Expect(primaryDNSRecord.Labels).Should(Not(HaveKey("kuadrant.io/dns-provider-name")))
 
 					// Verify the expected state of the secondary record
 					g.Expect(secondaryDNSRecord.Status.Conditions).To(
@@ -608,7 +609,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(secondaryDNSRecord.IsDelegating()).To(BeTrue())
 					g.Expect(secondaryDNSRecord.Status.OwnerID).To(Equal(secondaryDNSRecord.GetUIDHash()))
 					g.Expect(secondaryDNSRecord.Status.DomainOwners).To(ConsistOf(primaryDNSRecord.GetUIDHash(), secondaryDNSRecord.GetUIDHash()))
-					g.Expect(secondaryDNSRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "endpoint"))
+					g.Expect(secondaryDNSRecord.Labels).Should(Not(HaveKey("kuadrant.io/dns-provider-name")))
 				}, TestTimeoutLong, time.Second).Should(Succeed())
 
 				By("verifying an authoritative record exists for the test host")
