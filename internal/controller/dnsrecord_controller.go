@@ -167,15 +167,10 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, nil
 		}
 
-		// Local records that are delegating in remote mode should do nothing
+		// Local records that are delegating on secondary clusters should just return here
 		if r.IsSecondary() && r.IsLocalRecord() && dnsRecord.IsDelegating() {
 			return ctrl.Result{}, nil
 		}
-
-		//ToDo Do we need to determine the role here?,
-		// if it's remote, and primary, it should deal with it's own cleanup?
-		// if it's remote, and secondary, we should deal with cleanup?
-		// Does it matter if both do it, record is deleting anyway and only an "issue" in multi primary setups?
 
 		if !dnsRecord.Status.ProviderEndpointsDeletion() {
 			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
@@ -259,17 +254,15 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				}
 				return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
 			}
+
+			// Local records that are delegating on secondary clusters should just return here
+			return ctrl.Result{}, nil
 		}
 	} else {
 		if !dnsRecord.Status.ReadyForDelegation() {
 			logger.Info("remote record no ready for processing, skipping")
 			return ctrl.Result{}, nil
 		}
-	}
-
-	// Local records that are delegating in remote mode should just set a status and return
-	if r.IsSecondary() && r.IsLocalRecord() && dnsRecord.IsDelegating() {
-		return ctrl.Result{}, nil
 	}
 
 	err = dnsRecord.Validate()
