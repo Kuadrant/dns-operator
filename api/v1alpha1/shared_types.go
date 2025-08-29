@@ -62,6 +62,11 @@ const (
 
 	SecretTypeKuadrantCoreDNS corev1.SecretType = "kuadrant.io/coredns"
 
+	// CoreDNSZonesKey list of zones available to add records into. Must be configured in the Corefile with a 'kuadrant' directive.
+	CoreDNSZonesKey = "ZONES"
+	// CoreDNSNameserversKey list of nameservers for the current CoreDNS instances.
+	CoreDNSNameserversKey = "NAMESERVERS"
+
 	DefaultProviderSecretLabel = "kuadrant.io/default-provider"
 
 	// This label defines the GVR to use for the endpoints provider
@@ -93,5 +98,6 @@ type ProviderAccessor interface {
 	GetNamespace() string
 	GetProviderRef() ProviderRef
 	GetRootHost() string
+	IsAuthoritativeRecord() bool
 	IsDelegating() bool
 }
