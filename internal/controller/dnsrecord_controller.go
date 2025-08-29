@@ -451,6 +451,13 @@ func (r *DNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, previo
 		}
 	}
 	logger.V(1).Info(fmt.Sprintf("Requeue in %s", requeueTime.String()))
+
+	var gauge float64
+	if meta.IsStatusConditionTrue(current.Status.Conditions, string(v1alpha1.ConditionTypeReady)) {
+		gauge = 1
+	}
+	metrics.RecordReady.WithLabelValues(current.Name, current.Namespace, current.Spec.RootHost, strconv.FormatBool(current.IsDelegating())).Set(gauge)
+
 	return ctrl.Result{RequeueAfter: requeueTime}, nil
 }
 

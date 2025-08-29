@@ -9,6 +9,8 @@ import (
 const (
 	dnsRecordNameLabel           = "dns_record_name"
 	dnsRecordNamespaceLabel      = "dns_record_namespace"
+	dnsRecordRootHost            = "dns_record_root_host"
+	dnsRecordDelegating          = "dns_record_is_delegating"
 	dnsHealthCheckNameLabel      = "dns_health_check_name"
 	dnsHealthCheckNamespaceLabel = "dns_health_check_namespace"
 	dnsHealthCheckHostLabel      = "dns_health_check_host"
@@ -36,10 +38,17 @@ var (
 			Help: "Emits one when provider secret is found to be absent, or zero when expected secrets exist",
 		},
 		[]string{mzRecordNameLabel, mzRecordNamespaceLabel, mzSecretNameLabel})
+	RecordReady = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "dns_provider_record_ready",
+			Help: "Reports the ready state of the dns record. 0 - not ready or deleted, 1 - ready. It also provides some metadata of the record in question",
+		},
+		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordRootHost, dnsRecordDelegating})
 )
 
 func init() {
 	metrics.Registry.MustRegister(WriteCounter)
 	metrics.Registry.MustRegister(SecretMissing)
 	metrics.Registry.MustRegister(ProbeCounter)
+	metrics.Registry.MustRegister(RecordReady)
 }
