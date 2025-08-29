@@ -56,6 +56,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 	reconciler := DNSRecordReconciler{
 		Client:          cl.GetClient(),
+		LocalClient:     r.mgr.GetLocalManager().GetClient(),
 		Scheme:          r.Scheme,
 		ProviderFactory: r.ProviderFactory,
 		remoteClient:    true,

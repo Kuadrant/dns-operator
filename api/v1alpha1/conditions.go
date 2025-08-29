@@ -13,3 +13,6 @@ const ConditionTypeHealthy ConditionType = "Healthy"
 const ConditionReasonHealthy ConditionReason = "AllChecksPassed"
 const ConditionReasonPartiallyHealthy ConditionReason = "SomeChecksPassed"
 const ConditionReasonUnhealthy ConditionReason = "HealthChecksFailed"
+
+const ConditionTypeReadyForDelegation ConditionType = "ReadyForDelegation"
+const ConditionReasonFinalizersSet ConditionReason = "FinalizersSet"

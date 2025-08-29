@@ -352,7 +352,11 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
+ifeq ($(DELEGATION_MODE), secondary)
+deploy: DEPLOY_KUSTOMIZATION=config/local-setup/dns-operator/secondary
+else
 deploy: DEPLOY_KUSTOMIZATION=config/deploy/local
+endif
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build ${DEPLOY_KUSTOMIZATION} | $(KUBECTL) apply -f -
