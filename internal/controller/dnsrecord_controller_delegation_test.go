@@ -166,6 +166,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				authRecord = &authRecords.Items[0]
 
 				// Verify the expected state of the authoritative record
+				g.Expect(authRecord.Name).To(Equal(fmt.Sprintf("delegation-authoritative-record-%s", common.HashRootHost(testHostname))))
 				g.Expect(authRecord.IsDelegating()).To(BeFalse())
 				g.Expect(authRecord.Spec.RootHost).To(Equal(testHostname))
 				// no default secret yet
@@ -389,6 +390,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(authRecords.Items).To(HaveLen(1))
 					authRecord = &authRecords.Items[0]
 					// Verify the expected state of the authoritative record
+					g.Expect(authRecord.Name).To(Equal(fmt.Sprintf("delegation-authoritative-record-%s", common.HashRootHost(testHostname))))
 					g.Expect(authRecord.IsDelegating()).To(BeFalse())
 					g.Expect(authRecord.Spec.RootHost).To(Equal(testHostname))
 					// no default secret yet
@@ -498,6 +500,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(authRecords.Items).To(HaveLen(1))
 					authRecord = &authRecords.Items[0]
 					// Verify the expected state of the authoritative record
+					g.Expect(authRecord.Name).To(Equal(fmt.Sprintf("delegation-authoritative-record-%s", common.HashRootHost(testHostname))))
 					g.Expect(authRecord.IsDelegating()).To(BeFalse())
 					g.Expect(authRecord.Spec.RootHost).To(Equal(testHostname))
 					// no default secret yet
@@ -631,6 +634,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					// Get the authoritative record on the primary
 					g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)).To(Succeed())
 					// Verify the expected state of the authoritative record
+					g.Expect(authRecord.Name).To(Equal(fmt.Sprintf("delegation-authoritative-record-%s", common.HashRootHost(testHostname))))
 					g.Expect(authRecord.IsDelegating()).To(BeFalse())
 					g.Expect(authRecord.Spec.RootHost).To(Equal(testHostname))
 					// no default secret yet
