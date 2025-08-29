@@ -102,7 +102,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 		})
 
 		It("should default to false if not specified", func(ctx SpecContext) {
-			By("creating a dnsrecord with not delegate field")
+			By("creating a dnsrecord with no delegate field")
 			primaryDNSRecord.Spec = v1alpha1.DNSRecordSpec{
 				RootHost: testHostname,
 				ProviderRef: &v1alpha1.ProviderRef{
@@ -116,6 +116,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(primaryDNSRecord), primaryDNSRecord)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(primaryDNSRecord.IsDelegating()).To(BeFalse())
+				g.Expect(primaryDNSRecord.Status.Conditions).ToNot(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type": Equal(string(v1alpha1.ConditionTypeReadyForDelegation)),
+					})),
+				)
 				g.Expect(primaryDNSRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
@@ -140,10 +145,10 @@ var _ = Describe("DNSRecordReconciler", func() {
 						"ObservedGeneration": Equal(primaryDNSRecord.Generation),
 					})),
 				)
-				//ToDo is this right?
-				g.Expect(primaryDNSRecord.Status.Conditions).ToNot(
+				g.Expect(primaryDNSRecord.Status.Conditions).To(
 					ContainElement(MatchFields(IgnoreExtras, Fields{
-						"Type": Equal(string(v1alpha1.ConditionTypeReadyForDelegation)),
+						"Type":   Equal(string(v1alpha1.ConditionTypeReadyForDelegation)),
+						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
 				g.Expect(primaryDNSRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
@@ -450,10 +455,10 @@ var _ = Describe("DNSRecordReconciler", func() {
 							"ObservedGeneration": Equal(primaryDNSRecord.Generation),
 						})),
 					)
-					//ToDo is this right?
-					g.Expect(primaryDNSRecord.Status.Conditions).ToNot(
+					g.Expect(primaryDNSRecord.Status.Conditions).To(
 						ContainElement(MatchFields(IgnoreExtras, Fields{
-							"Type": Equal(string(v1alpha1.ConditionTypeReadyForDelegation)),
+							"Type":   Equal(string(v1alpha1.ConditionTypeReadyForDelegation)),
+							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
 					g.Expect(primaryDNSRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
@@ -577,10 +582,10 @@ var _ = Describe("DNSRecordReconciler", func() {
 							"ObservedGeneration": Equal(primaryDNSRecord.Generation),
 						})),
 					)
-					//ToDo is this right?
-					g.Expect(primaryDNSRecord.Status.Conditions).ToNot(
+					g.Expect(primaryDNSRecord.Status.Conditions).To(
 						ContainElement(MatchFields(IgnoreExtras, Fields{
-							"Type": Equal(string(v1alpha1.ConditionTypeReadyForDelegation)),
+							"Type":   Equal(string(v1alpha1.ConditionTypeReadyForDelegation)),
+							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
 					g.Expect(primaryDNSRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
