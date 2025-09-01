@@ -31,7 +31,8 @@ type Protocol string
 
 const HttpProtocol Protocol = "HTTP"
 const HttpsProtocol Protocol = "HTTPS"
-const DelegationAuthoritativeRecordLabel = "kuadrant.io/delegation-authoritative-record"
+const AuthoritativeRecordLabel = "kuadrant.io/authoritative-record"
+const AuthoritativeRecordHashLabel = "kuadrant.io/authoritative-record-hash"
 
 // HealthCheckSpec configures health checks in the DNS provider.
 // By default this health check will be applied to each unique DNS A Record for

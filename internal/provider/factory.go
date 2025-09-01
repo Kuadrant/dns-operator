@@ -100,7 +100,7 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 			},
 			Type: v1alpha1.SecretTypeKuadrantEndpoint,
 			Data: map[string][]byte{
-				v1alpha1.EndpointLabelSelectorKey: []byte(fmt.Sprintf("%s=%s", v1alpha1.DelegationAuthoritativeRecordLabel, common.HashRootHost(pa.GetRootHost()))),
+				v1alpha1.EndpointLabelSelectorKey: []byte(fmt.Sprintf("%s=true, %s=%s", v1alpha1.AuthoritativeRecordLabel, v1alpha1.AuthoritativeRecordHashLabel, common.HashRootHost(pa.GetRootHost()))),
 			},
 		}
 	} else {

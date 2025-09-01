@@ -33,7 +33,7 @@ func (r *DNSRecordDelegationHelper) EnsureAuthoritativeRecord(ctx context.Contex
 func (r *DNSRecordDelegationHelper) getAuthoritativeRecordFor(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
 	aRecords := v1alpha1.DNSRecordList{}
 
-	labelSelector, err := labels.Parse(fmt.Sprintf("%s=%s", v1alpha1.DelegationAuthoritativeRecordLabel, common.HashRootHost(record.Spec.RootHost)))
+	labelSelector, err := labels.Parse(fmt.Sprintf("%s=true, %s=%s", v1alpha1.AuthoritativeRecordLabel, v1alpha1.AuthoritativeRecordHashLabel, common.HashRootHost(record.Spec.RootHost)))
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,8 @@ func authoritativeRecordFor(rec v1alpha1.DNSRecord) *v1alpha1.DNSRecord {
 			Name:      toAuthoritativeRecordName(rootHostHash),
 			Namespace: rec.Namespace,
 			Labels: map[string]string{
-				v1alpha1.DelegationAuthoritativeRecordLabel: rootHostHash,
+				v1alpha1.AuthoritativeRecordLabel:     "true",
+				v1alpha1.AuthoritativeRecordHashLabel: rootHostHash,
 			},
 		},
 		Spec: v1alpha1.DNSRecordSpec{
@@ -76,5 +77,5 @@ func authoritativeRecordFor(rec v1alpha1.DNSRecord) *v1alpha1.DNSRecord {
 }
 
 func toAuthoritativeRecordName(rootHostHash string) string {
-	return fmt.Sprintf("delegation-authoritative-record-%s", rootHostHash)
+	return fmt.Sprintf("authoritative-record-%s", rootHostHash)
 }
