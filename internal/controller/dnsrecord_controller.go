@@ -243,7 +243,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 		}
 
-		if r.IsSecondary() && dnsRecord.IsDelegating() {
+		if dnsRecord.IsDelegating() {
 			// finalizers are present, set delegation status ready
 			if c := meta.FindStatusCondition(dnsRecord.Status.Conditions, string(v1alpha1.ConditionTypeReadyForDelegation)); c == nil || c.Status == metav1.ConditionFalse {
 				logger.Info("Finalizers present, setting delegation condition", "condition_type", v1alpha1.ConditionTypeReadyForDelegation)
@@ -255,8 +255,10 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
 			}
 
-			// Local records that are delegating on secondary clusters should just return here
-			return ctrl.Result{}, nil
+			if r.IsSecondary() {
+				// Local records that are delegating on secondary clusters should just return here
+				return ctrl.Result{}, nil
+			}
 		}
 	} else {
 		if !dnsRecord.Status.ReadyForDelegation() {
