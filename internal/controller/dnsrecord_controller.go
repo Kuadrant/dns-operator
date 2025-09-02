@@ -404,6 +404,14 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, probes, hadChanges, notHealthyProbes, err)
 	}
 
+	if dnsRecord.IsAuthoritativeRecord() {
+		metric, err := metrics.NewAuthoritativeRecordSpecInfoMetric(dnsRecord)
+		if err != nil {
+			logger.Error(err, "failed to create authoritativeRecordSpecInfo metric")
+		} else {
+			metric.Publish()
+		}
+	}
 	return r.updateStatus(ctx, previous, dnsRecord, probes, hadChanges, notHealthyProbes, nil)
 }
 
