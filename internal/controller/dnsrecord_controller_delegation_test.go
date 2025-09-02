@@ -161,11 +161,12 @@ var _ = Describe("DNSRecordReconciler", func() {
 			Eventually(func(g Gomega) {
 				// Find the authoritative record
 				authRecords := &v1alpha1.DNSRecordList{}
-				g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.HashRootHost(testHostname)})).To(Succeed())
+				g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.AuthoritativeRecordLabel: "true", v1alpha1.AuthoritativeRecordHashLabel: common.HashRootHost(testHostname)})).To(Succeed())
 				g.Expect(authRecords.Items).To(HaveLen(1))
 				authRecord = &authRecords.Items[0]
 
 				// Verify the expected state of the authoritative record
+				g.Expect(authRecord.Name).To(Equal(fmt.Sprintf("authoritative-record-%s", common.HashRootHost(testHostname))))
 				g.Expect(authRecord.IsDelegating()).To(BeFalse())
 				g.Expect(authRecord.Spec.RootHost).To(Equal(testHostname))
 				// no default secret yet
@@ -183,6 +184,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 						"Type": Equal(string(v1alpha1.ConditionTypeReadyForDelegation)),
 					})),
 				)
+				g.Expect(authRecord.Status.OwnerID).To(Equal(authRecord.GetUIDHash()))
+				//domain owners won't be set until the dns provider is set
+				g.Expect(authRecord.Status.DomainOwners).To(BeEmpty())
 				//authoritative record should contain the expected endpoint and registry record
 				g.Expect(authRecord.Spec.Endpoints).To(HaveLen(2))
 				g.Expect(authRecord.Spec.Endpoints).To(ContainElements(
@@ -231,6 +235,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 				)
 				// Verify the authoritative record has the expected provider label
 				g.Expect(authRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
+				// Verify the authoritative record has the expected domain owners
+				g.Expect(authRecord.Status.DomainOwners).To(ConsistOf(authRecord.GetUIDHash()))
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
 
@@ -385,10 +391,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Eventually(func(g Gomega) {
 					// Find the authoritative record on the primary
 					authRecords := &v1alpha1.DNSRecordList{}
-					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.HashRootHost(testHostname)})).To(Succeed())
+					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.AuthoritativeRecordLabel: "true", v1alpha1.AuthoritativeRecordHashLabel: common.HashRootHost(testHostname)})).To(Succeed())
 					g.Expect(authRecords.Items).To(HaveLen(1))
 					authRecord = &authRecords.Items[0]
 					// Verify the expected state of the authoritative record
+					g.Expect(authRecord.Name).To(Equal(fmt.Sprintf("authoritative-record-%s", common.HashRootHost(testHostname))))
 					g.Expect(authRecord.IsDelegating()).To(BeFalse())
 					g.Expect(authRecord.Spec.RootHost).To(Equal(testHostname))
 					// no default secret yet
@@ -406,6 +413,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 							"Type": Equal(string(v1alpha1.ConditionTypeReadyForDelegation)),
 						})),
 					)
+					//domain owners won't be set until the dns provider is set
+					g.Expect(authRecord.Status.DomainOwners).To(BeEmpty())
 					//authoritative record should contain the expected endpoint and registry record
 					g.Expect(authRecord.Spec.Endpoints).To(HaveLen(2))
 					g.Expect(authRecord.Spec.Endpoints).To(ContainElements(
@@ -494,10 +503,11 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Eventually(func(g Gomega) {
 					// Find the authoritative record on the primary
 					authRecords := &v1alpha1.DNSRecordList{}
-					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.HashRootHost(testHostname)})).To(Succeed())
+					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.AuthoritativeRecordLabel: "true", v1alpha1.AuthoritativeRecordHashLabel: common.HashRootHost(testHostname)})).To(Succeed())
 					g.Expect(authRecords.Items).To(HaveLen(1))
 					authRecord = &authRecords.Items[0]
 					// Verify the expected state of the authoritative record
+					g.Expect(authRecord.Name).To(Equal(fmt.Sprintf("authoritative-record-%s", common.HashRootHost(testHostname))))
 					g.Expect(authRecord.IsDelegating()).To(BeFalse())
 					g.Expect(authRecord.Spec.RootHost).To(Equal(testHostname))
 					// no default secret yet
@@ -515,6 +525,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 							"Type": Equal(string(v1alpha1.ConditionTypeReadyForDelegation)),
 						})),
 					)
+					//domain owners won't be set until the dns provider is set
+					g.Expect(authRecord.Status.DomainOwners).To(BeEmpty())
 					//authoritative record should contain the expected endpoint and registry record
 					g.Expect(authRecord.Spec.Endpoints).To(HaveLen(3))
 					g.Expect(authRecord.Spec.Endpoints).To(ContainElements(
@@ -621,7 +633,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Eventually(func(g Gomega) {
 					// Find the authoritative record on the primary
 					authRecords := &v1alpha1.DNSRecordList{}
-					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.DelegationAuthoritativeRecordLabel: common.HashRootHost(testHostname)})).To(Succeed())
+					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.AuthoritativeRecordLabel: "true", v1alpha1.AuthoritativeRecordHashLabel: common.HashRootHost(testHostname)})).To(Succeed())
 					g.Expect(authRecords.Items).To(HaveLen(1))
 					authRecord = &authRecords.Items[0]
 				}, TestTimeoutMedium, time.Second).Should(Succeed())
@@ -631,6 +643,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					// Get the authoritative record on the primary
 					g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)).To(Succeed())
 					// Verify the expected state of the authoritative record
+					g.Expect(authRecord.Name).To(Equal(fmt.Sprintf("authoritative-record-%s", common.HashRootHost(testHostname))))
 					g.Expect(authRecord.IsDelegating()).To(BeFalse())
 					g.Expect(authRecord.Spec.RootHost).To(Equal(testHostname))
 					// no default secret yet
@@ -649,8 +662,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 						})),
 					)
 					g.Expect(authRecord.Status.OwnerID).To(Equal(authRecord.GetUIDHash()))
-					//ToDo What should DomainOwners be on the authRecord?
-					//g.Expect(authRecord.Status.DomainOwners).To(ConsistOf(authRecord.GetUIDHash()))
+					//domain owners won't be set until the dns provider is set
+					g.Expect(authRecord.Status.DomainOwners).To(BeEmpty())
 					//authoritative record should contain the expected endpoint and registry record
 					g.Expect(authRecord.Spec.Endpoints).To(HaveLen(3))
 					g.Expect(authRecord.Spec.Endpoints).To(ContainElements(
@@ -710,6 +723,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 					)
 					// Verify the authoritative record has the expected provider label
 					g.Expect(authRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
+					// Verify the authoritative record has the expected domain owners
+					g.Expect(authRecord.Status.DomainOwners).To(ConsistOf(authRecord.GetUIDHash()))
 				}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 				By("updating existing endpoint and adding additional endpoint to secondary record")

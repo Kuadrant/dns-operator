@@ -18,7 +18,7 @@ type DNSRecordDelegationHelper struct {
 
 // EnsureAuthoritativeRecord ensures that an authoritative DNSRecord exists in the given DNSRecords(record) namespace.
 // An authoritative DNSRecord must have the delegation label with a value matching the given DNSRecords(record) rootHost.
-// i.e. kuadrant.io/delegation-authoritative-record=<record.spec.rootHost>
+// i.e. kuadrant.io/delegation-authoritative-record=<hash of record.spec.rootHost>
 func (r *DNSRecordDelegationHelper) EnsureAuthoritativeRecord(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
 	aRecord, err := r.getAuthoritativeRecordFor(ctx, record)
 	if err != nil {
@@ -33,7 +33,7 @@ func (r *DNSRecordDelegationHelper) EnsureAuthoritativeRecord(ctx context.Contex
 func (r *DNSRecordDelegationHelper) getAuthoritativeRecordFor(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
 	aRecords := v1alpha1.DNSRecordList{}
 
-	labelSelector, err := labels.Parse(fmt.Sprintf("%s=%s", v1alpha1.DelegationAuthoritativeRecordLabel, common.HashRootHost(record.Spec.RootHost)))
+	labelSelector, err := labels.Parse(fmt.Sprintf("%s=true, %s=%s", v1alpha1.AuthoritativeRecordLabel, v1alpha1.AuthoritativeRecordHashLabel, common.HashRootHost(record.Spec.RootHost)))
 	if err != nil {
 		return nil, err
 	}
@@ -60,16 +60,22 @@ func (r *DNSRecordDelegationHelper) createAuthoritativeRecordFor(ctx context.Con
 }
 
 func authoritativeRecordFor(rec v1alpha1.DNSRecord) *v1alpha1.DNSRecord {
+	rootHostHash := common.HashRootHost(rec.Spec.RootHost)
 	return &v1alpha1.DNSRecord{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: "delegation-authoritative-record-",
-			Namespace:    rec.Namespace,
+			Name:      toAuthoritativeRecordName(rootHostHash),
+			Namespace: rec.Namespace,
 			Labels: map[string]string{
-				v1alpha1.DelegationAuthoritativeRecordLabel: common.HashRootHost(rec.Spec.RootHost),
+				v1alpha1.AuthoritativeRecordLabel:     "true",
+				v1alpha1.AuthoritativeRecordHashLabel: rootHostHash,
 			},
 		},
 		Spec: v1alpha1.DNSRecordSpec{
 			RootHost: rec.Spec.RootHost,
 		},
 	}
+}
+
+func toAuthoritativeRecordName(rootHostHash string) string {
+	return fmt.Sprintf("authoritative-record-%s", rootHostHash)
 }
