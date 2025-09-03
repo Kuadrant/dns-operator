@@ -254,6 +254,15 @@ func main() {
 			setupLog.Error(err, "unable to create controller", "controller", "RemoteDNSRecord")
 			os.Exit(1)
 		}
+
+		remoteClusterSecretController := &controller.RemoteClusterSecretReconciler{
+			Client:       mgr.GetClient(),
+			SecretConfig: controller.SecretConfig{Namespace: clusterSecretNamespace, Label: clusterSecretLabel},
+		}
+		if err = remoteClusterSecretController.SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "RemoteClusterSecret")
+			os.Exit(1)
+		}
 	}
 
 	if dnsProbesEnabled {
