@@ -31,6 +31,7 @@ import (
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/metrics"
 )
 
 // RemoteDNSRecordReconciler reconciles a DNSRecord object on a remote cluster
@@ -72,6 +73,12 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		"namespace", req.Namespace,
 		"name", req.Name)
 
+	remoteRecordsMetric := metrics.NewRemoteRecordsMetric(ctx, cl.GetClient(), logger, req.ClusterName)
+	remoteRecordsMetric.Publish()
+
+	remoteRecordReconcileMetric := metrics.NewRemoteRecordReconcileMetric(req.Name, req.Namespace, req.ClusterName)
+	defer remoteRecordReconcileMetric.Publish()
+
 	return reconciler.Reconcile(log.IntoContext(ctx, logger), req.Request)
 }
 
@@ -90,4 +97,9 @@ func (r *RemoteDNSRecordReconciler) SetupWithManager(mgr mcmanager.Manager) erro
 		Named("remotednsrecord").
 		For(&v1alpha1.DNSRecord{}).
 		Complete(r)
+}
+
+type SecretConfig struct {
+	Namespace string
+	Label     string
 }
