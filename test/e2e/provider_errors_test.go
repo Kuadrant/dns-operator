@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/pkg/builder"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
@@ -38,6 +40,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 	var invalidProviderSecret *v1.Secret
 
 	var dnsRecord *v1alpha1.DNSRecord
+	var authRecord *v1alpha1.DNSRecord
 
 	BeforeEach(func(ctx SpecContext) {
 		testID = "t-errors-" + GenerateName()
@@ -48,11 +51,33 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 	})
 
 	AfterEach(func(ctx SpecContext) {
+		By("ensuring dns record is deleted")
 		if dnsRecord != nil {
 			err := k8sClient.Delete(ctx, dnsRecord,
 				client.PropagationPolicy(metav1.DeletePropagationForeground))
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+
+			By("checking dns record is removed")
+			Eventually(func(g Gomega, ctx context.Context) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).To(MatchError(ContainSubstring("not found")))
+			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
 		}
+
+		By("ensuring authoritative record is deleted")
+		if authRecord != nil {
+			err := k8sClient.Delete(ctx, authRecord,
+				client.PropagationPolicy(metav1.DeletePropagationForeground))
+			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+
+			By("checking authoritative record is removed")
+			Eventually(func(g Gomega, ctx context.Context) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
+				g.Expect(err).To(MatchError(ContainSubstring("not found")))
+			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
+		}
+
+		By("ensuring invalid provider secret is deleted")
 		if invalidProviderSecret != nil {
 			err := k8sClient.Delete(ctx, invalidProviderSecret,
 				client.PropagationPolicy(metav1.DeletePropagationForeground))
@@ -77,9 +102,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			pBuilder.WithDataItem(v1alpha1.AzureJsonKey, "{}")
 			Skip("not yet supported for azure")
 		} else if testDNSProvider == provider.DNSProviderCoreDNS.String() {
-			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantCoreDNS))
-			pBuilder.WithDataItem("ZONES", "wrong.me")
-			Skip("not yet supported for coredns")
+			Skip("not relevant for coredns")
 		} else if testDNSProvider == provider.DNSProviderEndpoint.String() {
 			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantEndpoint))
 			pBuilder.WithDataItem("ZONES", "wrong.me")
@@ -168,11 +191,33 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		err := k8sClient.Create(ctx, dnsRecord)
 		Expect(err).ToNot(HaveOccurred())
 
-		By("checking " + dnsRecord.Name + " is not ready and has the expected provider error in the status")
+		targetRecord := dnsRecord
+		if delegationEnabled {
+			By("[delegation] checking dnsrecord " + dnsRecord.Name + " becomes ready")
+			Eventually(func(g Gomega, ctx context.Context) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status": Equal(metav1.ConditionTrue),
+					})),
+				)
+			}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
+
+			authRecord = testBuildAuthoritativeDNSRecord(dnsRecord)
+			By("[delegation] delegating " + dnsRecord.Name + " to " + authRecord.Name)
+			By("[delegation] switching target record to " + authRecord.Name)
+			By("[delegation] updates will be made to " + dnsRecord.Name)
+			By("[delegation] assertions will be made against " + authRecord.Name)
+			targetRecord = authRecord
+		}
+
+		By("checking " + targetRecord.Name + " is not ready and has the expected provider error in the status")
 		Eventually(func(g Gomega, ctx context.Context) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(targetRecord), targetRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.Conditions).To(
+			g.Expect(targetRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":  Equal(metav1.ConditionFalse),
@@ -181,15 +226,15 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			)
 		}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
 
-		By("checking dnsrecord " + dnsRecord.Name + " is not being updated repeatedly")
+		By("checking dnsrecord " + targetRecord.Name + " is not being updated repeatedly")
 		tmpRecord := &v1alpha1.DNSRecord{}
-		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), tmpRecord)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(targetRecord), tmpRecord)).To(Succeed())
 		Consistently(func(g Gomega, ctx context.Context) {
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
-			g.Expect(dnsRecord.ResourceVersion).To(Equal(tmpRecord.ResourceVersion))
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(targetRecord), targetRecord)).To(Succeed())
+			g.Expect(targetRecord.ResourceVersion).To(Equal(tmpRecord.ResourceVersion))
 		}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
 
-		By("updating dnsrecord " + dnsRecord.Name + " with valid geo endpoint")
+		By("updating dnsrecord " + targetRecord.Name + " with valid geo endpoint")
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -206,11 +251,11 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 
 		// TODO dig is failing in the local test setup so not getting a response from the configured nameserver
 
-		By("checking dnsrecord " + dnsRecord.Name + " no longer has provider error")
+		By("checking dnsrecord " + targetRecord.Name + " no longer has provider error")
 		Eventually(func(g Gomega, ctx context.Context) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(targetRecord), targetRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.Conditions).To(
+			g.Expect(targetRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type": Equal(string(v1alpha1.ConditionTypeReady)),
 					// Since this is an e2e test we have no idea how long it might take to become ready, so we can only really
@@ -266,11 +311,33 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		err := k8sClient.Create(ctx, dnsRecord)
 		Expect(err).ToNot(HaveOccurred())
 
-		By("checking " + dnsRecord.Name + " is not ready and has the expected provider error in the status")
+		targetRecord := dnsRecord
+		if delegationEnabled {
+			By("[delegation] checking dnsrecord " + dnsRecord.Name + " becomes ready")
+			Eventually(func(g Gomega, ctx context.Context) {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(dnsRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status": Equal(metav1.ConditionTrue),
+					})),
+				)
+			}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
+
+			authRecord = testBuildAuthoritativeDNSRecord(dnsRecord)
+			By("[delegation] delegating " + dnsRecord.Name + " to " + authRecord.Name)
+			By("[delegation] switching target record to " + authRecord.Name)
+			By("[delegation] updates will be made to " + dnsRecord.Name)
+			By("[delegation] assertions will be made against " + authRecord.Name)
+			targetRecord = authRecord
+		}
+
+		By("checking " + targetRecord.Name + " is not ready and has the expected provider error in the status")
 		Eventually(func(g Gomega, ctx context.Context) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(targetRecord), targetRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.Conditions).To(
+			g.Expect(targetRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
 					"Status":  Equal(metav1.ConditionFalse),
@@ -279,12 +346,12 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			)
 		}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
 
-		By("checking dnsrecord " + dnsRecord.Name + " is not being updated repeatedly")
+		By("checking dnsrecord " + targetRecord.Name + " is not being updated repeatedly")
 		tmpRecord := &v1alpha1.DNSRecord{}
-		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), tmpRecord)).To(Succeed())
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(targetRecord), tmpRecord)).To(Succeed())
 		Consistently(func(g Gomega, ctx context.Context) {
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)).To(Succeed())
-			g.Expect(dnsRecord.ResourceVersion).To(Equal(tmpRecord.ResourceVersion))
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(targetRecord), targetRecord)).To(Succeed())
+			g.Expect(targetRecord.ResourceVersion).To(Equal(tmpRecord.ResourceVersion))
 		}, 10*time.Second, time.Second, ctx).Should(Succeed())
 
 		By("updating dnsrecord " + dnsRecord.Name + " with valid weight endpoint")
@@ -302,11 +369,11 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			g.Expect(err).NotTo(HaveOccurred())
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
-		By("checking dnsrecord " + dnsRecord.Name + " no longer has provider error")
+		By("checking dnsrecord " + targetRecord.Name + " no longer has provider error")
 		Eventually(func(g Gomega, ctx context.Context) {
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(targetRecord), targetRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.Conditions).To(
+			g.Expect(targetRecord.Status.Conditions).To(
 				ContainElement(MatchFields(IgnoreExtras, Fields{
 					"Type": Equal(string(v1alpha1.ConditionTypeReady)),
 					// Since this is an e2e test we have no idea how long it might take to become ready, so we can only really
@@ -317,7 +384,6 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 		}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
 
 	})
-
 })
 
 // testBuildDNSRecord creates a valid dnsrecord with a single valid endpoint
@@ -343,6 +409,15 @@ func testBuildDNSRecord(name, ns, dnsProviderSecretName, ownerID, rootHost strin
 					RecordTTL:  60,
 				},
 			},
+		},
+	}
+}
+
+func testBuildAuthoritativeDNSRecord(record *v1alpha1.DNSRecord) *v1alpha1.DNSRecord {
+	return &v1alpha1.DNSRecord{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("authoritative-record-%s", common.HashRootHost(record.GetRootHost())),
+			Namespace: record.GetNamespace(),
 		},
 	}
 }

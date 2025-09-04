@@ -71,6 +71,7 @@ var (
 	recordsRemovedMaxDuration time.Duration
 
 	txtRegistryEnabled = true
+	delegationEnabled  = false
 )
 
 // testCluster represents a cluster under test and contains a reference to a configured k8client and all it's dns provider secrets.
@@ -137,8 +138,9 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	}
 
 	if testDNSProvider == provider.DNSProviderCoreDNS.String() {
-		txtRegistryEnabled = false
-		//CoreDNS does not support creating multiple records with a common dnsName targeting the same CoreDNS instance currently.
+		// The use of delegation is implicit with the CoreDNS provider
+		delegationEnabled = true
+		//ToDo CoreDNS does support multiple records but the tests need updated, when they are this can be removed!!
 		Expect(testConcurrentRecords).To(Equal(1))
 	}
 
