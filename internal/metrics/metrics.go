@@ -1,10 +1,15 @@
 package metrics
 
 import (
+	"context"
 	"errors"
 
+	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -56,7 +61,121 @@ var (
 			Help: "Reports the ready state of the dns record. 0 - not ready or deleted, 1 - ready. It also provides some metadata of the record in question",
 		},
 		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordRootHost, dnsRecordDelegating})
+	activeCluster = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "dns_provider_active_multi_cluster_count",
+			Help: "Reports the number of secrets configured for multi cluster configuration",
+		},
+		[]string{})
+	remoteRecords = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "dns_provider_remote_records",
+			Help: "Reports the delegated dns records on a remote cluster",
+		},
+		[]string{"cluster"})
+	remoteRecordReconcile = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "dns_provider_remote_record_reconcile_count",
+			Help: "Reports the reconcile count for a remote DNSRecord",
+		},
+		[]string{"cluster", dnsRecordNameLabel, dnsRecordNamespaceLabel})
 )
+
+func NewRemoteRecordReconcileMetric(name, namespace, cluster string) remoteRecordReconcileMetric {
+	return remoteRecordReconcileMetric{
+		name:      name,
+		namespace: namespace,
+		cluster:   cluster,
+	}
+}
+
+type remoteRecordReconcileMetric struct {
+	name      string
+	namespace string
+	cluster   string
+}
+
+func (m *remoteRecordReconcileMetric) Publish() {
+	remoteRecordReconcile.WithLabelValues(m.cluster, m.name, m.namespace).Inc()
+}
+
+func NewRemoteRecordsMetric(ctx context.Context, cl client.Client, logger logr.Logger, cluster string) remoteRecordsMetric {
+	return remoteRecordsMetric{
+		ctx:     ctx,
+		client:  cl,
+		logger:  logger,
+		cluster: cluster,
+	}
+}
+
+type remoteRecordsMetric struct {
+	ctx     context.Context
+	client  client.Client
+	logger  logr.Logger
+	cluster string
+}
+
+func (m *remoteRecordsMetric) Publish() {
+
+	listOptions := &client.ListOptions{}
+	dnsRecordList := &v1alpha1.DNSRecordList{}
+
+	err := m.client.List(m.ctx, dnsRecordList, listOptions)
+	if err != nil {
+		m.logger.Error(err, "unable to get list of dnsRecords on secondary cluster, metric can not be published")
+		return
+	}
+
+	count := float64(0)
+	for _, record := range dnsRecordList.Items {
+		if record.IsDelegating() {
+			count += 1
+		}
+	}
+
+	remoteRecords.WithLabelValues(m.cluster).Set(count)
+}
+
+func NewActiveClustersMetric(ctx context.Context, cl client.Client, logger logr.Logger, ns string, label string) activeClusterMetric {
+	return activeClusterMetric{
+		ctx:       ctx,
+		client:    cl,
+		logger:    logger,
+		namespace: ns,
+		label:     label,
+	}
+}
+
+type activeClusterMetric struct {
+	ctx       context.Context
+	client    client.Client
+	logger    logr.Logger
+	namespace string
+	label     string
+}
+
+func (m *activeClusterMetric) Publish() {
+
+	labelSelector := labels.SelectorFromSet(labels.Set{
+		m.label: "true",
+	})
+
+	listOptions := &client.ListOptions{
+		Namespace:     m.namespace,
+		LabelSelector: labelSelector,
+	}
+
+	secretList := &corev1.SecretList{}
+
+	err := m.client.List(m.ctx, secretList, listOptions)
+	if err != nil {
+		m.logger.Error(err, "unable to get list of secrets used for multi cluster setup, metric can not be published")
+		return
+	}
+
+	secretCount := float64(len(secretList.Items))
+	activeCluster.WithLabelValues().Set(secretCount)
+}
 
 func NewAuthoritativeRecordSpecInfoMetric(dnsRecord *v1alpha1.DNSRecord) (*authoritativeRecordSpecInfoMetric, error) {
 	if dnsRecord == nil {
@@ -105,4 +224,7 @@ func init() {
 	metrics.Registry.MustRegister(ProbeCounter)
 	metrics.Registry.MustRegister(RecordReady)
 	metrics.Registry.MustRegister(authoritativeRecordSpecInfo)
+	metrics.Registry.MustRegister(activeCluster)
+	metrics.Registry.MustRegister(remoteRecords)
+	metrics.Registry.MustRegister(remoteRecordReconcile)
 }
