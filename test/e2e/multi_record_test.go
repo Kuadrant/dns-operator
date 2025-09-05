@@ -93,14 +93,34 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				client.PropagationPolicy(metav1.DeletePropagationForeground))
 			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 		}
-
 		By("checking all dns records are removed")
 		Eventually(func(g Gomega, ctx context.Context) {
 			for _, tr := range testRecords {
 				err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(tr.record), tr.record)
 				g.Expect(err).To(MatchError(ContainSubstring("not found")))
 			}
-		}, time.Minute, 10*time.Second, ctx).Should(Succeed())
+		}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
+
+		if delegationEnabled {
+			//ToDo mnairn: Figure out a better way of cleaning up authoritative records created by the test suite
+			// Ideally one that can be added to an AfterEach in the suite and applied to all tests
+			By("[delegation] ensuring all authoritative records are deleted")
+			for _, tr := range testRecords {
+				authRecord := testBuildAuthoritativeDNSRecord(tr.record)
+				By("[delegation] removing authoritative record " + authRecord.Name)
+				err := tr.cluster.k8sClient.Delete(ctx, authRecord,
+					client.PropagationPolicy(metav1.DeletePropagationForeground))
+				Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+			}
+			By("[delegation] checking all authoritative records are removed")
+			Eventually(func(g Gomega, ctx context.Context) {
+				for _, tr := range testRecords {
+					authRecord := testBuildAuthoritativeDNSRecord(tr.record)
+					err := tr.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
+					g.Expect(err).To(MatchError(ContainSubstring("not found")))
+				}
+			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
+		}
 
 		if testDNSProvider == string(provider.DNSProviderEndpoint) {
 			zoneRecord := &v1alpha1.DNSRecord{
@@ -189,7 +209,11 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
-					g.Expect(tr.record.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", testDNSProvider))
+					expectedProvider := testDNSProvider
+					if delegationEnabled {
+						expectedProvider = "endpoint"
+					}
+					g.Expect(tr.record.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", expectedProvider))
 					allOwners = append(allOwners, tr.record.GetUIDHash())
 					allTargetIps = append(allTargetIps, tr.config.testTargetIP)
 					if txtRegistryEnabled {
@@ -288,7 +312,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				err := recordToDelete.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(recordToDelete.record), recordToDelete.record)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err).To(MatchError(ContainSubstring("not found")))
-			}, recordsRemovedMaxDuration, 5*time.Second, ctx).Should(Succeed())
+			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
 			GinkgoWriter.Printf("[debug] record removed in %v\n", time.Since(checkStarted))
 
 			By("checking provider zone records are updated as expected")
@@ -377,6 +401,24 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(zoneEndpoints).To(HaveLen(0))
 			}, 5*time.Second, time.Second, ctx).Should(Succeed())
+
+			//We have to delete any authoritative record here if it was the last record as the cleanup in AfterEach won't be able to.
+			if delegationEnabled && lastRecord {
+				authRecord := testBuildAuthoritativeDNSRecord(recordToDelete.record)
+				By(fmt.Sprintf("[delegation] deleting authoritative record [name: `%s` namespace: `%s`] is removed within %s", authRecord.Name, authRecord.Namespace, recordsRemovedMaxDuration))
+				err := recordToDelete.cluster.k8sClient.Delete(ctx, authRecord,
+					client.PropagationPolicy(metav1.DeletePropagationForeground))
+				Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+
+				By(fmt.Sprintf("[delegation] checking authoritative record [name: `%s` namespace: `%s`] is removed within %s", authRecord.Name, authRecord.Namespace, recordsRemovedMaxDuration))
+				checkStarted = time.Now()
+				Eventually(func(g Gomega, ctx context.Context) {
+					err := recordToDelete.cluster.k8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
+					g.Expect(err).To(HaveOccurred())
+					g.Expect(err).To(MatchError(ContainSubstring("not found")))
+				}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
+				GinkgoWriter.Printf("[debug] authoritative record removed in %v\n", time.Since(checkStarted))
+			}
 		})
 	})
 
@@ -518,7 +560,11 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Status": Equal(metav1.ConditionTrue),
 						})),
 					)
-					g.Expect(tr.record.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", testDNSProvider))
+					expectedProvider := testDNSProvider
+					if delegationEnabled {
+						expectedProvider = "endpoint"
+					}
+					g.Expect(tr.record.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", expectedProvider))
 					allOwners = append(allOwners, tr.record.GetUIDHash())
 					if txtRegistryEnabled {
 						g.Expect(tr.record.Status.DomainOwners).NotTo(BeEmpty())
@@ -595,16 +641,8 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				expectedEndpointsLen += len(testRecords)
 				// "TXT endpoint per cluster A and CNAME endpoints"
 				expectedEndpointsLen += len(testRecords) * 2
-
-			} else if testDNSProvider == provider.DNSProviderCoreDNS.String() {
-				//### Target endpoints ###
-
-				expectedEndpointsLen = 1 + len(testGeoRecords) + (len(testRecords) * 2)
-
-				//### Registry endpoints ###
-
-				//None
-			} else if testDNSProvider == string(provider.DNSProviderEndpoint) {
+			} else {
+				// Default to number of endpoints added in total
 				expectedEndpointsLen = 2 + len(testGeoRecords) + len(testRecords)
 			}
 
@@ -659,9 +697,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 			}
 
 			By("[Geo] checking geo endpoints")
-
 			if testDNSProvider == provider.DNSProviderAzure.String() {
-
 				defaultTarget := FindDefaultTarget(zoneEndpoints)
 				// A CNAME record for klbHostName should always exist, be owned by all endpoints and target all geo hostnames
 				klbHostName := testRecords[0].config.hostnames.klb
@@ -804,33 +840,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				}))))
 				totalEndpointsChecked++
 			}
-			if testDNSProvider == provider.DNSProviderCoreDNS.String() {
-				// A CNAME record for klbHostName should exist for each geo with a setIdentifier of "default" on the default
-				klbHostName := testRecords[0].config.hostnames.klb
-				for geoCode, geoRecords := range testGeoRecords {
-					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
-					defaultGeoCode := testRecords[0].config.testDefaultGeoCode
-
-					By("[Geo] checking " + klbHostName + " -> " + geoCode + " -> " + geoKlbHostName + " - endpoint")
-
-					setIdentifier := ""
-					if defaultGeoCode == geoCode {
-						setIdentifier = "default"
-					}
-
-					Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
-						"DNSName":       Equal(klbHostName),
-						"Targets":       ConsistOf(geoKlbHostName),
-						"RecordType":    Equal("CNAME"),
-						"SetIdentifier": Equal(setIdentifier),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
-						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
-							{Name: "geo-code", Value: geoCode},
-						}),
-					}))))
-					totalEndpointsChecked++
-				}
-			}
 
 			By("[Weight] checking weighted endpoints")
 			if testDNSProvider == provider.DNSProviderAzure.String() {
@@ -937,27 +946,6 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"SetIdentifier": Equal(clusterKlbHostName),
 							"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 								{Name: "aws/weight", Value: "200"},
-							}),
-						}))))
-						totalEndpointsChecked++
-					}
-				}
-			}
-			if testDNSProvider == provider.DNSProviderCoreDNS.String() {
-				// A weighted CNAME record should exist for each dns record in each geo
-				for _, geoRecords := range testGeoRecords {
-					geoKlbHostName := geoRecords[0].config.hostnames.geoKlb
-					for i := range geoRecords {
-						clusterKlbHostName := geoRecords[i].config.hostnames.clusterKlb
-						By("[Weight] checking " + geoKlbHostName + " -> " + clusterKlbHostName + " - endpoint")
-						Expect(zoneEndpoints).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
-							"DNSName":       Equal(geoKlbHostName),
-							"Targets":       ConsistOf(clusterKlbHostName),
-							"RecordType":    Equal("CNAME"),
-							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
-							"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
-								{Name: "weight", Value: "200"},
 							}),
 						}))))
 						totalEndpointsChecked++

@@ -16,7 +16,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
-	"github.com/kuadrant/dns-operator/internal/common"
 )
 
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
@@ -70,6 +69,7 @@ type factory struct {
 	client.Client
 	dynamicClient dynamic.Interface
 	providers     []string
+	DelegationHandler
 }
 
 // NewFactory returns a new provider factory with the given client and given providers enabled.
@@ -82,62 +82,75 @@ func NewFactory(c client.Client, d dynamic.Interface, p []string) (Factory, erro
 			err = errors.Join(err, fmt.Errorf("provider '%s' not registered", provider))
 		}
 	}
-	return &factory{Client: c, dynamicClient: d, providers: p}, err
+	return &factory{Client: c, dynamicClient: d, providers: p, DelegationHandler: DNSRecordDelegationHandler{Client: c}}, err
 }
 
-// ProviderFor will return a Provider interface for the given ProviderAccessor secret.
-// If the ProviderAccessor is delegating an in memory endpoint provider secret is returned with configuration appropriate for delegation of that resource.
-// If the requested ProviderAccessor is not delegating, and the secret does not exist in the resource namespace, an error will be returned.
+// ProviderFor will return a Provider instance for the given ProviderAccessor(e.g. DNSRecord).
+// If the resource is delegating an in memory endpoint provider secret is returned with configuration appropriate for delegation of that resource.
+// If the resource is not delegating, and the secret does not exist in the resource namespace, an error will be returned.
 func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor, c Config) (Provider, error) {
-	logger := log.FromContext(ctx)
-
 	var providerSecret *v1.Secret
-	if pa.IsDelegating() {
-		providerSecret = &v1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      pa.GetProviderRef().Name,
-				Namespace: pa.GetNamespace(),
-			},
-			Type: v1alpha1.SecretTypeKuadrantEndpoint,
-			Data: map[string][]byte{
-				v1alpha1.EndpointLabelSelectorKey: []byte(fmt.Sprintf("%s=true, %s=%s", v1alpha1.AuthoritativeRecordLabel, v1alpha1.AuthoritativeRecordHashLabel, common.HashRootHost(pa.GetRootHost()))),
-			},
-		}
-	} else {
+	isDelegating := pa.IsDelegating()
+	if !isDelegating {
 		providerSecret = &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      pa.GetProviderRef().Name,
 				Namespace: pa.GetNamespace(),
 			}}
-
 		if err := f.Client.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret); err != nil {
 			return nil, err
 		}
 	}
 
-	provider, err := NameForProviderSecret(providerSecret)
+	//delegate to the endpoint provider if we have no provider secret or the current provider requires delegation for the current record
+	if providerSecret == nil || requiresDelegation(providerSecret, pa) {
+		isDelegating = true
+		providerSecret = f.DelegationHandler.AuthoritativeRecordProviderSecret(pa)
+	}
+
+	provider, err := f.providerForSecret(ctx, providerSecret, c)
+	if err != nil {
+		return nil, err
+	}
+
+	//If we are delegating, adapt the provider to ensure the authoritative record is always created as required.
+	if isDelegating {
+		provider = f.DelegationHandler.AdaptAuthoritativeRecordProvider(provider, pa)
+	}
+
+	return provider, nil
+}
+
+func (f *factory) providerForSecret(ctx context.Context, pSecret *v1.Secret, pConfig Config) (Provider, error) {
+	logger := log.FromContext(ctx)
+
+	providerName, err := NameForProviderSecret(pSecret)
 	if err != nil {
 		return nil, err
 	}
 
 	constructorsLock.RLock()
 	defer constructorsLock.RUnlock()
-	if constructor, ok := constructors[provider]; ok {
-		if !slices.Contains(f.providers, provider) {
-			return nil, fmt.Errorf("provider '%s' not enabled", provider)
+
+	if constructor, ok := constructors[providerName]; ok {
+		if !slices.Contains(f.providers, providerName) {
+			return nil, fmt.Errorf("provider '%s' not enabled", providerName)
 		}
-		logger.V(1).Info(fmt.Sprintf("initializing %s provider with config", provider), "config", c)
+		logger.V(1).Info(fmt.Sprintf("initializing %s provider with config", providerName), "config", pConfig)
 		switch typedConstructor := constructor.(type) {
 		case ProviderConstructor:
-			return typedConstructor(ctx, providerSecret, c)
+			return typedConstructor(ctx, pSecret, pConfig)
 		case ProviderConstructorWithClient:
-			return typedConstructor(ctx, f.dynamicClient, providerSecret, c)
+			return typedConstructor(ctx, f.dynamicClient, pSecret, pConfig)
 		}
-
-		return nil, fmt.Errorf("unrecognised contructor for provider '%s'", provider)
+		return nil, fmt.Errorf("unrecognised contructor for provider '%s'", providerName)
 	}
+	return nil, fmt.Errorf("providerName '%s' not registered", providerName)
+}
 
-	return nil, fmt.Errorf("provider '%s' not registered", provider)
+// requiresDelegation return true if the given provider requires delegation be enforced for the given resource(DNSRecord)
+func requiresDelegation(s *v1.Secret, pa v1alpha1.ProviderAccessor) bool {
+	return s.Type == v1alpha1.SecretTypeKuadrantCoreDNS && !pa.IsAuthoritativeRecord()
 }
 
 func NameForProviderSecret(secret *v1.Secret) (string, error) {

@@ -12,6 +12,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/plan"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 )
 
@@ -34,9 +35,6 @@ var (
 	DNSProviderLabel = "kuadrant.io/dns-provider-name"
 
 	CoreDNSRecordZoneLabel = "kuadrant.io/coredns-zone-name"
-	CoreDNSRecordTypeLabel = "kuadrant.io/type"
-
-	KuadrantTLD = "kdrnt"
 )
 
 func (dp DNSProviderName) String() string {
@@ -159,4 +157,50 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone, denyApex boo
 	}
 
 	return findDNSZoneForHost(originalHost, parentDomain, zones, denyApex)
+}
+
+var _ Provider = &wrappedProvider{}
+
+type wrappedProvider struct {
+	wrappedProvider Provider
+}
+
+func NewWrappedProvider(wProvider Provider) Provider {
+	return wrappedProvider{wProvider}
+}
+
+func (p wrappedProvider) Records(ctx context.Context) ([]*externaldnsendpoint.Endpoint, error) {
+	return p.wrappedProvider.Records(ctx)
+}
+
+func (p wrappedProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
+	return p.wrappedProvider.ApplyChanges(ctx, changes)
+}
+
+func (p wrappedProvider) AdjustEndpoints(endpoints []*externaldnsendpoint.Endpoint) ([]*externaldnsendpoint.Endpoint, error) {
+	return p.wrappedProvider.AdjustEndpoints(endpoints)
+}
+
+func (p wrappedProvider) GetDomainFilter() externaldnsendpoint.DomainFilter {
+	return p.wrappedProvider.GetDomainFilter()
+}
+
+func (p wrappedProvider) DNSZones(ctx context.Context) ([]DNSZone, error) {
+	return p.wrappedProvider.DNSZones(ctx)
+}
+
+func (p wrappedProvider) DNSZoneForHost(ctx context.Context, host string) (*DNSZone, error) {
+	return p.wrappedProvider.DNSZoneForHost(ctx, host)
+}
+
+func (p wrappedProvider) ProviderSpecific() ProviderSpecificLabels {
+	return p.wrappedProvider.ProviderSpecific()
+}
+
+func (p wrappedProvider) Name() DNSProviderName {
+	return p.wrappedProvider.Name()
+}
+
+func (p wrappedProvider) Labels() map[string]string {
+	return p.wrappedProvider.Labels()
 }
