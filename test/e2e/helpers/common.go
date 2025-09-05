@@ -24,6 +24,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/provider"
+	ep "github.com/kuadrant/dns-operator/internal/provider/endpoint"
 )
 
 const (
@@ -105,7 +106,7 @@ func EndpointsForHost(ctx context.Context, p provider.Provider, host string) ([]
 }
 
 func ProviderForDNSRecord(ctx context.Context, record *v1alpha1.DNSRecord, c client.Client, d dynamic.Interface) (provider.Provider, error) {
-	providerFactory, err := provider.NewFactory(c, d, []string{provider.DNSProviderAWS.String(), provider.DNSProviderGCP.String(), provider.DNSProviderAzure.String(), provider.DNSProviderCoreDNS.String(), string(provider.DNSProviderEndpoint)})
+	providerFactory, err := provider.NewFactory(c, d, []string{provider.DNSProviderAWS.String(), provider.DNSProviderGCP.String(), provider.DNSProviderAzure.String(), provider.DNSProviderCoreDNS.String(), string(provider.DNSProviderEndpoint)}, ep.NewAuthoritativeDNSRecordProvider)
 	if err != nil {
 		return nil, err
 	}

@@ -52,6 +52,7 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/endpoint"
+	ep "github.com/kuadrant/dns-operator/internal/provider/endpoint"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
 	//+kubebuilder:scaffold:imports
@@ -236,7 +237,7 @@ func setupEnv(delegationRole string) (*envtest.Environment, ctrl.Manager) {
 	}
 	Expect(mgr).ToNot(BeNil())
 
-	providerFactory, err := provider.NewFactory(mgr.GetClient(), dynClient, []string{provider.DNSProviderInMem.String(), provider.DNSProviderEndpoint.String()})
+	providerFactory, err := provider.NewFactory(mgr.GetClient(), dynClient, []string{provider.DNSProviderInMem.String(), provider.DNSProviderEndpoint.String()}, ep.NewAuthoritativeDNSRecordProvider)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(providerFactory).ToNot(BeNil())
 

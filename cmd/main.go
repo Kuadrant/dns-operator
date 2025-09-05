@@ -47,7 +47,7 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/coredns"
-	_ "github.com/kuadrant/dns-operator/internal/provider/endpoint"
+	ep "github.com/kuadrant/dns-operator/internal/provider/endpoint"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
 	//+kubebuilder:scaffold:imports
@@ -225,7 +225,7 @@ func main() {
 	}
 
 	setupLog.Info("init provider factory", "providers", providers)
-	providerFactory, err := provider.NewFactory(mgr.GetClient(), dynamicClient, providers)
+	providerFactory, err := provider.NewFactory(mgr.GetClient(), dynamicClient, providers, ep.NewAuthoritativeDNSRecordProvider)
 	if err != nil {
 		setupLog.Error(err, "unable to create provider factory")
 		os.Exit(1)
