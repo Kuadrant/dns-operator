@@ -33,12 +33,12 @@ func (r *DNSRecordDelegationHelper) EnsureAuthoritativeRecord(ctx context.Contex
 func (r *DNSRecordDelegationHelper) getAuthoritativeRecordFor(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
 	aRecords := v1alpha1.DNSRecordList{}
 
-	labelSelector, err := labels.Parse(fmt.Sprintf("%s=true, %s=%s", v1alpha1.AuthoritativeRecordLabel, v1alpha1.AuthoritativeRecordHashLabel, common.HashRootHost(record.Spec.RootHost)))
+	labelSelector, err := labels.Parse(fmt.Sprintf("%s=true, %s=%s", v1alpha1.AuthoritativeRecordLabel, v1alpha1.AuthoritativeRecordHashLabel, common.HashRootHost(record.GetRootHost())))
 	if err != nil {
 		return nil, err
 	}
 
-	if err := r.Client.List(ctx, &aRecords, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
+	if err = r.Client.List(ctx, &aRecords, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
 		return nil, fmt.Errorf("failed to get authoritative record: %w", err)
 	}
 
@@ -60,7 +60,7 @@ func (r *DNSRecordDelegationHelper) createAuthoritativeRecordFor(ctx context.Con
 }
 
 func authoritativeRecordFor(rec v1alpha1.DNSRecord) *v1alpha1.DNSRecord {
-	rootHostHash := common.HashRootHost(rec.Spec.RootHost)
+	rootHostHash := common.HashRootHost(rec.GetRootHost())
 	return &v1alpha1.DNSRecord{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      toAuthoritativeRecordName(rootHostHash),
@@ -71,7 +71,7 @@ func authoritativeRecordFor(rec v1alpha1.DNSRecord) *v1alpha1.DNSRecord {
 			},
 		},
 		Spec: v1alpha1.DNSRecordSpec{
-			RootHost: rec.Spec.RootHost,
+			RootHost: rec.GetRootHost(),
 		},
 	}
 }

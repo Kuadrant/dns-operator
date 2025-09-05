@@ -243,9 +243,7 @@ const (
 const WildcardPrefix = "*."
 
 func (s *DNSRecord) Validate() error {
-	root := s.Spec.RootHost
-
-	root, _ = strings.CutPrefix(root, WildcardPrefix)
+	root := s.GetRootHost()
 
 	rootEndpointFound := false
 	for _, ep := range s.Spec.Endpoints {
@@ -268,15 +266,9 @@ func (s *DNSRecord) Validate() error {
 	return nil
 }
 
-var _ ProviderAccessor = &DNSRecord{}
-
 // GetUIDHash returns a hash of the current records UID with a fixed length of 8.
 func (s *DNSRecord) GetUIDHash() string {
 	return hash.ToBase36HashLen(string(s.GetUID()), 8)
-}
-
-func (s *DNSRecord) GetProviderRef() ProviderRef {
-	return s.Status.ProviderRef
 }
 
 func (s *DNSRecord) HasDNSZoneAssigned() bool {
@@ -287,10 +279,8 @@ func (s *DNSRecord) HasOwnerIDAssigned() bool {
 	return s.Status.OwnerID != ""
 }
 
-func (s *DNSRecord) HasProviderSecretAssigned() bool { return s.Status.ProviderRef.Name != "" }
-
-func (s *DNSRecord) IsDelegating() bool {
-	return s.Spec.Delegate
+func (s *DNSRecord) HasProviderSecretAssigned() bool {
+	return s.Status.ProviderRef.Name != ""
 }
 
 func (s *DNSRecord) IsAuthoritativeRecord() bool {
@@ -298,14 +288,30 @@ func (s *DNSRecord) IsAuthoritativeRecord() bool {
 	return okay
 }
 
+func (s *DNSRecord) IsDeleting() bool {
+	return s.DeletionTimestamp != nil && !s.DeletionTimestamp.IsZero()
+}
+
+// ProviderAccessor impl
+
+var _ ProviderAccessor = &DNSRecord{}
+
+func (s *DNSRecord) GetProviderRef() ProviderRef {
+	return s.Status.ProviderRef
+}
+
+// GetRootHost returns the root host for the current record.
+//
+// Removes any wildcard prefix i.e. "*." that might exist. Access the spec directly if the raw value is required i.e. spec.RootHost
 func (s *DNSRecord) GetRootHost() string {
-	return s.Spec.RootHost
+	rootHost, _ := strings.CutPrefix(s.Spec.RootHost, WildcardPrefix)
+	return rootHost
+}
+
+func (s *DNSRecord) IsDelegating() bool {
+	return s.Spec.Delegate
 }
 
 func init() {
 	SchemeBuilder.Register(&DNSRecord{}, &DNSRecordList{})
-}
-
-func (s *DNSRecord) IsDeleting() bool {
-	return s.DeletionTimestamp != nil && !s.DeletionTimestamp.IsZero()
 }
