@@ -240,6 +240,113 @@ var _ = Describe("DNSRecordReconciler", func() {
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 		})
 
+		// The wildcard prefix "*." should be removed for any authoritative record being generated for a delegating record with a wildcard root host.
+		// delegatingRecord.Spec.RootHost=*.foo.example.com -> authoritativeRecord.Spec.RootHost=foo.example.com
+		It("should handle wildcard root hosts for delegating records", Labels{"primary"}, func(ctx SpecContext) {
+			var authRecord *v1alpha1.DNSRecord
+
+			testWildcardHostname := "*." + testHostname
+			testFooHostname := "foo." + testHostname
+
+			primaryDNSRecord = &v1alpha1.DNSRecord{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testHostname,
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.DNSRecordSpec{
+					RootHost: testWildcardHostname,
+					Endpoints: []*externaldnsendpoint.Endpoint{
+						{
+							DNSName:          testWildcardHostname,
+							Targets:          []string{"127.0.0.1"},
+							RecordType:       "A",
+							RecordTTL:        60,
+							Labels:           nil,
+							ProviderSpecific: nil,
+						},
+						{
+							DNSName:          testFooHostname,
+							Targets:          []string{"127.0.0.2"},
+							RecordType:       "A",
+							RecordTTL:        60,
+							Labels:           nil,
+							ProviderSpecific: nil,
+						},
+					},
+					Delegate: true,
+				},
+			}
+
+			By("creating delegating dnsrecord on the primary")
+			Expect(primaryK8sClient.Create(ctx, primaryDNSRecord)).To(Succeed())
+
+			By("verifying the status of the primary record")
+			Eventually(func(g Gomega) {
+				// Find the record
+				g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(primaryDNSRecord), primaryDNSRecord)).To(Succeed())
+				// Verify the expected state of the record
+				g.Expect(primaryDNSRecord.Status.Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"Message":            Equal("Provider ensured the dns record"),
+						"ObservedGeneration": Equal(primaryDNSRecord.Generation),
+					})),
+				)
+				g.Expect(primaryDNSRecord.IsDelegating()).To(BeTrue())
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			By("verifying the authoritative record exists with the correct root host and endpoints")
+			Eventually(func(g Gomega) {
+				// Find the authoritative record
+				authRecords := &v1alpha1.DNSRecordList{}
+				g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.AuthoritativeRecordLabel: "true", v1alpha1.AuthoritativeRecordHashLabel: common.HashRootHost(primaryDNSRecord.GetRootHost())})).To(Succeed())
+				g.Expect(authRecords.Items).To(HaveLen(1))
+				authRecord = &authRecords.Items[0]
+
+				// Verify the expected state of the authoritative record
+				g.Expect(authRecord.Name).To(Equal(fmt.Sprintf("authoritative-record-%s", common.HashRootHost(primaryDNSRecord.GetRootHost()))))
+				g.Expect(authRecord.IsDelegating()).To(BeFalse())
+				g.Expect(authRecord.Spec.RootHost).To(Equal(primaryDNSRecord.GetRootHost()))
+				// Auth record Spec.RootHost should not contain the wildcard prefix
+				g.Expect(authRecord.Spec.RootHost).ToNot(HavePrefix("*."))
+				// authoritative record should contain the expected endpoints
+				g.Expect(authRecord.Spec.Endpoints).To(HaveLen(4))
+				g.Expect(authRecord.Spec.Endpoints).To(ContainElements(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":    Equal(testWildcardHostname),
+						"Targets":    ConsistOf("127.0.0.1"),
+						"RecordType": Equal("A"),
+						"RecordTTL":  Equal(externaldnsendpoint.TTL(60)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":    Equal(testFooHostname),
+						"Targets":    ConsistOf("127.0.0.2"),
+						"RecordType": Equal("A"),
+						"RecordTTL":  Equal(externaldnsendpoint.TTL(60)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":    HaveSuffix("wildcard." + testHostname),
+						"Targets":    ConsistOf("\"heritage=external-dns,external-dns/owner=" + primaryDNSRecord.Status.OwnerID + ",external-dns/version=1\""),
+						"RecordType": Equal("TXT"),
+						"RecordTTL":  Equal(externaldnsendpoint.TTL(0)),
+					})),
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":    HaveSuffix("foo." + testHostname),
+						"Targets":    ConsistOf("\"heritage=external-dns,external-dns/owner=" + primaryDNSRecord.Status.OwnerID + ",external-dns/version=1\""),
+						"RecordType": Equal("TXT"),
+						"RecordTTL":  Equal(externaldnsendpoint.TTL(0)),
+					})),
+				))
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			By("verifying the primary record status references the authoritative record")
+			// Verify record status has authoritative record referenced
+			Expect(primaryDNSRecord.Status.ZoneID).To(Equal(authRecord.Name))
+			Expect(primaryDNSRecord.Status.ZoneDomainName).To(Equal(authRecord.Spec.RootHost))
+		})
+
 		Context("with secondary", Labels{"multicluster"}, func() {
 			var (
 				secondaryDNSRecord     *v1alpha1.DNSRecord

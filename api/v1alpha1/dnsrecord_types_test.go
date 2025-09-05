@@ -73,3 +73,34 @@ func TestValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestDNSRecord_GetRootHost(t *testing.T) {
+	tests := []struct {
+		name     string
+		rootHost string
+		want     string
+	}{
+		{
+			name:     "returns spec.RootHost",
+			rootHost: "example.com",
+			want:     "example.com",
+		},
+		{
+			name:     "returns spec.RootHost without wildcard prefix",
+			rootHost: "*.example.com",
+			want:     "example.com",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &DNSRecord{
+				Spec: DNSRecordSpec{
+					RootHost: tt.rootHost,
+				},
+			}
+			if got := s.GetRootHost(); got != tt.want {
+				t.Errorf("GetRootHost() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
