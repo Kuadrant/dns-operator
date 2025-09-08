@@ -14,6 +14,9 @@ labels=${3:-app.kubernetes.io/name=coredns,app.kubernetes.io/component!=metrics}
 
 ns=()
 for i in $(seq $CLUSTER_COUNT); do
-  ns+=("$(kubectl --context ${CONTEXT}-${i} get service -A -l ${labels} -o json | jq -r '[.items[] | (.status.loadBalancer.ingress[].ip + ":53")] | join(",")')")
+  s="$(kubectl --context ${CONTEXT}-${i} get service -A -l ${labels} -o json | jq -r '[.items[] | (.status.loadBalancer.ingress[].ip + ":53")] | join(",")')"
+  if [ -n "$s" ]; then
+      ns+=("$s")
+  fi
 done
 echo "$(IFS=, ; echo "${ns[*]}")"
