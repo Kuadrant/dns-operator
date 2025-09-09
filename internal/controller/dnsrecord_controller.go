@@ -80,11 +80,9 @@ var (
 // DNSRecordReconciler reconciles a DNSRecord object
 type DNSRecordReconciler struct {
 	client.Client
-	LocalClient     client.Client
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
 	DelegationRole  string
-	remoteClient    bool
 }
 
 func postReconcile(ctx context.Context, name, ns string) {
@@ -94,14 +92,6 @@ func postReconcile(ctx context.Context, name, ns string) {
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/finalizers,verbs=update
-
-func (r *DNSRecordReconciler) IsRemoteRecord() bool {
-	return r.remoteClient
-}
-
-func (r *DNSRecordReconciler) IsLocalRecord() bool {
-	return !r.IsRemoteRecord()
-}
 
 func (r *DNSRecordReconciler) IsPrimary() bool {
 	return r.DelegationRole == DelegationRolePrimary
@@ -141,15 +131,9 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Update the logger with appropriate record/zone metadata from the dnsRecord
 	ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 
-	//Only remote records that are delegating should be processed
-	if r.IsRemoteRecord() && !dnsRecord.IsDelegating() {
-		logger.V(1).Info("skipping reconciliation of remote record that is not delegating")
-		return ctrl.Result{}, nil
-	}
-
 	if dnsRecord.IsDeleting() {
 		logger.Info("Deleting DNSRecord")
-		if r.IsLocalRecord() && dnsRecord.Status.ProviderEndpointsRemoved() {
+		if dnsRecord.Status.ProviderEndpointsRemoved() {
 			logger.V(1).Info("Status ProviderEndpointRemoved is true, finalizer can be removed")
 			logger.Info("Removing Finalizer", "finalizer_name", DNSRecordFinalizer)
 			controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
@@ -166,7 +150,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		// Local records that are delegating on secondary clusters should just return here
-		if r.IsSecondary() && r.IsLocalRecord() && dnsRecord.IsDelegating() {
+		if r.IsSecondary() && dnsRecord.IsDelegating() {
 			return ctrl.Result{}, nil
 		}
 
@@ -186,7 +170,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
 			}
 
-			if r.IsLocalRecord() && probesEnabled {
+			if probesEnabled {
 				if err = r.DeleteHealthChecks(ctx, dnsRecord); client.IgnoreNotFound(err) != nil {
 					return ctrl.Result{}, err
 				}
@@ -210,58 +194,32 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		dnsRecord.Status.ZoneEndpoints = nil
 		dnsRecord.Status.ZoneDomainName = ""
 		dnsRecord.Status.ZoneID = ""
-		dnsRecord.Status.OwnerID = ""
 
 		return r.updateStatusAndRequeue(ctx, previous, dnsRecord, time.Second)
 	}
 
-	if r.IsLocalRecord() {
-		if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
-			logger.Info("Adding Finalizer", "finalizer_name", DNSRecordFinalizer)
-			controllerutil.AddFinalizer(dnsRecord, DNSRecordFinalizer)
-			err = r.Update(ctx, dnsRecord)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+	if !controllerutil.ContainsFinalizer(dnsRecord, DNSRecordFinalizer) {
+		logger.Info("Adding Finalizer", "finalizer_name", DNSRecordFinalizer)
+		controllerutil.AddFinalizer(dnsRecord, DNSRecordFinalizer)
+		err = r.Update(ctx, dnsRecord)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
+		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+	}
 
-		if probesEnabled {
-			if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
-				return ctrl.Result{}, err
-			}
-			// get all probes owned by this record
-			if err := r.List(ctx, probes, &client.ListOptions{
-				LabelSelector: labels.SelectorFromSet(map[string]string{
-					ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
-				}),
-				Namespace: dnsRecord.Namespace,
-			}); err != nil {
-				return ctrl.Result{}, err
-			}
+	if probesEnabled {
+		if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
+			return ctrl.Result{}, err
 		}
-
-		if dnsRecord.IsDelegating() {
-			// finalizers are present, set delegation status ready
-			if c := meta.FindStatusCondition(dnsRecord.Status.Conditions, string(v1alpha1.ConditionTypeReadyForDelegation)); c == nil || c.Status == metav1.ConditionFalse {
-				logger.Info("Finalizers present, setting delegation condition", "condition_type", v1alpha1.ConditionTypeReadyForDelegation)
-				meta.SetStatusCondition(&dnsRecord.Status.Conditions, metav1.Condition{Type: string(v1alpha1.ConditionTypeReadyForDelegation), Reason: string(v1alpha1.ConditionReasonFinalizersSet), Status: metav1.ConditionTrue})
-				err := r.Status().Update(ctx, dnsRecord)
-				if err != nil {
-					return ctrl.Result{}, err
-				}
-				return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
-			}
-
-			if r.IsSecondary() {
-				// Local records that are delegating on secondary clusters should just return here
-				return ctrl.Result{}, nil
-			}
-		}
-	} else {
-		if !dnsRecord.Status.ReadyForDelegation() {
-			logger.Info("remote record no ready for processing, skipping")
-			return ctrl.Result{}, nil
+		// get all probes owned by this record
+		if err := r.List(ctx, probes, &client.ListOptions{
+			LabelSelector: labels.SelectorFromSet(map[string]string{
+				ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
+			}),
+			Namespace: dnsRecord.Namespace,
+		}); err != nil {
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -282,6 +240,27 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		//Update logger and context so it includes updated owner metadata
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
+	}
+
+	if dnsRecord.IsDelegating() {
+		// ReadyForDelegation can be set to true once:
+		// - finalizer is added
+		// - health probes created
+		// - ownerID is set
+		// - record is validated
+		if !meta.IsStatusConditionPresentAndEqual(dnsRecord.Status.Conditions, string(v1alpha1.ConditionTypeReadyForDelegation), metav1.ConditionTrue) {
+			meta.SetStatusCondition(&dnsRecord.Status.Conditions, metav1.Condition{Type: string(v1alpha1.ConditionTypeReadyForDelegation), Reason: string(v1alpha1.ConditionReasonFinalizersSet), Status: metav1.ConditionTrue})
+			err := r.Status().Update(ctx, dnsRecord)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+		}
+
+		if r.IsSecondary() {
+			// Local records that are delegating on secondary clusters should just return here
+			return ctrl.Result{}, nil
+		}
 	}
 
 	// Ensure we have provider secret
@@ -369,7 +348,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
 	}
 
-	if r.IsLocalRecord() && probesEnabled {
+	if probesEnabled {
 		if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -411,7 +390,6 @@ func (r *DNSRecordReconciler) setLogger(ctx context.Context, logger logr.Logger,
 		WithValues("ownerID", dnsRecord.Status.OwnerID).
 		WithValues("zoneID", dnsRecord.Status.ZoneID).
 		WithValues("zoneDomainName", dnsRecord.Status.ZoneDomainName).
-		WithValues("remoteRecord", r.IsRemoteRecord()).
 		WithValues("delegationRole", r.DelegationRole)
 	return log.IntoContext(ctx, logger), logger
 }

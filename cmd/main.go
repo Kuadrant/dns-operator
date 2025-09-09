@@ -233,7 +233,6 @@ func main() {
 
 	dnsRecordController := &controller.DNSRecordReconciler{
 		Client:          mgr.GetClient(),
-		LocalClient:     mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
 		DelegationRole:  delegationRole,
@@ -246,7 +245,9 @@ func main() {
 
 	if mcmgr != nil {
 		remoteDNSRecordController := &controller.RemoteDNSRecordReconciler{
-			DNSRecordReconciler: *dnsRecordController,
+			Scheme:          mgr.GetScheme(),
+			ProviderFactory: providerFactory,
+			DelegationRole:  delegationRole,
 		}
 
 		if err = remoteDNSRecordController.SetupWithManager(mcmgr); err != nil {
