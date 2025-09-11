@@ -177,6 +177,10 @@ func (p *EndpointProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*e
 }
 
 func NewProviderFromSecret(ctx context.Context, client dynamic.Interface, s *v1.Secret, providerConfig provider.Config) (provider.Provider, error) {
+	return newEndpointProviderFromSecret(ctx, client, s, providerConfig)
+}
+
+func newEndpointProviderFromSecret(ctx context.Context, client dynamic.Interface, s *v1.Secret, providerConfig provider.Config) (*EndpointProvider, error) {
 	logger := log.FromContext(ctx).WithName("endpoint-dns")
 
 	if s == nil {

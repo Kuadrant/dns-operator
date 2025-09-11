@@ -338,16 +338,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
 		}
 
-		if dnsRecord.IsDelegating() {
-			ddh := DNSRecordDelegationHelper{r.LocalClient}
-			_, err = ddh.EnsureAuthoritativeRecord(ctx, *dnsRecord)
-			if err != nil {
-				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-					"DNSProviderError", fmt.Sprintf("Unable to create authoritative record: %v", provider.SanitizeError(err)))
-				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
-			}
-		}
-
 		z, err := p.DNSZoneForHost(ctx, dnsRecord.Spec.RootHost)
 		if err != nil {
 			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
