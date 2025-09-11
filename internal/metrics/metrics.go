@@ -27,7 +27,7 @@ const (
 var (
 	authoritativeRecordSpecInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "dns_record_authoritative_record_spec_info",
+			Name: "dns_provider_authoritative_record_spec_info",
 			Help: "Provides information about authoritative DNS records, identified by label values.",
 		},
 		[]string{"root_host", "sha", dnsRecordNameLabel, dnsRecordNamespaceLabel},
