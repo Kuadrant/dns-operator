@@ -94,16 +94,46 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 				g.Expect(err).To(MatchError(ContainSubstring("not found")))
 			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
+
+			if delegationEnabled {
+				By("[delegation] ensuring authoritative record is deleted")
+				authRecord := testBuildAuthoritativeDNSRecord(dnsRecord)
+				err := k8sClient.Delete(ctx, authRecord, client.PropagationPolicy(metav1.DeletePropagationForeground))
+				Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+				By("[delegation] checking authoritative record is removed")
+				Eventually(func(g Gomega, ctx context.Context) {
+					authRecord := testBuildAuthoritativeDNSRecord(dnsRecord)
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
+					g.Expect(err).To(MatchError(ContainSubstring("not found")))
+				}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
+			}
 		}
 
-		if len(dnsRecords) > 0 {
+		By("ensuring all dns records are deleted")
+		for _, record := range dnsRecords {
+			err := k8sClient.Delete(ctx, record, client.PropagationPolicy(metav1.DeletePropagationForeground))
+			Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
+		}
+		By("checking all dns records are removed")
+		Eventually(func(g Gomega, ctx context.Context) {
 			for _, record := range dnsRecords {
-				err := k8sClient.Delete(ctx, record, client.PropagationPolicy(metav1.DeletePropagationForeground))
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(record), record)
+				g.Expect(err).To(MatchError(ContainSubstring("not found")))
+			}
+		}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
+
+		if delegationEnabled {
+			By("[delegation] ensuring all authoritative records are deleted")
+			for _, record := range dnsRecords {
+				authRecord := testBuildAuthoritativeDNSRecord(record)
+				err := k8sClient.Delete(ctx, authRecord, client.PropagationPolicy(metav1.DeletePropagationForeground))
 				Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 			}
+			By("[delegation] checking all authoritative records are removed")
 			Eventually(func(g Gomega, ctx context.Context) {
 				for _, record := range dnsRecords {
-					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(record), record)
+					authRecord := testBuildAuthoritativeDNSRecord(record)
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
 					g.Expect(err).To(MatchError(ContainSubstring("not found")))
 				}
 			}, recordsRemovedMaxDuration, time.Second, ctx).Should(Succeed())
@@ -125,9 +155,6 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 	})
 
 	It("correctly handles wildcard rootHost values", func(ctx SpecContext) {
-		if testDNSProvider == provider.DNSProviderCoreDNS.String() {
-			Skip("coredns does not currently handle wildcard rootHosts correctly!!")
-		}
 		testTargetIP := "127.0.0.1"
 		testTargetIP2 := "127.0.0.2"
 		testWCHostname := "*." + testHostname
@@ -285,8 +312,12 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(dnsRecord.Status.OwnerID).ToNot(BeEmpty())
 			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
-			By("checking dns provider label 'kuadrant.io/dns-provider-name=" + testDNSProvider + "' is set correctly")
-			Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", testDNSProvider))
+			expectedProvider := testDNSProvider
+			if delegationEnabled {
+				expectedProvider = "endpoint"
+			}
+			By("checking dns provider label 'kuadrant.io/dns-provider-name=" + expectedProvider + "' is set correctly")
+			Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", expectedProvider))
 
 			By("ensuring zone records are created as expected")
 			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient, dynamicClient)
@@ -319,6 +350,29 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(zoneEndpoints).To(HaveLen(len(expectedElementMatchers)))
 			Expect(zoneEndpoints).To(ContainElements(expectedElementMatchers))
 			Expect(dnsRecord.Status.DomainOwners).To(expectedDomainOwnersMatcher)
+
+			if delegationEnabled {
+				authRecord := testBuildAuthoritativeDNSRecord(dnsRecord)
+				By("[delegation] checking authoritative record " + authRecord.Name + " becomes ready")
+				Eventually(func(g Gomega, ctx context.Context) {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(authRecord.Status.Conditions).To(
+						ContainElement(MatchFields(IgnoreExtras, Fields{
+							"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status": Equal(metav1.ConditionTrue),
+						})),
+					)
+				}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
+
+				By("[delegation] checking authoritative record " + authRecord.Name + " ownerID is set correctly")
+				Expect(authRecord.Spec.OwnerID).To(BeEmpty())
+				Expect(authRecord.Status.OwnerID).ToNot(BeEmpty())
+				Expect(authRecord.Status.OwnerID).To(Equal(authRecord.GetUIDHash()))
+
+				By("[delegation] checking authoritative record provider label 'kuadrant.io/dns-provider-name=" + testDNSProvider + "' is set correctly")
+				Expect(authRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", testDNSProvider))
+			}
 
 			if testDNSProvider != provider.DNSProviderEndpoint.String() {
 				By("ensuring the authoritative nameserver resolves the hostname")
@@ -455,8 +509,12 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 			Expect(dnsRecord.Status.OwnerID).ToNot(BeEmpty())
 			Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
 
-			By("checking dns provider label 'kuadrant.io/dns-provider-name=" + testDNSProvider + "' is set correctly")
-			Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", testDNSProvider))
+			expectedProvider := testDNSProvider
+			if delegationEnabled {
+				expectedProvider = "endpoint"
+			}
+			By("checking dns provider label 'kuadrant.io/dns-provider-name=" + expectedProvider + "' is set correctly")
+			Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", expectedProvider))
 
 			By("ensuring zone records are created as expected")
 			testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient, dynamicClient)
@@ -725,6 +783,29 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						}),
 					})),
 				))
+			}
+
+			if delegationEnabled {
+				authRecord := testBuildAuthoritativeDNSRecord(dnsRecord)
+				By("[delegation] checking authoritative record " + authRecord.Name + " becomes ready")
+				Eventually(func(g Gomega, ctx context.Context) {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(authRecord.Status.Conditions).To(
+						ContainElement(MatchFields(IgnoreExtras, Fields{
+							"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status": Equal(metav1.ConditionTrue),
+						})),
+					)
+				}, recordsReadyMaxDuration, time.Second, ctx).Should(Succeed())
+
+				By("[delegation] checking authoritative record " + authRecord.Name + " ownerID is set correctly")
+				Expect(authRecord.Spec.OwnerID).To(BeEmpty())
+				Expect(authRecord.Status.OwnerID).ToNot(BeEmpty())
+				Expect(authRecord.Status.OwnerID).To(Equal(authRecord.GetUIDHash()))
+
+				By("[delegation] checking authoritative record provider label 'kuadrant.io/dns-provider-name=" + testDNSProvider + "' is set correctly")
+				Expect(authRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", testDNSProvider))
 			}
 
 			if testDNSProvider != provider.DNSProviderEndpoint.String() {

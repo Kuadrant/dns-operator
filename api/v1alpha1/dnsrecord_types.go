@@ -283,11 +283,6 @@ func (s *DNSRecord) HasProviderSecretAssigned() bool {
 	return s.Status.ProviderRef.Name != ""
 }
 
-func (s *DNSRecord) IsAuthoritativeRecord() bool {
-	_, okay := s.Labels[AuthoritativeRecordLabel]
-	return okay
-}
-
 func (s *DNSRecord) IsDeleting() bool {
 	return s.DeletionTimestamp != nil && !s.DeletionTimestamp.IsZero()
 }
@@ -306,6 +301,11 @@ func (s *DNSRecord) GetProviderRef() ProviderRef {
 func (s *DNSRecord) GetRootHost() string {
 	rootHost, _ := strings.CutPrefix(s.Spec.RootHost, WildcardPrefix)
 	return rootHost
+}
+
+func (s *DNSRecord) IsAuthoritativeRecord() bool {
+	_, okay := s.Labels[AuthoritativeRecordLabel]
+	return okay
 }
 
 func (s *DNSRecord) IsDelegating() bool {

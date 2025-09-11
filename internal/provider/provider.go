@@ -34,9 +34,6 @@ var (
 	DNSProviderLabel = "kuadrant.io/dns-provider-name"
 
 	CoreDNSRecordZoneLabel = "kuadrant.io/coredns-zone-name"
-	CoreDNSRecordTypeLabel = "kuadrant.io/type"
-
-	KuadrantTLD = "kdrnt"
 )
 
 func (dp DNSProviderName) String() string {
