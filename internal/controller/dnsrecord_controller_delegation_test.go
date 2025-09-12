@@ -459,7 +459,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Expect(secondaryK8sClient.Create(ctx, secondaryDNSRecord)).To(Succeed())
 
 				By("verifying primary cluster skips the reconciliation of the secondary record")
-				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary.dnsrecord_controller\".+\"msg\":\"skipping reconciliation of remote record that is not delegating\".+\"controller\":\"dnsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
+				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary.remote_dnsrecord_controller\".+\"msg\":\"skipping reconciliation of remote record that is not delegating\".+\"controller\":\"remotednsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
 			})
 
 			It("should create authoritative record on the primary for delegating record on the secondary", Labels{"primary", "secondary"}, func(ctx SpecContext) {
@@ -948,9 +948,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Expect(secondaryK8sClient.Delete(ctx, secondaryDNSRecord)).To(Succeed())
 				// both clusters should eventually see the delete event
 				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"secondary.dnsrecord_controller\".+\"msg\":\"Deleting DNSRecord\".+\"controller\":\"dnsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
-				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary.dnsrecord_controller\".+\"msg\":\"Deleting DNSRecord\".+\"controller\":\"dnsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
+				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary.remote_dnsrecord_controller\".+\"msg\":\"Deleting DNSRecord\".+\"controller\":\"remotednsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
 				// primary should eventually say it's removed the records from the zone
-				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary.dnsrecord_controller\".+\"msg\":\"Deleted DNSRecord in zone\".+\"controller\":\"dnsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
+				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary.remote_dnsrecord_controller\".+\"msg\":\"Deleted DNSRecord in zone\".+\"controller\":\"remotednsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
 				// secondary should eventually say it removed the finalizer, primary should not
 				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"secondary.dnsrecord_controller\".+\"msg\":\"Removing Finalizer\".+\"controller\":\"dnsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
 				Consistently(logBuffer, TestTimeoutShort).Should(Not(gbytes.Say(fmt.Sprintf("\"logger\":\"primary.dnsrecord_controller\".+\"msg\":\"Removing Finalizer\".+\"controller\":\"dnsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace))))
