@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-logr/logr"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -57,8 +58,9 @@ type RemoteDNSRecordReconciler struct {
 	ProviderFactory provider.Factory
 	DelegationRole  string
 
-	mgr mcmanager.Manager
-	gvk schema.GroupVersionKind
+	clusterUID string
+	mgr        mcmanager.Manager
+	gvk        schema.GroupVersionKind
 }
 
 var _ reconcile.TypedReconciler[mcreconcile.Request] = &RemoteDNSRecordReconciler{}
@@ -69,9 +71,17 @@ func (r *RemoteDNSRecordReconciler) postReconcile(ctx context.Context, name, ns,
 	remoteRecordsReconcileMetric.Publish()
 }
 
+//+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
+
 func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
+	clusterID, err := r.getClusterUID(ctx)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
 	baseLogger := log.FromContext(ctx).WithName("remote_dnsrecord_controller").WithValues(
 		"cluster", req.ClusterName,
+		"clusterID", clusterID,
 		r.gvk.Kind, klog.KRef(req.Namespace, req.Name),
 		"namespace", req.Namespace,
 		"name", req.Name,
@@ -92,8 +102,8 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	remoteRecordsMetric := metrics.NewRemoteRecordsMetric(ctx, cl.GetClient(), logger, req.ClusterName)
 	remoteRecordsMetric.Publish()
 
-	previous := &v1alpha1.DNSRecord{}
-	err = cl.GetClient().Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, previous)
+	rec := &v1alpha1.DNSRecord{}
+	err = cl.GetClient().Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, rec)
 	if err != nil {
 		if err = client.IgnoreNotFound(err); err == nil {
 			return ctrl.Result{}, nil
@@ -101,7 +111,14 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 			return ctrl.Result{}, err
 		}
 	}
-	dnsRecord := previous.DeepCopy()
+	previous := &RemoteDNSRecord{
+		DNSRecord: rec,
+		ClusterID: clusterID,
+	}
+	dnsRecord := &RemoteDNSRecord{
+		DNSRecord: rec.DeepCopy(),
+		ClusterID: clusterID,
+	}
 
 	// Update the logger with appropriate record/zone metadata from the dnsRecord
 	ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
@@ -115,21 +132,25 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	if dnsRecord.IsDeleting() {
 		logger.Info("Deleting DNSRecord")
 
-		if !dnsRecord.Status.ProviderEndpointsDeletion() {
-			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
+		if dnsRecord.GetStatus().ProviderEndpointsRemoved() {
+			return ctrl.Result{}, nil
+		}
+
+		if !dnsRecord.GetStatus().ProviderEndpointsDeletion() {
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
 			return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, time.Second)
 		}
 
 		if dnsRecord.HasDNSZoneAssigned() {
-			// Create a dns provider with config calculated for the current dns record status (Last successful)
+			// Create a dns provider with config calculated for the dnsRecord dns record status (Last successful)
 			dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
 			if err != nil {
 				logger.Error(err, "Failed to load DNS Provider")
-				setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
+				dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
 				return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 			}
 
-			_, err = r.deleteRecord(ctx, dnsRecord, dnsProvider)
+			_, err = deleteRecord(ctx, dnsRecord, dnsProvider)
 			if err != nil {
 				logger.Error(err, "Failed to delete DNSRecord")
 				return ctrl.Result{}, err
@@ -138,12 +159,12 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 			logger.Info("dns zone was never assigned, skipping zone cleanup")
 		}
 
-		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsRemoved), "DNS records removed from provider")
-		dnsRecord.Status.ZoneEndpoints = nil
-		dnsRecord.Status.ZoneDomainName = ""
-		dnsRecord.Status.ZoneID = ""
+		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsRemoved), "DNS records removed from provider")
+		dnsRecord.SetStatusZoneDomainName("")
+		dnsRecord.SetStatusZoneID("")
+		dnsRecord.SetStatusDomainOwners(nil)
 
-		return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, time.Second)
+		return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
 	}
 
 	if !dnsRecord.Status.ReadyForDelegation() {
@@ -156,57 +177,58 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		logger.Info(fmt.Sprintf("provider zone not assigned for root host %s, finding suitable zone", dnsRecord.Spec.RootHost))
 
 		// Create a dns provider with no config to list all potential zones available from the configured provider
-		p, err := r.ProviderFactory.ProviderFor(ctx, dnsRecord, provider.Config{})
+		p, err := r.ProviderFactory.ProviderFor(ctx, dnsRecord.GetDNSRecord(), provider.Config{})
 		if err != nil {
-			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 				"DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
 			return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 		}
 
 		z, err := p.DNSZoneForHost(ctx, dnsRecord.Spec.RootHost)
 		if err != nil {
-			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 				"DNSProviderError", fmt.Sprintf("Unable to find suitable zone in provider: %v", provider.SanitizeError(err)))
 			return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 		}
 
 		//Add zone id/domainName to status
-		dnsRecord.Status.ZoneID = z.ID
-		dnsRecord.Status.ZoneDomainName = z.DNSName
+		dnsRecord.SetStatusZoneID(z.ID)
+		dnsRecord.SetStatusZoneDomainName(z.DNSName)
 
 		//Update logger and context so it includes updated zone metadata
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 	}
 
-	// Create a dns provider for the current record, must have an owner and zone assigned or will throw an error
+	// Create a dns provider for the dnsRecord record, must have an owner and zone assigned or will throw an error
 	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
 	if err != nil {
-		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			"DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
 		return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 	}
 
 	// Publish the record
-	_, err = r.publishRecord(ctx, dnsRecord, dnsProvider)
+	_, err = publishRecord(ctx, dnsRecord, dnsProvider)
 	if err != nil {
 		logger.Error(err, "Failed to publish record")
-		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			"ProviderError", fmt.Sprintf("The DNS provider failed to ensure the record: %v", provider.SanitizeError(err)))
 		return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 	}
 
-	setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
+	dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
+	dnsRecord.SetStatusObservedGeneration(dnsRecord.GetGeneration())
 	return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
 }
 
 // setLogger Updates the given Logger with record/zone metadata from the given DNSRecord.
 // returns the context with the updated logger set on it, and the updated logger itself.
-func (r *RemoteDNSRecordReconciler) setLogger(ctx context.Context, logger logr.Logger, dnsRecord *v1alpha1.DNSRecord) (context.Context, logr.Logger) {
+func (r *RemoteDNSRecordReconciler) setLogger(ctx context.Context, logger logr.Logger, dnsRecord DNSRecordAccessor) (context.Context, logr.Logger) {
 	logger = logger.
-		WithValues("rootHost", dnsRecord.Spec.RootHost).
-		WithValues("ownerID", dnsRecord.Status.OwnerID).
-		WithValues("zoneID", dnsRecord.Status.ZoneID).
-		WithValues("zoneDomainName", dnsRecord.Status.ZoneDomainName).
+		WithValues("rootHost", dnsRecord.GetRootHost()).
+		WithValues("ownerID", dnsRecord.GetOwnerID()).
+		WithValues("zoneID", dnsRecord.GetZoneID()).
+		WithValues("zoneDomainName", dnsRecord.GetZoneDomainName()).
 		WithValues("delegationRole", r.DelegationRole)
 	return log.IntoContext(ctx, logger), logger
 }
@@ -215,7 +237,7 @@ func (r *RemoteDNSRecordReconciler) setLogger(ctx context.Context, logger logr.L
 // If no zone/id/domain has been assigned to the given record, an error is thrown.
 // If no owner has been assigned to the given record, an error is thrown.
 // If the provider can't be initialised, an error is thrown.
-func (r *RemoteDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord *v1alpha1.DNSRecord) (provider.Provider, error) {
+func (r *RemoteDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord DNSRecordAccessor) (provider.Provider, error) {
 	var err error
 	if !dnsRecord.HasOwnerIDAssigned() {
 		err = errors.Join(fmt.Errorf("has no ownerID assigned"))
@@ -227,19 +249,19 @@ func (r *RemoteDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecor
 		return nil, err
 	}
 	providerConfig := provider.Config{
-		HostDomainFilter: externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Spec.RootHost}),
-		DomainFilter:     externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName}),
+		HostDomainFilter: externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetRootHost()}),
+		DomainFilter:     externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetZoneDomainName()}),
 		ZoneTypeFilter:   externaldnsprovider.NewZoneTypeFilter(""),
-		ZoneIDFilter:     externaldnsprovider.NewZoneIDFilter([]string{dnsRecord.Status.ZoneID}),
+		ZoneIDFilter:     externaldnsprovider.NewZoneIDFilter([]string{dnsRecord.GetZoneID()}),
 	}
-	return r.ProviderFactory.ProviderFor(ctx, dnsRecord, providerConfig)
+	return r.ProviderFactory.ProviderFor(ctx, dnsRecord.GetDNSRecord(), providerConfig)
 }
 
-// deleteRecord deletes record(s) in the DNSPRovider(i.e. route53) zone (dnsRecord.Status.ZoneID).
-func (r *RemoteDNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, dnsProvider provider.Provider) (bool, error) {
+// deleteRecord deletes record(s) in the DNSProvider(i.e. route53) zone (dnsRecord.GetZoneID()).
+func deleteRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	hadChanges, err := r.applyChanges(ctx, dnsRecord, dnsProvider, true)
+	hadChanges, err := applyChanges(ctx, dnsRecord, dnsProvider, true)
 	if err != nil {
 		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
 			logger.Info("Record not found in zone, continuing")
@@ -255,11 +277,11 @@ func (r *RemoteDNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord 
 	return hadChanges, nil
 }
 
-// publishRecord publishes record(s) to the DNSPRovider(i.e. route53) zone (dnsRecord.Status.ZoneID).
+// publishRecord publishes record(s) to the DNSProvider(i.e. route53) zone (dnsRecord.GetZoneID()).
 // returns if it had changes, if record is healthy and an error. If had no changes - the healthy bool can be ignored
-func (r *RemoteDNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, dnsProvider provider.Provider) (bool, error) {
+func publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
 	logger := log.FromContext(ctx)
-	hadChanges, err := r.applyChanges(ctx, dnsRecord, dnsProvider, false)
+	hadChanges, err := applyChanges(ctx, dnsRecord, dnsProvider, false)
 	if err != nil {
 		return hadChanges, err
 	}
@@ -268,17 +290,17 @@ func (r *RemoteDNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord
 	return hadChanges, nil
 }
 
-// applyChanges creates the Plan and applies it to the registry. This is used only for external cloud provider DNS. Returns true only if the Plan had no errors and there were changes to apply.
+// applyChanges creates the Plan and applies it to the registry. Returns true only if the Plan had no errors and there were changes to apply.
 // The error is nil only if the changes were successfully applied or there were no changes to be made.
-func (r *RemoteDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, dnsProvider provider.Provider, isDelete bool) (bool, error) {
+func applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider, isDelete bool) (bool, error) {
 	logger := log.FromContext(ctx)
-	rootDomainName := dnsRecord.Spec.RootHost
-	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName})
+	rootDomainName := dnsRecord.GetRootHost()
+	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetZoneDomainName()})
 	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
 	var excludeDNSRecordTypes []string
 
 	registry, err := externaldnsregistry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
-		dnsRecord.Status.OwnerID, txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
+		dnsRecord.GetOwnerID(), txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
 		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
 	if err != nil {
 		return false, err
@@ -290,9 +312,11 @@ func (r *RemoteDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord 
 		return false, fmt.Errorf("unknown policy: %s", policyID)
 	}
 
+	specEndpoints := dnsRecord.GetSpec().Endpoints
+
 	//If we are deleting set the expected endpoints to an empty array
 	if isDelete {
-		dnsRecord.Spec.Endpoints = []*externaldnsendpoint.Endpoint{}
+		specEndpoints = []*externaldnsendpoint.Endpoint{}
 	}
 
 	//zoneEndpoints = Records in the current dns provider zone
@@ -302,13 +326,13 @@ func (r *RemoteDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord 
 	}
 
 	//specEndpoints = Records that this DNSRecord expects to exist
-	specEndpoints, err := registry.AdjustEndpoints(dnsRecord.Spec.Endpoints)
+	specEndpoints, err = registry.AdjustEndpoints(specEndpoints)
 	if err != nil {
 		return false, fmt.Errorf("adjusting specEndpoints: %w", err)
 	}
 
 	//statusEndpoints = Records that were created/updated by this DNSRecord last
-	statusEndpoints, err := registry.AdjustEndpoints(dnsRecord.Status.Endpoints)
+	statusEndpoints, err := registry.AdjustEndpoints(dnsRecord.GetStatus().Endpoints)
 	if err != nil {
 		return false, fmt.Errorf("adjusting statusEndpoints: %w", err)
 	}
@@ -326,8 +350,8 @@ func (r *RemoteDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord 
 	if err = plan.Error(); err != nil {
 		return false, err
 	}
-	dnsRecord.Status.DomainOwners = plan.Owners
-	dnsRecord.Status.Endpoints = specEndpoints
+	dnsRecord.SetStatusDomainOwners(plan.Owners)
+	dnsRecord.SetStatusEndpoints(specEndpoints)
 	if plan.Changes.HasChanges() {
 		//ToDo (mnairn) CoreDNS will always think it has changes as long as provider.Records() returns an empty slice
 		// Figure out a better way of doing this that avoids the check for a specific provider here
@@ -339,7 +363,7 @@ func (r *RemoteDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord 
 	return false, nil
 }
 
-func (r *RemoteDNSRecordReconciler) updateStatus(ctx context.Context, client client.Client, previous, current *v1alpha1.DNSRecord, err error) (reconcile.Result, error) {
+func (r *RemoteDNSRecordReconciler) updateStatus(ctx context.Context, client client.Client, previous, current DNSRecordAccessor, err error) (reconcile.Result, error) {
 	result, uErr := r.updateStatusAndRequeue(ctx, client, previous, current, 0)
 	if uErr != nil {
 		err = uErr
@@ -349,12 +373,12 @@ func (r *RemoteDNSRecordReconciler) updateStatus(ctx context.Context, client cli
 
 // updateStatusAndRequeue will update the status of the record if the current and previous status is different
 // and returns a reconcile.result that re-queues at the given time.
-func (r *RemoteDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, client client.Client, previous, current *v1alpha1.DNSRecord, requeueTime time.Duration) (reconcile.Result, error) {
+func (r *RemoteDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, client client.Client, previous, current DNSRecordAccessor, requeueTime time.Duration) (reconcile.Result, error) {
 	logger := log.FromContext(ctx)
 	// update the record after setting the status
-	if !equality.Semantic.DeepEqual(previous.Status, current.Status) {
+	if !equality.Semantic.DeepEqual(previous.GetStatus(), current.GetStatus()) {
 		logger.V(1).Info("Updating status of DNSRecord")
-		if updateError := client.Status().Update(ctx, current); updateError != nil {
+		if updateError := client.Status().Update(ctx, current.GetDNSRecord()); updateError != nil {
 			if apierrors.IsConflict(updateError) {
 				return ctrl.Result{RequeueAfter: time.Second}, nil
 			}
@@ -364,12 +388,26 @@ func (r *RemoteDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, 
 	logger.V(1).Info(fmt.Sprintf("Requeue in %s", requeueTime.String()))
 
 	var gauge float64
-	if meta.IsStatusConditionTrue(current.Status.Conditions, string(v1alpha1.ConditionTypeReady)) {
+	if meta.IsStatusConditionTrue(current.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady)) {
 		gauge = 1
 	}
-	metrics.RecordReady.WithLabelValues(current.Name, current.Namespace, current.Spec.RootHost, strconv.FormatBool(current.IsDelegating())).Set(gauge)
+	metrics.RecordReady.WithLabelValues(current.GetName(), current.GetNamespace(), current.GetRootHost(), strconv.FormatBool(current.IsDelegating())).Set(gauge)
 
 	return ctrl.Result{}, nil
+}
+
+func (r *RemoteDNSRecordReconciler) getClusterUID(ctx context.Context) (string, error) {
+	if r.clusterUID != "" {
+		return r.clusterUID, nil
+	}
+
+	ns := &corev1.Namespace{}
+	err := r.mgr.GetLocalManager().GetClient().Get(ctx, client.ObjectKey{Name: "kube-system"}, ns)
+	if err != nil {
+		return "", err
+	}
+	r.clusterUID = string(ns.UID)
+	return r.clusterUID, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -21,6 +21,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/external-dns/endpoint"
@@ -318,6 +319,13 @@ func (in *DNSRecordStatus) DeepCopyInto(out *DNSRecordStatus) {
 		in, out := &in.DomainOwners, &out.DomainOwners
 		*out = make([]string, len(*in))
 		copy(*out, *in)
+	}
+	if in.RemoteRecordStatuses != nil {
+		in, out := &in.RemoteRecordStatuses, &out.RemoteRecordStatuses
+		*out = make(map[string]apiextensionsv1.JSON, len(*in))
+		for key, val := range *in {
+			(*out)[key] = *val.DeepCopy()
+		}
 	}
 }
 

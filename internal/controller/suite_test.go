@@ -83,6 +83,10 @@ var (
 	secondaryKubeconfig []byte
 	primaryKubeconfig   []byte
 
+	// Cluster ID for each environment
+	secondaryClusterID string
+	primaryClusterID   string
+
 	ctx    context.Context
 	cancel context.CancelFunc
 )
@@ -132,6 +136,17 @@ var _ = BeforeSuite(func() {
 	Expect(secondaryKubeconfig).ToNot(BeEmpty())
 
 	Expect(primaryKubeconfig).ToNot(Equal(secondaryKubeconfig))
+
+	var err error
+	primaryClusterID, err = getKubeSystemUID(ctx, primaryK8sClient)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(primaryClusterID).ToNot(BeEmpty())
+
+	secondaryClusterID, err = getKubeSystemUID(ctx, secondaryK8sClient)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(secondaryClusterID).ToNot(BeEmpty())
+
+	Expect(secondaryClusterID).ToNot(Equal(primaryClusterID))
 })
 
 var _ = AfterSuite(func() {
@@ -281,4 +296,14 @@ func createKuadrantUser(testEnv *envtest.Environment) (kubeconfig []byte) {
 
 func generateTestNamespaceName() string {
 	return "test-namespace-" + uuid.New().String()
+}
+
+// returns the `kube-system` namespace UID as a string
+func getKubeSystemUID(ctx context.Context, c client.Client) (string, error) {
+	ns := &v1.Namespace{}
+	err := c.Get(ctx, client.ObjectKey{Name: "kube-system"}, ns)
+	if err != nil {
+		return "", err
+	}
+	return string(ns.UID), nil
 }

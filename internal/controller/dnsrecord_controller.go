@@ -149,11 +149,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, nil
 		}
 
-		// Records that are delegating on secondary clusters should just return here
-		if r.IsSecondary() && dnsRecord.IsDelegating() {
-			return ctrl.Result{}, nil
-		}
-
 		if !dnsRecord.Status.ProviderEndpointsDeletion() {
 			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
 			result, err := r.updateStatus(ctx, previous, dnsRecord, probes, true, []string{}, err)
@@ -258,8 +253,10 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		if r.IsSecondary() {
-			// Records that are delegating on secondary clusters should just return here
-			return ctrl.Result{}, nil
+			// Records that are delegating on secondary clusters should just set the ready status and return here
+			// ToDo Should probably have a different condition reason and message
+			setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
+			return r.updateStatusAndRequeue(ctx, previous, dnsRecord, 0)
 		}
 	}
 

@@ -490,8 +490,29 @@ var _ = Describe("DNSRecordReconciler", func() {
 					)
 					g.Expect(secondaryDNSRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 					g.Expect(secondaryDNSRecord.IsDelegating()).To(BeTrue())
-					g.Expect(secondaryDNSRecord.Status.DomainOwners).To(ConsistOf(secondaryDNSRecord.GetUIDHash()))
+					g.Expect(secondaryDNSRecord.Status.OwnerID).To(Equal(secondaryDNSRecord.GetUIDHash()))
 					g.Expect(secondaryDNSRecord.Labels).Should(Not(HaveKey("kuadrant.io/dns-provider-name")))
+					// Main Status has no zone status
+					g.Expect(secondaryDNSRecord.Status.ZoneID).To(BeEmpty())
+					g.Expect(secondaryDNSRecord.Status.ZoneDomainName).To(BeEmpty())
+					// Remote record status is set as expected
+					g.Expect(secondaryDNSRecord.Status.RemoteRecordStatuses).To(HaveLen(1))
+					g.Expect(secondaryDNSRecord.Status.RemoteRecordStatuses).To(HaveKey(primaryClusterID))
+					remoteRecordStatus := secondaryDNSRecord.Status.GetRemoteRecordStatus(primaryClusterID)
+					g.Expect(remoteRecordStatus).ToNot(BeNil())
+					g.Expect(remoteRecordStatus.Conditions).To(ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"Message":            Equal("Provider ensured the dns record"),
+						"ObservedGeneration": Equal(secondaryDNSRecord.Generation),
+					})))
+					g.Expect(remoteRecordStatus.Endpoints).ToNot(BeEmpty())
+					g.Expect(remoteRecordStatus.ObservedGeneration).To(Equal(secondaryDNSRecord.Generation))
+					g.Expect(remoteRecordStatus.DomainOwners).To(ConsistOf(secondaryDNSRecord.GetUIDHash()))
+					//These values are checked below after we get the auth record
+					g.Expect(remoteRecordStatus.ZoneDomainName).ToNot(BeEmpty())
+					g.Expect(remoteRecordStatus.ZoneID).ToNot(BeEmpty())
 				}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 				By("verifying the authoritative record exists and has the correct spec and status")
@@ -542,8 +563,13 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 				By("verifying the secondary record status references the authoritative record")
 				// Verify record status has authoritative record referenced
-				Expect(secondaryDNSRecord.Status.ZoneID).To(Equal(authRecord.Name))
-				Expect(secondaryDNSRecord.Status.ZoneDomainName).To(Equal(authRecord.Spec.RootHost))
+				Expect(secondaryDNSRecord.Status.ZoneID).To(BeEmpty())
+				Expect(secondaryDNSRecord.Status.ZoneDomainName).To(BeEmpty())
+				Expect(secondaryDNSRecord.Status.RemoteRecordStatuses).To(HaveKey(primaryClusterID))
+				Expect(secondaryDNSRecord.Status.GetRemoteRecordStatus(primaryClusterID)).To(MatchFields(IgnoreExtras, Fields{
+					"ZoneID":         Equal(authRecord.Name),
+					"ZoneDomainName": Equal(authRecord.Spec.RootHost),
+				}))
 			})
 
 			It("should create authoritative record on primary for delegating records on both the primary and secondary", Labels{"primary", "secondary"}, func(ctx SpecContext) {
@@ -602,8 +628,28 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(secondaryDNSRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 					g.Expect(secondaryDNSRecord.IsDelegating()).To(BeTrue())
 					g.Expect(secondaryDNSRecord.Status.OwnerID).To(Equal(secondaryDNSRecord.GetUIDHash()))
-					g.Expect(secondaryDNSRecord.Status.DomainOwners).To(ConsistOf(primaryDNSRecord.GetUIDHash(), secondaryDNSRecord.GetUIDHash()))
 					g.Expect(secondaryDNSRecord.Labels).Should(Not(HaveKey("kuadrant.io/dns-provider-name")))
+					// Main Status has no zone status
+					g.Expect(secondaryDNSRecord.Status.ZoneID).To(BeEmpty())
+					g.Expect(secondaryDNSRecord.Status.ZoneDomainName).To(BeEmpty())
+					// Remote record status is set as expected
+					g.Expect(secondaryDNSRecord.Status.RemoteRecordStatuses).To(HaveLen(1))
+					g.Expect(secondaryDNSRecord.Status.RemoteRecordStatuses).To(HaveKey(primaryClusterID))
+					remoteRecordStatus := secondaryDNSRecord.Status.GetRemoteRecordStatus(primaryClusterID)
+					g.Expect(remoteRecordStatus).ToNot(BeNil())
+					g.Expect(remoteRecordStatus.Conditions).To(ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"Message":            Equal("Provider ensured the dns record"),
+						"ObservedGeneration": Equal(secondaryDNSRecord.Generation),
+					})))
+					g.Expect(remoteRecordStatus.Endpoints).ToNot(BeEmpty())
+					g.Expect(remoteRecordStatus.ObservedGeneration).To(Equal(secondaryDNSRecord.Generation))
+					g.Expect(remoteRecordStatus.DomainOwners).To(ConsistOf(primaryDNSRecord.GetUIDHash(), secondaryDNSRecord.GetUIDHash()))
+					//These values are checked below after we get the auth record
+					g.Expect(remoteRecordStatus.ZoneDomainName).ToNot(BeEmpty())
+					g.Expect(remoteRecordStatus.ZoneID).ToNot(BeEmpty())
 				}, TestTimeoutLong, time.Second).Should(Succeed())
 
 				By("verifying the authoritative record exists and has the correct spec and status")
@@ -665,8 +711,13 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 				By("verifying the secondary record status references the authoritative record")
 				// Verify the secondary record status has the authoritative record referenced
-				Expect(secondaryDNSRecord.Status.ZoneID).To(Equal(authRecord.Name))
-				Expect(secondaryDNSRecord.Status.ZoneDomainName).To(Equal(authRecord.Spec.RootHost))
+				Expect(secondaryDNSRecord.Status.ZoneID).To(BeEmpty())
+				Expect(secondaryDNSRecord.Status.ZoneDomainName).To(BeEmpty())
+				Expect(secondaryDNSRecord.Status.RemoteRecordStatuses).To(HaveKey(primaryClusterID))
+				Expect(secondaryDNSRecord.Status.GetRemoteRecordStatus(primaryClusterID)).To(MatchFields(IgnoreExtras, Fields{
+					"ZoneID":         Equal(authRecord.Name),
+					"ZoneDomainName": Equal(authRecord.Spec.RootHost),
+				}))
 			})
 
 			// More comprehensive test that covers the following:
@@ -732,8 +783,28 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(secondaryDNSRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
 					g.Expect(secondaryDNSRecord.IsDelegating()).To(BeTrue())
 					g.Expect(secondaryDNSRecord.Status.OwnerID).To(Equal(secondaryDNSRecord.GetUIDHash()))
-					g.Expect(secondaryDNSRecord.Status.DomainOwners).To(ConsistOf(primaryDNSRecord.GetUIDHash(), secondaryDNSRecord.GetUIDHash()))
 					g.Expect(secondaryDNSRecord.Labels).Should(Not(HaveKey("kuadrant.io/dns-provider-name")))
+					// Main Status has no zone status
+					g.Expect(secondaryDNSRecord.Status.ZoneID).To(BeEmpty())
+					g.Expect(secondaryDNSRecord.Status.ZoneDomainName).To(BeEmpty())
+					// Remote record status is set as expected
+					g.Expect(secondaryDNSRecord.Status.RemoteRecordStatuses).To(HaveLen(1))
+					g.Expect(secondaryDNSRecord.Status.RemoteRecordStatuses).To(HaveKey(primaryClusterID))
+					remoteRecordStatus := secondaryDNSRecord.Status.GetRemoteRecordStatus(primaryClusterID)
+					g.Expect(remoteRecordStatus).ToNot(BeNil())
+					g.Expect(remoteRecordStatus.Conditions).To(ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+						"Status":             Equal(metav1.ConditionTrue),
+						"Reason":             Equal("ProviderSuccess"),
+						"Message":            Equal("Provider ensured the dns record"),
+						"ObservedGeneration": Equal(secondaryDNSRecord.Generation),
+					})))
+					g.Expect(remoteRecordStatus.Endpoints).ToNot(BeEmpty())
+					g.Expect(remoteRecordStatus.ObservedGeneration).To(Equal(secondaryDNSRecord.Generation))
+					g.Expect(remoteRecordStatus.DomainOwners).To(ConsistOf(primaryDNSRecord.GetUIDHash(), secondaryDNSRecord.GetUIDHash()))
+					//These values are checked below after we get the auth record
+					g.Expect(remoteRecordStatus.ZoneDomainName).ToNot(BeEmpty())
+					g.Expect(remoteRecordStatus.ZoneID).ToNot(BeEmpty())
 				}, TestTimeoutLong, time.Second).Should(Succeed())
 
 				By("verifying an authoritative record exists for the test host")
@@ -802,8 +873,13 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 				By("verifying the secondary record status references the authoritative record")
 				// Verify the secondary record status has the authoritative record referenced
-				Expect(secondaryDNSRecord.Status.ZoneID).To(Equal(authRecord.Name))
-				Expect(secondaryDNSRecord.Status.ZoneDomainName).To(Equal(authRecord.Spec.RootHost))
+				Expect(secondaryDNSRecord.Status.ZoneID).To(BeEmpty())
+				Expect(secondaryDNSRecord.Status.ZoneDomainName).To(BeEmpty())
+				Expect(secondaryDNSRecord.Status.RemoteRecordStatuses).To(HaveKey(primaryClusterID))
+				Expect(secondaryDNSRecord.Status.GetRemoteRecordStatus(primaryClusterID)).To(MatchFields(IgnoreExtras, Fields{
+					"ZoneID":         Equal(authRecord.Name),
+					"ZoneDomainName": Equal(authRecord.Spec.RootHost),
+				}))
 
 				By(fmt.Sprintf("setting the inmemory dns provider as the default in the primary clusters '%s' test namespace", testNamespace))
 				// Set the default-provider label on the provider secret
