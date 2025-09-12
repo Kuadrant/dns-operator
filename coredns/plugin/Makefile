@@ -4,6 +4,9 @@ COREDNS_IMG ?= $(COREDNS_DEFAULT_IMG)
 
 CONTAINER_TOOL ?= docker
 
+VERSION ?= 0.0.0
+GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
+
 .PHONY: all
 all: build
 
@@ -18,7 +21,7 @@ clean: ## Clean local files.
 
 .PHONY: build
 build: ## Build coredns binary.
-	GOOS=linux CGO_ENABLED=0 go build cmd/coredns.go
+	GOOS=linux CGO_ENABLED=0 go build -ldflags "-X main.pluginVersion=${VERSION} -X main.gitSHA=${GIT_SHA}" cmd/coredns.go
 
 .PHONY: test-unit
 test-unit: ## Run unit tests.
@@ -27,11 +30,11 @@ test-unit: ## Run unit tests.
 .PHONY: run
 run: DNS_PORT=1053
 run: ## Run coredns from your host.
-	go run --race ./cmd/coredns.go -dns.port ${DNS_PORT}
+	go run --race  -ldflags "-X main.pluginVersion=${VERSION} -X main.gitSHA=${GIT_SHA}" ./cmd/coredns.go -dns.port ${DNS_PORT}
 
 .PHONY: docker-build
 docker-build: ## Build docker image.
-	$(CONTAINER_TOOL) build . -t ${COREDNS_IMG}
+	$(CONTAINER_TOOL) build . -t ${COREDNS_IMG} --build-arg VERSION=v$(VERSION) --build-arg GIT_SHA=$(GIT_SHA)
 
 .PHONY: docker-push
 docker-push: ## Push docker image.

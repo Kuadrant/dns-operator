@@ -3,6 +3,12 @@ FROM mirror.gcr.io/library/golang:1.22 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
+ARG GIT_SHA
+ARG VERSION
+
+ENV GIT_SHA=${GIT_SHA:-unknown}
+ENV VERSION=${VERSION:-unknown}
+
 WORKDIR /workspace
 # Copy the Go Modules manifests
 COPY go.mod go.mod
@@ -25,7 +31,7 @@ COPY zone.go zone.go
 # was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build cmd/coredns.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags "-X main.pluginVersion=${VERSION} -X main.gitSHA=${GIT_SHA}" cmd/coredns.go
 
 # Based on https://github.com/coredns/coredns/blob/master/Dockerfile
 # Requires ths stage to avoid "Listen tcp :53: bind: permission denied" errors in nonroot containers.
