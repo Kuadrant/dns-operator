@@ -51,7 +51,7 @@ import (
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
-// RemoteDNSRecordReconciler reconciles a DNSRecord object on a remote cluster
+// RemoteDNSRecordReconciler reconciles a DNSRecord object on a remote cluster.
 type RemoteDNSRecordReconciler struct {
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
@@ -182,7 +182,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	}
 
 	// Publish the record
-	_, _, err = r.publishRecord(ctx, dnsRecord, nil, dnsProvider)
+	_, err = r.publishRecord(ctx, dnsRecord, dnsProvider)
 	if err != nil {
 		logger.Error(err, "Failed to publish record")
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
@@ -234,7 +234,7 @@ func (r *RemoteDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecor
 func (r *RemoteDNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, dnsProvider provider.Provider) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	hadChanges, _, err := r.applyChanges(ctx, dnsRecord, nil, dnsProvider, true)
+	hadChanges, err := r.applyChanges(ctx, dnsRecord, dnsProvider, true)
 	if err != nil {
 		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
 			logger.Info("Record not found in zone, continuing")
@@ -252,20 +252,20 @@ func (r *RemoteDNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord 
 
 // publishRecord publishes record(s) to the DNSPRovider(i.e. route53) zone (dnsRecord.Status.ZoneID).
 // returns if it had changes, if record is healthy and an error. If had no changes - the healthy bool can be ignored
-func (r *RemoteDNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider) (bool, []string, error) {
+func (r *RemoteDNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, dnsProvider provider.Provider) (bool, error) {
 	logger := log.FromContext(ctx)
-	hadChanges, notHealthyProbes, err := r.applyChanges(ctx, dnsRecord, probes, dnsProvider, false)
+	hadChanges, err := r.applyChanges(ctx, dnsRecord, dnsProvider, false)
 	if err != nil {
-		return hadChanges, notHealthyProbes, err
+		return hadChanges, err
 	}
 	logger.Info("Published DNSRecord to zone")
 
-	return hadChanges, notHealthyProbes, nil
+	return hadChanges, nil
 }
 
 // applyChanges creates the Plan and applies it to the registry. This is used only for external cloud provider DNS. Returns true only if the Plan had no errors and there were changes to apply.
 // The error is nil only if the changes were successfully applied or there were no changes to be made.
-func (r *RemoteDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, _ *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
+func (r *RemoteDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, dnsProvider provider.Provider, isDelete bool) (bool, error) {
 	logger := log.FromContext(ctx)
 	rootDomainName := dnsRecord.Spec.RootHost
 	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName})
@@ -276,13 +276,13 @@ func (r *RemoteDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord 
 		dnsRecord.Status.OwnerID, txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
 		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
 	if err != nil {
-		return false, []string{}, err
+		return false, err
 	}
 
 	policyID := "sync"
 	policy, exists := externaldnsplan.Policies[policyID]
 	if !exists {
-		return false, []string{}, fmt.Errorf("unknown policy: %s", policyID)
+		return false, fmt.Errorf("unknown policy: %s", policyID)
 	}
 
 	//If we are deleting set the expected endpoints to an empty array
@@ -293,60 +293,45 @@ func (r *RemoteDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord 
 	//zoneEndpoints = Records in the current dns provider zone
 	zoneEndpoints, err := registry.Records(ctx)
 	if err != nil {
-		return false, []string{}, err
+		return false, err
 	}
 
 	//specEndpoints = Records that this DNSRecord expects to exist
 	specEndpoints, err := registry.AdjustEndpoints(dnsRecord.Spec.Endpoints)
 	if err != nil {
-		return false, []string{}, fmt.Errorf("adjusting specEndpoints: %w", err)
+		return false, fmt.Errorf("adjusting specEndpoints: %w", err)
 	}
-
-	//ToDo Get rid of this health check stuff
-
-	// healthySpecEndpoints = Records that this DNSRecord expects to exist, that do not have matching unhealthy probes
-	//healthySpecEndpoints, notHealthyProbes, err := removeUnhealthyEndpoints(specEndpoints, dnsRecord, probes)
-	//if err != nil {
-	//	return false, []string{}, fmt.Errorf("removing unhealthy specEndpoints: %w", err)
-	//}
-	healthySpecEndpoints := specEndpoints
-	var notHealthyProbes []string
 
 	//statusEndpoints = Records that were created/updated by this DNSRecord last
 	statusEndpoints, err := registry.AdjustEndpoints(dnsRecord.Status.Endpoints)
 	if err != nil {
-		return false, []string{}, fmt.Errorf("adjusting statusEndpoints: %w", err)
+		return false, fmt.Errorf("adjusting statusEndpoints: %w", err)
 	}
-
-	// add related endpoints to the record
-	dnsRecord.Status.ZoneEndpoints = mergeZoneEndpoints(
-		dnsRecord.Status.ZoneEndpoints,
-		filterEndpoints(rootDomainName, zoneEndpoints))
 
 	//Note: All endpoint lists should be in the same provider specific format at this point
 	logger.V(1).Info("applyChanges", "zoneEndpoints", zoneEndpoints,
-		"specEndpoints", healthySpecEndpoints, "statusEndpoints", statusEndpoints)
+		"specEndpoints", specEndpoints, "statusEndpoints", statusEndpoints)
 
-	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, healthySpecEndpoints, []externaldnsplan.Policy{policy},
+	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, specEndpoints, []externaldnsplan.Policy{policy},
 		externaldnsendpoint.MatchAllDomainFilters{&zoneDomainFilter}, managedDNSRecordTypes, excludeDNSRecordTypes,
 		registry.OwnerID(), &rootDomainName,
 	)
 
 	plan = plan.Calculate()
 	if err = plan.Error(); err != nil {
-		return false, notHealthyProbes, err
+		return false, err
 	}
 	dnsRecord.Status.DomainOwners = plan.Owners
-	dnsRecord.Status.Endpoints = healthySpecEndpoints
+	dnsRecord.Status.Endpoints = specEndpoints
 	if plan.Changes.HasChanges() {
 		//ToDo (mnairn) CoreDNS will always think it has changes as long as provider.Records() returns an empty slice
 		// Figure out a better way of doing this that avoids the check for a specific provider here
 		hasChanges := dnsProvider.Name() != provider.DNSProviderCoreDNS
 		logger.Info("Applying changes")
 		err = registry.ApplyChanges(ctx, plan.Changes)
-		return hasChanges, notHealthyProbes, err
+		return hasChanges, err
 	}
-	return false, notHealthyProbes, nil
+	return false, nil
 }
 
 func (r *RemoteDNSRecordReconciler) updateStatus(ctx context.Context, client client.Client, previous, current *v1alpha1.DNSRecord, err error) (reconcile.Result, error) {

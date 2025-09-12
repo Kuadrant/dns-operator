@@ -149,7 +149,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, nil
 		}
 
-		// Local records that are delegating on secondary clusters should just return here
+		// Records that are delegating on secondary clusters should just return here
 		if r.IsSecondary() && dnsRecord.IsDelegating() {
 			return ctrl.Result{}, nil
 		}
@@ -245,9 +245,9 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if dnsRecord.IsDelegating() {
 		// ReadyForDelegation can be set to true once:
 		// - finalizer is added
-		// - health probes created
 		// - ownerID is set
 		// - record is validated
+		// - health probes created
 		if !meta.IsStatusConditionPresentAndEqual(dnsRecord.Status.Conditions, string(v1alpha1.ConditionTypeReadyForDelegation), metav1.ConditionTrue) {
 			meta.SetStatusCondition(&dnsRecord.Status.Conditions, metav1.Condition{Type: string(v1alpha1.ConditionTypeReadyForDelegation), Reason: string(v1alpha1.ConditionReasonFinalizersSet), Status: metav1.ConditionTrue})
 			err := r.Status().Update(ctx, dnsRecord)
@@ -258,7 +258,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		if r.IsSecondary() {
-			// Local records that are delegating on secondary clusters should just return here
+			// Records that are delegating on secondary clusters should just return here
 			return ctrl.Result{}, nil
 		}
 	}
@@ -348,20 +348,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
 	}
 
-	if probesEnabled {
-		if err = r.ReconcileHealthChecks(ctx, dnsRecord, allowInsecureCert); err != nil {
-			return ctrl.Result{}, err
-		}
-		// get all probes owned by this record
-		if err := r.List(ctx, probes, &client.ListOptions{
-			LabelSelector: labels.SelectorFromSet(map[string]string{
-				ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord),
-			}),
-			Namespace: dnsRecord.Namespace,
-		}); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
 	// Publish the record
 	hadChanges, notHealthyProbes, err := r.publishRecord(ctx, dnsRecord, probes, dnsProvider)
 	if err != nil {
@@ -730,7 +716,6 @@ func setStatusConditions(record *v1alpha1.DNSRecord, hadChanges bool, notHealthy
 	}
 	// none of the probes is healthy
 	setDNSRecordCondition(record, string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), fmt.Sprintf("Not healthy addresses: %s", notHealthyProbes))
-
 }
 
 // setDNSRecordCondition adds or updates a given condition in the DNSRecord status.
