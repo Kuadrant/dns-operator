@@ -65,6 +65,8 @@ var _ reconcile.TypedReconciler[mcreconcile.Request] = &RemoteDNSRecordReconcile
 
 func (r *RemoteDNSRecordReconciler) postReconcile(ctx context.Context, name, ns, cluster string) {
 	log.FromContext(ctx).Info(fmt.Sprintf("Reconciled Remote DNSRecord %s from namespace %s on cluster %s", name, ns, cluster))
+	remoteRecordsReconcileMetric := metrics.NewRemoteRecordReconcileMetric(name, ns, cluster)
+	remoteRecordsReconcileMetric.Publish()
 }
 
 func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
@@ -86,6 +88,9 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+
+	remoteRecordsMetric := metrics.NewRemoteRecordsMetric(ctx, cl.GetClient(), logger, req.ClusterName)
+	remoteRecordsMetric.Publish()
 
 	previous := &v1alpha1.DNSRecord{}
 	err = cl.GetClient().Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, previous)
@@ -382,4 +387,9 @@ func (r *RemoteDNSRecordReconciler) SetupWithManager(mgr mcmanager.Manager) erro
 		Named("remotednsrecord").
 		For(&v1alpha1.DNSRecord{}).
 		Complete(r)
+}
+
+type SecretConfig struct {
+	Namespace string
+	Label     string
 }
