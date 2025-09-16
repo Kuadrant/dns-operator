@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -89,6 +88,13 @@ func postReconcile(ctx context.Context, name, ns string) {
 	log.FromContext(ctx).Info(fmt.Sprintf("Reconciled DNSRecord %s from namespace %s in %s", name, ns, time.Since(reconcileStart.Time)))
 }
 
+// postReconcileMetrics emits a metric after the reconciliation.
+// separate from the postReconcile as it should be deferred only if we have the record (vs called all the time)
+func postReconcileMetrics(record *v1alpha1.DNSRecord, ready bool) {
+	metric := metrics.NewRecordReadyMetric(record, ready)
+	metric.Publish()
+}
+
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/finalizers,verbs=update
@@ -127,6 +133,8 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 	dnsRecord := previous.DeepCopy()
+
+	defer postReconcileMetrics(dnsRecord, meta.IsStatusConditionTrue(dnsRecord.Status.Conditions, string(v1alpha1.ConditionTypeReady)))
 
 	// Update the logger with appropriate record/zone metadata from the dnsRecord
 	ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
@@ -466,12 +474,6 @@ func (r *DNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, previo
 		}
 	}
 	logger.V(1).Info(fmt.Sprintf("Requeue in %s", requeueTime.String()))
-
-	var gauge float64
-	if meta.IsStatusConditionTrue(current.Status.Conditions, string(v1alpha1.ConditionTypeReady)) {
-		gauge = 1
-	}
-	metrics.RecordReady.WithLabelValues(current.Name, current.Namespace, current.Spec.RootHost, strconv.FormatBool(current.IsDelegating())).Set(gauge)
 
 	return ctrl.Result{RequeueAfter: requeueTime}, nil
 }

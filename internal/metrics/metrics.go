@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
@@ -80,6 +81,32 @@ var (
 		},
 		[]string{"cluster", dnsRecordNameLabel, dnsRecordNamespaceLabel})
 )
+
+func NewRecordReadyMetric(record *v1alpha1.DNSRecord, ready bool) recordReadyMetric {
+	return recordReadyMetric{
+		name:       record.GetName(),
+		namespace:  record.GetNamespace(),
+		rootHost:   record.GetRootHost(),
+		delegating: record.IsDelegating(),
+		ready:      ready,
+	}
+}
+
+type recordReadyMetric struct {
+	name       string
+	namespace  string
+	rootHost   string
+	delegating bool
+	ready      bool
+}
+
+func (m *recordReadyMetric) Publish() {
+	var gauge float64
+	if m.ready {
+		gauge = 1
+	}
+	RecordReady.WithLabelValues(m.name, m.namespace, m.rootHost, strconv.FormatBool(m.delegating)).Set(gauge)
+}
 
 func NewRemoteRecordReconcileMetric(name, namespace, cluster string) remoteRecordReconcileMetric {
 	return remoteRecordReconcileMetric{
