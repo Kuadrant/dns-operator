@@ -250,7 +250,7 @@ func main() {
 			DelegationRole:  delegationRole,
 		}
 
-		if err = remoteDNSRecordController.SetupWithManager(mcmgr); err != nil {
+		if err = remoteDNSRecordController.SetupWithManager(mcmgr, false); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "RemoteDNSRecord")
 			os.Exit(1)
 		}

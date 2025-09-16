@@ -42,6 +42,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
+	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 
@@ -411,7 +412,7 @@ func (r *RemoteDNSRecordReconciler) getClusterUID(ctx context.Context) (string, 
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *RemoteDNSRecordReconciler) SetupWithManager(mgr mcmanager.Manager) error {
+func (r *RemoteDNSRecordReconciler) SetupWithManager(mgr mcmanager.Manager, skipNameValidation bool) error {
 	var gvk schema.GroupVersionKind
 	var err error
 	gvk, err = apiutil.GVKForObject(&v1alpha1.DNSRecord{}, mgr.GetLocalManager().GetScheme())
@@ -424,6 +425,9 @@ func (r *RemoteDNSRecordReconciler) SetupWithManager(mgr mcmanager.Manager) erro
 	return mcbuilder.ControllerManagedBy(mgr).
 		Named("remotednsrecord").
 		For(&v1alpha1.DNSRecord{}).
+		WithOptions(controller.Options{
+			SkipNameValidation: &skipNameValidation,
+		}).
 		Complete(r)
 }
 

@@ -105,10 +105,10 @@ var _ = Describe("Kubeconfig Provider", Labels{"multicluster"}, func() {
 		}, TestTimeoutShort, time.Second).Should(Succeed())
 
 		//Verify the secondary log contains the expected statements
-		Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"secondary.dnsrecord_controller\".+\"msg\":\"Reconciled DNSRecord.+\"controller\":\"dnsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryRecord.Name, secondaryRecord.Namespace)))
+		Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"secondary-1.dnsrecord_controller\".+\"msg\":\"Reconciled DNSRecord.+\"controller\":\"dnsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryRecord.Name, secondaryRecord.Namespace)))
 
 		//Verify the primary log contains the expected statements
-		Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary.remote_dnsrecord_controller\".+\"msg\":\"Remote Reconcile\".+\"controller\":\"remotednsrecord\".+\"req\":\"cluster:\\/\\/%s\\/%s\\/%s\"", secondaryClusterSecret.Name, secondaryRecord.Namespace, secondaryRecord.Name)))
+		Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary-1.remote_dnsrecord_controller\".+\"msg\":\"Remote Reconcile\".+\"controller\":\"remotednsrecord\".+\"req\":\"cluster:\\/\\/%s\\/%s\\/%s\"", secondaryClusterSecret.Name, secondaryRecord.Namespace, secondaryRecord.Name)))
 	})
 
 })
