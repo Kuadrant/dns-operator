@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -120,6 +119,8 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		DNSRecord: rec.DeepCopy(),
 		ClusterID: clusterID,
 	}
+
+	defer postReconcileMetrics(dnsRecord.GetDNSRecord(), meta.IsStatusConditionTrue(dnsRecord.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady)))
 
 	// Update the logger with appropriate record/zone metadata from the dnsRecord
 	ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
@@ -387,12 +388,6 @@ func (r *RemoteDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, 
 		}
 	}
 	logger.V(1).Info(fmt.Sprintf("Requeue in %s", requeueTime.String()))
-
-	var gauge float64
-	if meta.IsStatusConditionTrue(current.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady)) {
-		gauge = 1
-	}
-	metrics.RecordReady.WithLabelValues(current.GetName(), current.GetNamespace(), current.GetRootHost(), strconv.FormatBool(current.IsDelegating())).Set(gauge)
 
 	return ctrl.Result{}, nil
 }
