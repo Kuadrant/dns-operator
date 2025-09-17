@@ -69,19 +69,28 @@ const (
 var (
 	// Controller runtime env test environments for each delegation role
 	primaryTestEnv   *envtest.Environment
+	primary2TestEnv  *envtest.Environment
 	secondaryTestEnv *envtest.Environment
 
 	// Managers created for each environment
 	primaryManager   ctrl.Manager
+	primary2Manager  ctrl.Manager
 	secondaryManager ctrl.Manager
 
 	// Kubernetes clients created for each environment
 	primaryK8sClient   client.Client
+	primary2K8sClient  client.Client
 	secondaryK8sClient client.Client
 
 	// Kubeconfig data for 'kuadrant' user added to each environment
-	secondaryKubeconfig []byte
 	primaryKubeconfig   []byte
+	primary2Kubeconfig  []byte
+	secondaryKubeconfig []byte
+
+	// Cluster ID for each environment
+	primary1ClusterID  string
+	primary2ClusterID  string
+	secondaryClusterID string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -99,10 +108,12 @@ var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(ctrl.SetupSignalHandler())
 	By("bootstrapping test environment")
 
-	primaryTestEnv, primaryManager = setupEnv(DelegationRolePrimary)
-	secondaryTestEnv, secondaryManager = setupEnv(DelegationRoleSecondary)
+	primaryTestEnv, primaryManager = setupEnv(DelegationRolePrimary, 1)
+	primary2TestEnv, primary2Manager = setupEnv(DelegationRolePrimary, 2)
+	secondaryTestEnv, secondaryManager = setupEnv(DelegationRoleSecondary, 1)
 
 	primaryK8sClient = primaryManager.GetClient()
+	primary2K8sClient = primary2Manager.GetClient()
 	secondaryK8sClient = secondaryManager.GetClient()
 
 	go func() {
@@ -113,25 +124,56 @@ var _ = BeforeSuite(func() {
 
 	go func() {
 		defer GinkgoRecover()
+		err := primary2Manager.Start(ctx)
+		Expect(err).ToNot(HaveOccurred())
+	}()
+
+	go func() {
+		defer GinkgoRecover()
 		err := secondaryManager.Start(ctx)
 		Expect(err).ToNot(HaveOccurred())
 	}()
 
-	//Create the namespace to hold multicluster secrets on the primary
-	By(fmt.Sprintf("creating namespace '%s' on primary", testDefaultClusterSecretNamespace))
+	//Create the namespace to hold multicluster secrets on the primaries
+	By(fmt.Sprintf("creating namespace '%s' on primaries", testDefaultClusterSecretNamespace))
 	CreateNamespace(testDefaultClusterSecretNamespace, primaryK8sClient)
+	CreateNamespace(testDefaultClusterSecretNamespace, primary2K8sClient)
 
-	//Create a 'kuadrant' user in the primary environment and store the kubeconfig
-	By("creating user 'kuadrant' in primary environment")
+	//Create a 'kuadrant' user in the primary environments and store the kubeconfig
+	By("creating user 'kuadrant' in primary environments")
 	primaryKubeconfig = createKuadrantUser(primaryTestEnv)
 	Expect(primaryKubeconfig).ToNot(BeEmpty())
+	primary2Kubeconfig = createKuadrantUser(primary2TestEnv)
+	Expect(primary2Kubeconfig).ToNot(BeEmpty())
 
-	//Create a 'kuadrant' user in the secondary environment and store the kubeconfig
-	By("creating user 'kuadrant' in secondary environment")
+	//Create a 'kuadrant' user in the secondary environments and store the kubeconfig
+	By("creating user 'kuadrant' in secondary environments")
 	secondaryKubeconfig = createKuadrantUser(secondaryTestEnv)
 	Expect(secondaryKubeconfig).ToNot(BeEmpty())
 
-	Expect(primaryKubeconfig).ToNot(Equal(secondaryKubeconfig))
+	//Verify kubeconfigs are different
+	Expect(primaryKubeconfig).ToNot(Or(Equal(secondaryKubeconfig), Equal(primary2Kubeconfig)))
+	Expect(primary2Kubeconfig).ToNot(Or(Equal(secondaryKubeconfig), Equal(primaryKubeconfig)))
+	Expect(secondaryKubeconfig).ToNot(Or(Equal(primaryKubeconfig), Equal(primary2Kubeconfig)))
+
+	//Get the kube system namespace UID for each environment
+	var err error
+	primary1ClusterID, err = getKubeSystemUID(ctx, primaryK8sClient)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(primary1ClusterID).ToNot(BeEmpty())
+
+	primary2ClusterID, err = getKubeSystemUID(ctx, primary2K8sClient)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(primary2ClusterID).ToNot(BeEmpty())
+
+	secondaryClusterID, err = getKubeSystemUID(ctx, secondaryK8sClient)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(secondaryClusterID).ToNot(BeEmpty())
+
+	//Verify IDs are different
+	Expect(primary1ClusterID).ToNot(Or(Equal(primary2ClusterID), Equal(secondaryClusterID)))
+	Expect(primary2ClusterID).ToNot(Or(Equal(primary1ClusterID), Equal(secondaryClusterID)))
+	Expect(secondaryClusterID).ToNot(Or(Equal(primary1ClusterID), Equal(primary2ClusterID)))
 })
 
 var _ = AfterSuite(func() {
@@ -139,6 +181,11 @@ var _ = AfterSuite(func() {
 	cancel()
 	if primaryTestEnv != nil {
 		err := primaryTestEnv.Stop()
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	if primary2TestEnv != nil {
+		err := primary2TestEnv.Stop()
 		Expect(err).NotTo(HaveOccurred())
 	}
 
@@ -176,7 +223,7 @@ func CreateNamespace(name string, client client.Client) {
 // Secondary:
 //   - create controller-runtime manager
 //   - setup DNSRecordReconciler
-func setupEnv(delegationRole string) (*envtest.Environment, ctrl.Manager) {
+func setupEnv(delegationRole string, count int) (*envtest.Environment, ctrl.Manager) {
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
@@ -206,7 +253,7 @@ func setupEnv(delegationRole string) (*envtest.Environment, ctrl.Manager) {
 		Controller: config.Controller{
 			SkipNameValidation: ptr.To(true),
 		},
-		Logger: ctrl.LoggerFrom(ctx).WithName(delegationRole),
+		Logger: ctrl.LoggerFrom(ctx).WithName(fmt.Sprintf("%s-%v", delegationRole, count)),
 	}
 
 	if delegationRole == DelegationRoleSecondary {
@@ -260,7 +307,7 @@ func setupEnv(delegationRole string) (*envtest.Environment, ctrl.Manager) {
 			DelegationRole:  delegationRole,
 		}
 
-		err = remoteDNSRecordController.SetupWithManager(mcmgr)
+		err = remoteDNSRecordController.SetupWithManager(mcmgr, true)
 		Expect(err).ToNot(HaveOccurred())
 	}
 
@@ -281,4 +328,14 @@ func createKuadrantUser(testEnv *envtest.Environment) (kubeconfig []byte) {
 
 func generateTestNamespaceName() string {
 	return "test-namespace-" + uuid.New().String()
+}
+
+// returns the `kube-system` namespace UID as a string
+func getKubeSystemUID(ctx context.Context, c client.Client) (string, error) {
+	ns := &v1.Namespace{}
+	err := c.Get(ctx, client.ObjectKey{Name: "kube-system"}, ns)
+	if err != nil {
+		return "", err
+	}
+	return string(ns.UID), nil
 }

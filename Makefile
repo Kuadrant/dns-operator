@@ -291,7 +291,11 @@ build: DIRTY=$(shell hack/check-git-dirty.sh || echo "unknown")
 build: manifests generate fmt vet ## Build manager binary.
 	go build -ldflags "-X main.version=v${VERSION} -X main.gitSHA=${GIT_SHA} -X main.dirty=${DIRTY}" -o bin/manager cmd/main.go
 
-DEFAULT_RUN_FLAGS ?= --zap-devel --provider inmemory,aws,google,azure,coredns,endpoint
+
+RUN_METRICS_ADDR=":8080"
+RUN_HEALTH_ADDR=":8081"
+RUN_DELEGATION_ROLE="primary"
+DEFAULT_RUN_FLAGS ?= --zap-devel --provider inmemory,aws,google,azure,coredns,endpoint --delegation-role=${RUN_DELEGATION_ROLE} --metrics-bind-address=${RUN_METRICS_ADDR} --health-probe-bind-address=${RUN_HEALTH_ADDR}
 RUN_FLAGS ?= $(DEFAULT_RUN_FLAGS)
 
 .PHONY: run

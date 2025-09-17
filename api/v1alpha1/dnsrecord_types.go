@@ -17,9 +17,11 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
@@ -170,6 +172,47 @@ type DNSRecordStatus struct {
 
 	// zoneDomainName is the domain name of the zone that the dns record is publishing endpoints
 	ZoneDomainName string `json:"zoneDomainName,omitempty"`
+
+	// remoteRecordStatuses is a map of cluster IDs and their unique DNSRecordStatus as raw JSON.
+	//
+	// A CRD can't reference a type within itself so the `apiextensionsv1.JSON` type is used.
+	// Use GetRemoteRecordStatuses to get the converted type.
+	RemoteRecordStatuses map[string]apiextensionsv1.JSON `json:"remoteRecordStatuses,omitempty"`
+}
+
+// GetRemoteRecordStatuses returns any remote record statuses in the current status.
+//
+// Converts the raw json type `map[string]apiextensionsv1.JSON` to the desired map[string]DNSRecordStatus` type.
+func (s *DNSRecordStatus) GetRemoteRecordStatuses() map[string]DNSRecordStatus {
+	out := map[string]DNSRecordStatus{}
+
+	for i, v := range s.RemoteRecordStatuses {
+		drs := &DNSRecordStatus{}
+		if err := json.Unmarshal(v.Raw, drs); err != nil {
+			return nil
+		}
+		out[i] = *drs
+	}
+
+	return out
+}
+
+// GetRemoteRecordStatus returns a remote record status for the given cluster ID.
+func (s *DNSRecordStatus) GetRemoteRecordStatus(clusterID string) DNSRecordStatus {
+	status, ok := s.GetRemoteRecordStatuses()[clusterID]
+	if !ok {
+		status = DNSRecordStatus{}
+	}
+	return status
+}
+
+// SetRemoteRecordStatus sets a remote record status for the given cluster ID.
+func (s *DNSRecordStatus) SetRemoteRecordStatus(clusterID string, rStatus DNSRecordStatus) {
+	if s.RemoteRecordStatuses == nil {
+		s.RemoteRecordStatuses = map[string]apiextensionsv1.JSON{}
+	}
+	js, _ := json.Marshal(rStatus)
+	s.RemoteRecordStatuses[clusterID] = apiextensionsv1.JSON{Raw: js}
 }
 
 func (s *DNSRecordStatus) ReadyForDelegation() bool {
@@ -180,13 +223,21 @@ func (s *DNSRecordStatus) ReadyForDelegation() bool {
 	return false
 }
 
-// ProviderEndpointsRemoved return true if the ready status condition has the reason set to "ProviderEndpointsRemoved"
+// ProviderEndpointsRemoved return true if the ready status condition has the reason set to "ProviderEndpointsRemoved".
+// Any remote record statuses must also have the same condition set to true.
 func (s *DNSRecordStatus) ProviderEndpointsRemoved() bool {
 	readyCond := meta.FindStatusCondition(s.Conditions, string(ConditionTypeReady))
-	if readyCond == nil || readyCond.Reason == string(ConditionReasonProviderEndpointsRemoved) {
-		return true
+	if readyCond != nil && readyCond.Reason != string(ConditionReasonProviderEndpointsRemoved) {
+		return false
 	}
-	return false
+
+	for _, status := range s.GetRemoteRecordStatuses() {
+		if !status.ProviderEndpointsRemoved() {
+			return false
+		}
+	}
+
+	return true
 }
 
 // ProviderEndpointsDeletion return true if the ready status condition has the reason set to "ProviderEndpointsDeletion"
