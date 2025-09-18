@@ -29,7 +29,11 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
@@ -68,6 +72,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 		Expect(primaryK8sClient.Create(ctx, dnsProviderSecret)).To(Succeed())
 
 		dnsRecord = &v1alpha1.DNSRecord{
+			TypeMeta: getTypeMeta(),
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      testHostname,
 				Namespace: testNamespace,
@@ -153,33 +158,125 @@ var _ = Describe("DNSRecordReconciler", func() {
 			Expect(err).To(MatchError(ContainSubstring("delegate=true and providerRef are mutually exclusive")))
 		})
 
-		It("prevents delegate being set if it was previously unset", Labels{"delegation"}, func(ctx SpecContext) {
-			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
-
-			Eventually(func(g Gomega) {
-				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				dnsRecord.Spec.ProviderRef = nil
-				dnsRecord.Spec.Delegate = true
-				err = primaryK8sClient.Update(ctx, dnsRecord)
-				g.Expect(err).To(MatchError(ContainSubstring("Delegate can't be set if it was previously unset")))
-			}, TestTimeoutMedium, time.Second).Should(Succeed())
+		// we test for this implicitly - all records here have a provider ref and creating the delegate=fals functionally is the same
+		It("allows the creation of records with both a providerRef and delegation false", Labels{"delegation"}, func(ctx SpecContext) {
+			dnsRecord.Spec.Delegate = false
+			err := primaryK8sClient.Create(ctx, dnsRecord)
+			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("prevents delegate being unset if it was previously set", Labels{"delegation"}, func(ctx SpecContext) {
-			dnsRecord.Spec.ProviderRef = nil
-			dnsRecord.Spec.Delegate = true
-			Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		It("prevents invalid updates and allows valid", Labels{"delegation"}, func(ctx SpecContext) {
+			// testing CEL validations on the `Spec.Delegate` field.
+			// possible combinations of Spec.Delegate
+			//	existing	new		error
+			// 	nil 		nil		n/a
+			// 	nil			false	no
+			// 	nil 		true	yes
+			// 	false 		nil		no
+			// 	false 		false	n/a
+			// 	false 		true	yes
+			//	true		nil		yes
+			// 	true		false	yes
+			//	true		true	n/a
 
+			// Golang initializes primitives with the default value. We use unstructured for direct access to data
+			// Every field that has default value will be removed if to use go struct of a dns record
+			nilRecord, err := runtime.DefaultUnstructuredConverter.ToUnstructured(dnsRecord.DeepCopyObject())
+			Expect(err).ToNot(HaveOccurred())
+			// remove delegate (it will be there for go struct only if set to true)
+			unstructured.RemoveNestedField(nilRecord, "spec", "delegate")
+			// remove provider ref - mutually exclusive with delegate = true; and we are testing for it above
+			unstructured.RemoveNestedField(nilRecord, "spec", "providerRef")
+
+			falseRecord := runtime.DeepCopyJSON(nilRecord)
+			// Set delegate to false. This can only be done while manually creating CR. Go will create nil instead
+			Expect(unstructured.SetNestedField(falseRecord, false, "spec", "delegate")).To(Succeed())
+
+			trueRecord := runtime.DeepCopyJSON(nilRecord)
+			Expect(unstructured.SetNestedField(trueRecord, true, "spec", "delegate")).To(Succeed())
+
+			var mapping *meta.RESTMapping
+
+			mapping, err = primaryManager.GetRESTMapper().RESTMapping(schema.GroupKind{
+				Group: v1alpha1.GroupVersion.Group,
+				Kind:  dnsRecord.GroupVersionKind().Kind,
+			}, dnsRecord.GroupVersionKind().Version)
+			Expect(err).ToNot(HaveOccurred())
+
+			fieldManager := "test"
+
+			// create nil record
+			_, err = primaryDynamicClient.
+				Resource(mapping.Resource).
+				Namespace(dnsRecord.GetNamespace()).
+				Apply(ctx, dnsRecord.GetName(), &unstructured.Unstructured{Object: nilRecord}, metav1.ApplyOptions{FieldManager: fieldManager})
+			Expect(err).ToNot(HaveOccurred())
+
+			// should not allow to set nil to true (nil -> true)
+			_, err = primaryDynamicClient.
+				Resource(mapping.Resource).
+				Namespace(dnsRecord.GetNamespace()).
+				Apply(ctx, dnsRecord.GetName(), &unstructured.Unstructured{Object: trueRecord}, metav1.ApplyOptions{FieldManager: fieldManager})
+			Expect(err).To(MatchError(ContainSubstring("delegate can't be set to true if unset")))
+
+			// should succeed setting nil to false (nil -> false)
+			_, err = primaryDynamicClient.
+				Resource(mapping.Resource).
+				Namespace(dnsRecord.GetNamespace()).
+				Apply(ctx, dnsRecord.GetName(), &unstructured.Unstructured{Object: falseRecord}, metav1.ApplyOptions{FieldManager: fieldManager})
+			Expect(err).ToNot(HaveOccurred())
+
+			// should not allow change false to true (false -> true)
+			_, err = primaryDynamicClient.
+				Resource(mapping.Resource).
+				Namespace(dnsRecord.GetNamespace()).
+				Apply(ctx, dnsRecord.GetName(), &unstructured.Unstructured{Object: trueRecord}, metav1.ApplyOptions{FieldManager: fieldManager})
+			Expect(err).To(MatchError(ContainSubstring("delegate is immutable")))
+
+			// should allow to unset if false (false -> nil)
+			_, err = primaryDynamicClient.
+				Resource(mapping.Resource).
+				Namespace(dnsRecord.GetNamespace()).
+				Apply(ctx, dnsRecord.GetName(), &unstructured.Unstructured{Object: nilRecord}, metav1.ApplyOptions{FieldManager: fieldManager})
+			Expect(err).ToNot(HaveOccurred())
+
+			// Delete existing record
 			Eventually(func(g Gomega) {
-				err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
-				g.Expect(err).NotTo(HaveOccurred())
+				err = primaryDynamicClient.
+					Resource(mapping.Resource).
+					Namespace(dnsRecord.GetNamespace()).
+					Delete(ctx, dnsRecord.GetName(), metav1.DeleteOptions{})
+				g.Expect(client.IgnoreNotFound(err)).ToNot(HaveOccurred())
 
-				dnsRecord.Spec.Delegate = false
-				err = primaryK8sClient.Update(ctx, dnsRecord)
-				g.Expect(err).To(MatchError(ContainSubstring("Delegate can't be unset if it was previously set")))
-			}, TestTimeoutMedium, time.Second).Should(Succeed())
+				recordList, err := primaryDynamicClient.
+					Resource(mapping.Resource).
+					Namespace(dnsRecord.GetNamespace()).
+					List(ctx, metav1.ListOptions{})
+				g.Expect(recordList.Items).To(BeEmpty())
+				g.Expect(err).ToNot(HaveOccurred())
+			}, TestTimeoutShort, time.Second).Should(Succeed())
+
+			// Create delegate = true record
+			_, err = primaryDynamicClient.
+				Resource(mapping.Resource).
+				Namespace(dnsRecord.GetNamespace()).
+				Apply(ctx, dnsRecord.GetName(), &unstructured.Unstructured{Object: trueRecord}, metav1.ApplyOptions{FieldManager: fieldManager})
+			Expect(err).ToNot(HaveOccurred())
+
+			// should not allow to unset if true (true -> nil)
+			_, err = primaryDynamicClient.
+				Resource(mapping.Resource).
+				Namespace(dnsRecord.GetNamespace()).
+				Apply(ctx, dnsRecord.GetName(), &unstructured.Unstructured{Object: nilRecord}, metav1.ApplyOptions{FieldManager: fieldManager})
+			Expect(err).To(MatchError(ContainSubstring("delegate can't be unset if true")))
+
+			// should not allow to change true to false (true -> false)
+			_, err = primaryDynamicClient.
+				Resource(mapping.Resource).
+				Namespace(dnsRecord.GetNamespace()).
+				Apply(ctx, dnsRecord.GetName(), &unstructured.Unstructured{Object: falseRecord}, metav1.ApplyOptions{FieldManager: fieldManager})
+			Expect(err).To(MatchError(ContainSubstring("delegate is immutable")))
+
 		})
 	})
 

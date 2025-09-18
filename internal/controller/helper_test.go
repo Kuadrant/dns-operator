@@ -30,6 +30,14 @@ func GenerateName() string {
 	return namegenerator.NewNameGenerator(nBig.Int64()).Generate()
 }
 
+func getTypeMeta() metav1.TypeMeta {
+	gvk := v1alpha1.GroupVersion.WithKind("DNSRecord")
+	return metav1.TypeMeta{
+		Kind:       gvk.Kind,
+		APIVersion: gvk.GroupVersion().String(),
+	}
+}
+
 func getTestEndpoints(dnsName string, ip []string) []*externaldnsendpoint.Endpoint {
 	return []*externaldnsendpoint.Endpoint{
 		{
