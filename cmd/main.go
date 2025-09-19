@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
@@ -42,6 +43,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/controller"
+	dnsMetrics "github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/probes"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
@@ -207,7 +209,10 @@ func main() {
 		}
 
 		mgr = mcmgr.GetLocalManager()
+		metrics.Registry.MustRegister(&dnsMetrics.RemoteClusterCollector{Provider: clusterProvider})
 	}
+
+	metrics.Registry.MustRegister(&dnsMetrics.LocalCollector{Ctx: ctx, Mgr: mgr})
 
 	if len(providers) == 0 {
 		defaultProviders := provider.RegisteredDefaultProviders()
@@ -252,15 +257,6 @@ func main() {
 
 		if err = remoteDNSRecordController.SetupWithManager(mcmgr, false); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "RemoteDNSRecord")
-			os.Exit(1)
-		}
-
-		remoteClusterSecretController := &controller.RemoteClusterSecretReconciler{
-			Client:       mgr.GetClient(),
-			SecretConfig: controller.SecretConfig{Namespace: clusterSecretNamespace, Label: clusterSecretLabel},
-		}
-		if err = remoteClusterSecretController.SetupWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create controller", "controller", "RemoteClusterSecret")
 			os.Exit(1)
 		}
 	}
