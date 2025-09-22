@@ -13,13 +13,14 @@
 
 ## DNSRecordSpec
 
-| **Field**     | **Type**                                                                                | **Required** | **Description**                                                                                                        |
-|---------------|-----------------------------------------------------------------------------------------|:------------:|------------------------------------------------------------------------------------------------------------------------|
-| `ownerID`     | String                                                                                  |      No      | Unique string used to identify the owner of this record. If unset an ownerID will be generated based on the record UID | 
-| `rootHost`    | String                                                                                  |     Yes      | Single root host of all endpoints in a DNSRecord                                                                       |
-| `providerRef` | [ProviderRef](#providerRef)                                                             |     Yes      | Reference to a DNS Provider Secret                                                                                     |
-| `endpoints`   | [][ExternalDNS Endpoint](https://pkg.go.dev/sigs.k8s.io/external-dns/endpoint#Endpoint) |      No      | Endpoints to manage in the dns provider                                                                                |
-| `healthCheck` | [HealthCheckSpec](#healthcheckspec)                                                     |      No      | Health check configuration                                                                                             |
+| **Field**     | **Type**                                                                                | **Required** | **Description**                                                                                                                       |
+|---------------|-----------------------------------------------------------------------------------------|:------------:|---------------------------------------------------------------------------------------------------------------------------------------|
+| `ownerID`     | String                                                                                  |      No      | Unique string used to identify the owner of this record. If unset an ownerID will be generated based on the record UID                |
+| `rootHost`    | String                                                                                  |     Yes      | Single root host of all endpoints in a DNSRecord                                                                                      |
+| `providerRef` | [ProviderRef](#providerRef)                                                             |      No      | Reference to a DNS Provider Secret. When empty a default secret most be configured with the label `kuadrant.io/default-provider=true` |
+| `endpoints`   | [][ExternalDNS Endpoint](https://pkg.go.dev/sigs.k8s.io/external-dns/endpoint#Endpoint) |      No      | Endpoints to manage in the dns provider                                                                                               |
+| `healthCheck` | [HealthCheckSpec](#healthcheckspec)                                                     |      No      | Health check configuration                                                                                                            |
+| `delegate`    | Boolean                                                                                 |      No      | Enable record delegation. Is an immutable field.                                                                                      |
 
 ## ProviderRef
 
