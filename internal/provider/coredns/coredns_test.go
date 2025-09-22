@@ -2,18 +2,12 @@ package coredns_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/internal/provider/coredns"
-)
-
-var (
-	nameserver1 = "1.1.1.1:53"
-	nameserver2 = "2.2.2.2:53"
 )
 
 func TestCoreDNSProvider_DNSZoneForHost(t *testing.T) {
@@ -29,8 +23,7 @@ func TestCoreDNSProvider_DNSZoneForHost(t *testing.T) {
 			Host: "api.k.example.com",
 			Secret: &v1.Secret{
 				Data: map[string][]byte{
-					"ZONES":       []byte("k.example.com,example.com"),
-					"NAMESERVERS": []byte(fmt.Sprintf("%s,%s", nameserver1, nameserver2)),
+					"ZONES": []byte("k.example.com,example.com"),
 				},
 			},
 			ExpectedZoneRoot: "k.example.com",
@@ -43,8 +36,7 @@ func TestCoreDNSProvider_DNSZoneForHost(t *testing.T) {
 			Host: "api.k.example.com",
 			Secret: &v1.Secret{
 				Data: map[string][]byte{
-					"ZONES":       []byte("example.com,k.other.com"),
-					"NAMESERVERS": []byte(fmt.Sprintf("%s,%s", nameserver1, nameserver2)),
+					"ZONES": []byte("example.com,k.other.com"),
 				},
 			},
 			ExpectedZoneRoot: "example.com",
@@ -57,8 +49,7 @@ func TestCoreDNSProvider_DNSZoneForHost(t *testing.T) {
 			Host: "api.k.other.com",
 			Secret: &v1.Secret{
 				Data: map[string][]byte{
-					"ZONES":       []byte("k.example.com,example.com"),
-					"NAMESERVERS": []byte(fmt.Sprintf("%s,%s", nameserver1, nameserver2)),
+					"ZONES": []byte("k.example.com,example.com"),
 				},
 			},
 			ExpectedZoneRoot: "",
