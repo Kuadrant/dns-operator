@@ -82,6 +82,9 @@ var (
 	primary2K8sClient  client.Client
 	secondaryK8sClient client.Client
 
+	// Dynamic Kubernetes client to use unstructured
+	primaryDynamicClient *dynamic.DynamicClient
+
 	// Kubeconfig data for 'kuadrant' user added to each environment
 	primaryKubeconfig   []byte
 	primary2Kubeconfig  []byte
@@ -115,6 +118,10 @@ var _ = BeforeSuite(func() {
 	primaryK8sClient = primaryManager.GetClient()
 	primary2K8sClient = primary2Manager.GetClient()
 	secondaryK8sClient = secondaryManager.GetClient()
+
+	var err error
+	primaryDynamicClient, err = dynamic.NewForConfig(primaryTestEnv.Config)
+	Expect(err).ShouldNot(HaveOccurred())
 
 	go func() {
 		defer GinkgoRecover()
@@ -157,7 +164,6 @@ var _ = BeforeSuite(func() {
 	Expect(secondaryKubeconfig).ToNot(Or(Equal(primaryKubeconfig), Equal(primary2Kubeconfig)))
 
 	//Get the kube system namespace UID for each environment
-	var err error
 	primary1ClusterID, err = getKubeSystemUID(ctx, primaryK8sClient)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(primary1ClusterID).ToNot(BeEmpty())

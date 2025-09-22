@@ -90,8 +90,8 @@ type HealthCheckStatusProbe struct {
 // DNSRecordSpec defines the desired state of DNSRecord
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.ownerID) || has(self.ownerID)", message="OwnerID can't be unset if it was previously set"
 // +kubebuilder:validation:XValidation:rule="has(oldSelf.ownerID) || !has(self.ownerID)", message="OwnerID can't be set if it was previously unset"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.delegate) || has(self.delegate)", message="Delegate can't be unset if it was previously set"
-// +kubebuilder:validation:XValidation:rule="has(oldSelf.delegate) || !has(self.delegate)", message="Delegate can't be set if it was previously unset"
+// +kubebuilder:validation:XValidation:rule="has(oldSelf.delegate) || !has(self.delegate) || self.delegate == false", message="delegate can't be set to true if unset"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.delegate) || oldSelf.delegate == false || has(self.delegate)", message="delegate can't be unset if true"
 // +kubebuilder:validation:XValidation:rule="!(has(self.providerRef) && has(self.delegate) && self.delegate == true)", message="delegate=true and providerRef are mutually exclusive"
 type DNSRecordSpec struct {
 	// ownerID is a unique string used to identify the owner of this record.
