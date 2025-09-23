@@ -5,7 +5,6 @@ package coredns
 import (
 	"context"
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 
@@ -22,7 +21,6 @@ import (
 
 type CoreDNSProvider struct {
 	logger         logr.Logger
-	nameservers    []*string
 	availableZones []string
 	hostFilter     endpoint.DomainFilter
 	domainFilter   endpoint.DomainFilter
@@ -38,28 +36,12 @@ func init() {
 func NewCoreDNSProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
 	logger := log.FromContext(ctx).WithName(p.Name().String())
 
-	if string(s.Data[v1alpha1.CoreDNSNameserversKey]) == "" {
-		return nil, fmt.Errorf("CoreDNS Provider credentials does not contain %s", v1alpha1.CoreDNSNameserversKey)
-	}
-
 	if string(s.Data[v1alpha1.CoreDNSZonesKey]) == "" {
 		return nil, fmt.Errorf("CoreDNS Provider credentials does not contain %s", v1alpha1.CoreDNSZonesKey)
 	}
 
-	nameservers := []*string{}
-	if _, ok := s.Data[v1alpha1.CoreDNSNameserversKey]; ok {
-		nservers := strings.Split(strings.TrimSpace(string(s.Data[v1alpha1.CoreDNSNameserversKey])), ",")
-		for _, ns := range nservers {
-			if err := validateNSAddress(ns); err != nil {
-				return p, err
-			}
-			nameservers = append(nameservers, &ns)
-		}
-	}
-
 	p := &CoreDNSProvider{
 		logger:       logger,
-		nameservers:  nameservers,
 		hostFilter:   c.HostDomainFilter,
 		domainFilter: c.DomainFilter,
 	}
@@ -84,13 +66,12 @@ func (p *CoreDNSProvider) Labels() map[string]string {
 }
 
 // DNSZones returns a list of dns zones accessible for this provider
-func (p *CoreDNSProvider) DNSZones(ctx context.Context) ([]provider.DNSZone, error) {
+func (p *CoreDNSProvider) DNSZones(_ context.Context) ([]provider.DNSZone, error) {
 	zones := []provider.DNSZone{}
 	for _, zone := range p.availableZones {
 		zones = append(zones, provider.DNSZone{
-			ID:          zone,
-			DNSName:     zone,
-			NameServers: p.nameservers,
+			ID:      zone,
+			DNSName: zone,
 		})
 	}
 	return zones, nil
@@ -139,10 +120,6 @@ func (p *CoreDNSProvider) GetDomainFilter() endpoint.DomainFilter {
 	return endpoint.DomainFilter{}
 }
 
-func (p *CoreDNSProvider) GetNameservers() []*string {
-	return p.nameservers
-}
-
 // validateEndpoints runs validations on the given endpoints to ensure they conform to the CoreDNS provider API
 func validateEndpoints(endpoints []*endpoint.Endpoint) error {
 	geoContinentPrefix := "GEO-"
@@ -164,21 +141,6 @@ func validateEndpoints(endpoints []*endpoint.Endpoint) error {
 				}
 			}
 		}
-	}
-	return nil
-}
-
-func validateNSAddress(address string) error {
-	// currently we only can work with an IP and port number
-	nsParts := strings.Split(address, ":")
-	if len(nsParts) != 2 {
-		return fmt.Errorf("expected an IP and Port number in format 1.2.4.5:53 got %s", address)
-	}
-	if nil == net.ParseIP(nsParts[0]) {
-		return fmt.Errorf("expected an IPAddress as nameserver address but got %s", nsParts[0])
-	}
-	if _, err := strconv.ParseUint(nsParts[1], 10, 64); err != nil {
-		return fmt.Errorf("port number expected at end of nameserver but got %s", nsParts[1])
 	}
 	return nil
 }

@@ -64,8 +64,6 @@ const (
 
 	// CoreDNSZonesKey list of zones available to add records into. Must be configured in the Corefile with a 'kuadrant' directive.
 	CoreDNSZonesKey = "ZONES"
-	// CoreDNSNameserversKey list of nameservers for the current CoreDNS instances.
-	CoreDNSNameserversKey = "NAMESERVERS"
 
 	DefaultProviderSecretLabel = "kuadrant.io/default-provider"
 
