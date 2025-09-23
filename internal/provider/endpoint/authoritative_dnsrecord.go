@@ -6,9 +6,10 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/dynamic"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common"
@@ -27,98 +28,89 @@ var _ provider.Provider = &AuthoritativeDNSRecordProvider{}
 // Calls to DNSZoneForHost are adapted to ensure the existence of the expected authoritative record before calling the normal endpoint impl.
 type AuthoritativeDNSRecordProvider struct {
 	*EndpointProvider
-	client.Client
 	v1alpha1.DNSRecord
 }
 
-func NewAuthoritativeDNSRecordProvider(ctx context.Context, c client.Client, dc dynamic.Interface, pAccessor v1alpha1.ProviderAccessor, pConfig provider.Config) (provider.Provider, error) {
+func NewAuthoritativeDNSRecordProvider(ctx context.Context, dc dynamic.Interface, pAccessor v1alpha1.ProviderAccessor, pConfig provider.Config) (provider.Provider, error) {
 	dnsRecord, ok := pAccessor.(*v1alpha1.DNSRecord)
 	if !ok {
 		return nil, errIncompatibleAccessorType
 	}
-	ep, err := newEndpointProviderFromSecret(ctx, dc, authoritativeRecordProviderSecret(dnsRecord), pConfig)
+	ep, err := newEndpointProviderFromSecret(ctx, dc, authoritativeRecordProviderSecretFor(dnsRecord), pConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	adp := &AuthoritativeDNSRecordProvider{
 		EndpointProvider: ep,
-		Client:           c,
 		DNSRecord:        *dnsRecord,
 	}
 
 	return adp, nil
 }
 
-// authoritativeRecordProviderSecret returns an "endpoint" provider secret configured for DNSRecord resources and a label selector for the given DNSRecord.
-func authoritativeRecordProviderSecret(record *v1alpha1.DNSRecord) *corev1.Secret {
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "endpoint",
-			Namespace: record.GetNamespace(),
-		},
-		Type: v1alpha1.SecretTypeKuadrantEndpoint,
-		Data: map[string][]byte{
-			v1alpha1.EndpointLabelSelectorKey: []byte(authoritativeRecordSelectorFor(*record)),
-			v1alpha1.EndpointGVRKey:           []byte(v1alpha1.DefaultEndpointGVR),
-		},
-	}
-}
-
 // Provider Impl
 
 func (p AuthoritativeDNSRecordProvider) DNSZoneForHost(ctx context.Context, host string) (*provider.DNSZone, error) {
-	_, err := p.ensureAuthoritativeRecord(ctx, p.DNSRecord)
+	err := p.ensureAuthoritativeRecord(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return p.EndpointProvider.DNSZoneForHost(ctx, host)
 }
 
-func (p AuthoritativeDNSRecordProvider) ensureAuthoritativeRecord(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
-	aRecord, err := p.getAuthoritativeRecordFor(ctx, record)
+func (p AuthoritativeDNSRecordProvider) ensureAuthoritativeRecord(ctx context.Context) error {
+	aRecord, err := p.getAuthoritativeRecord(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if aRecord != nil {
-		return aRecord, nil
+		return nil
 	}
-	return p.createAuthoritativeRecordFor(ctx, record)
+	return p.createAuthoritativeRecord(ctx)
 }
 
-func (p AuthoritativeDNSRecordProvider) getAuthoritativeRecordFor(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
-	aRecords := v1alpha1.DNSRecordList{}
-
-	labelSelector, err := labels.Parse(authoritativeRecordSelectorFor(record))
+func (p AuthoritativeDNSRecordProvider) getAuthoritativeRecord(ctx context.Context) (*v1alpha1.DNSRecord, error) {
+	uList, err := p.NamespacedClient.List(ctx, metav1.ListOptions{LabelSelector: labels.Set(p.labelSelector.MatchLabels).String()})
 	if err != nil {
 		return nil, err
 	}
 
-	if err = p.Client.List(ctx, &aRecords, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
-		return nil, fmt.Errorf("failed to get authoritative record: %w", err)
-	}
-
-	if len(aRecords.Items) > 0 {
-		return &aRecords.Items[0], nil
+	if len(uList.Items) > 0 {
+		var aRecord = v1alpha1.DNSRecord{}
+		if err = runtime.DefaultUnstructuredConverter.FromUnstructured(uList.Items[0].Object, &aRecord); err != nil {
+			return nil, err
+		}
+		return &aRecord, nil
 	}
 
 	return nil, nil
 }
 
-func (p AuthoritativeDNSRecordProvider) createAuthoritativeRecordFor(ctx context.Context, record v1alpha1.DNSRecord) (*v1alpha1.DNSRecord, error) {
-	aRecord := authoritativeRecordFor(record)
+func (p AuthoritativeDNSRecordProvider) createAuthoritativeRecord(ctx context.Context) error {
+	aRecord := authoritativeRecordFor(p.DNSRecord)
 
-	if err := p.Client.Create(ctx, aRecord, &client.CreateOptions{}); err != nil {
-		return nil, fmt.Errorf("failed to create authoritative record: %w", err)
+	obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(aRecord)
+	if err != nil {
+		return err
 	}
 
-	return aRecord, nil
+	_, err = p.NamespacedClient.Create(ctx, &unstructured.Unstructured{Object: obj}, metav1.CreateOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func authoritativeRecordFor(record v1alpha1.DNSRecord) *v1alpha1.DNSRecord {
 	rootHostHash := common.HashRootHost(record.GetRootHost())
 	pRef := record.GetProviderRef()
 	return &v1alpha1.DNSRecord{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "DNSRecord",
+			APIVersion: "kuadrant.io/v1alpha1",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      toAuthoritativeRecordName(rootHostHash),
 			Namespace: record.GetNamespace(),
@@ -136,6 +128,21 @@ func authoritativeRecordFor(record v1alpha1.DNSRecord) *v1alpha1.DNSRecord {
 
 func toAuthoritativeRecordName(rootHostHash string) string {
 	return fmt.Sprintf("authoritative-record-%s", rootHostHash)
+}
+
+// authoritativeRecordProviderSecretFor returns an "endpoint" provider secret configured for DNSRecord resources and a label selector for the given DNSRecord.
+func authoritativeRecordProviderSecretFor(record *v1alpha1.DNSRecord) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "endpoint",
+			Namespace: record.GetNamespace(),
+		},
+		Type: v1alpha1.SecretTypeKuadrantEndpoint,
+		Data: map[string][]byte{
+			v1alpha1.EndpointLabelSelectorKey: []byte(authoritativeRecordSelectorFor(*record)),
+			v1alpha1.EndpointGVRKey:           []byte(v1alpha1.DefaultEndpointGVR),
+		},
+	}
 }
 
 func authoritativeRecordSelectorFor(record v1alpha1.DNSRecord) string {

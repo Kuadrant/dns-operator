@@ -11,8 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	cgfake "k8s.io/client-go/dynamic/fake"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	crfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/provider"
@@ -22,12 +20,11 @@ func TestNewAuthoritativeDNSRecordProvider(t *testing.T) {
 	scheme := runtime.NewScheme()
 
 	dc := cgfake.NewSimpleDynamicClient(scheme, []runtime.Object{}...)
-	c := crfake.NewClientBuilder().WithScheme(scheme).Build()
 
 	t.Run("returns error for accessor that is not a DNSRecord", func(t *testing.T) {
 		pa := dummyProviderAccessor{}
 
-		actualProvider, err := NewAuthoritativeDNSRecordProvider(t.Context(), c, dc, pa, provider.Config{})
+		actualProvider, err := NewAuthoritativeDNSRecordProvider(t.Context(), dc, pa, provider.Config{})
 		assert.Nil(t, actualProvider)
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, errIncompatibleAccessorType)
@@ -44,7 +41,7 @@ func TestNewAuthoritativeDNSRecordProvider(t *testing.T) {
 			},
 		}
 
-		actualProvider, err := NewAuthoritativeDNSRecordProvider(t.Context(), c, dc, pa, provider.Config{})
+		actualProvider, err := NewAuthoritativeDNSRecordProvider(t.Context(), dc, pa, provider.Config{})
 		assert.NotNil(t, actualProvider)
 		assert.NoError(t, err)
 	})
@@ -70,7 +67,6 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 
 	t.Run("creates authoritative record if one does not already exist", func(t *testing.T) {
 		dc := cgfake.NewSimpleDynamicClient(scheme, []runtime.Object{authRecord}...)
-		c := crfake.NewClientBuilder().WithScheme(scheme).WithObjects(authRecord).Build()
 
 		pa := &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
@@ -81,20 +77,19 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 				RootHost: "foo.example.com",
 			},
 		}
-		authProvider, err := NewAuthoritativeDNSRecordProvider(t.Context(), c, dc, pa, provider.Config{})
+		authProvider, err := NewAuthoritativeDNSRecordProvider(t.Context(), dc, pa, provider.Config{})
 		assert.NotNil(t, authProvider)
 		assert.NoError(t, err)
 
 		zone, err := authProvider.DNSZoneForHost(t.Context(), "foo.example.com")
-		assert.Nil(t, zone)  // Check this even though it should not be nil
-		assert.Error(t, err) // Check this even though it should be nil
-
-		// This isn't really working as desired because we are using two different fake clients.
-		// All we can do is check the expected record was created in the cr fake client that the AuthoritativeDNSRecordProvider uses.
-		dnsRecords := &v1alpha1.DNSRecordList{}
-		err = c.List(t.Context(), dnsRecords, client.InNamespace("test-namespace"))
+		assert.NotNil(t, zone)
 		assert.NoError(t, err)
-		assert.Len(t, dnsRecords.Items, 2)
+
+		dnsRecordsGVR := v1alpha1.GroupVersion.WithResource("dnsrecords")
+
+		uList, err := dc.Resource(dnsRecordsGVR).Namespace("test-namespace").List(t.Context(), metav1.ListOptions{})
+		assert.NoError(t, err)
+		assert.Len(t, uList.Items, 2)
 
 		desiredAuthRecord := &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
@@ -111,8 +106,12 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 		}
 
 		actualAuthRecord := &v1alpha1.DNSRecord{}
-		err = c.Get(t.Context(), client.ObjectKeyFromObject(desiredAuthRecord), actualAuthRecord)
+
+		unst, err := dc.Resource(dnsRecordsGVR).Namespace("test-namespace").Get(t.Context(), desiredAuthRecord.Name, metav1.GetOptions{})
 		assert.NoError(t, err)
+		err = runtime.DefaultUnstructuredConverter.FromUnstructured(unst.Object, &actualAuthRecord)
+		assert.NoError(t, err)
+
 		assert.Equal(t, desiredAuthRecord.Name, actualAuthRecord.Name)
 		assert.Equal(t, desiredAuthRecord.Namespace, actualAuthRecord.Namespace)
 		assert.Equal(t, desiredAuthRecord.Labels, actualAuthRecord.Labels)
@@ -121,7 +120,6 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 
 	t.Run("uses existing authoritative record", func(t *testing.T) {
 		dc := cgfake.NewSimpleDynamicClient(scheme, []runtime.Object{authRecord}...)
-		c := crfake.NewClientBuilder().WithScheme(scheme).WithObjects(authRecord).Build()
 
 		pa := &v1alpha1.DNSRecord{
 			ObjectMeta: metav1.ObjectMeta{
@@ -132,7 +130,7 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 				RootHost: "example.com",
 			},
 		}
-		authProvider, err := NewAuthoritativeDNSRecordProvider(t.Context(), c, dc, pa, provider.Config{})
+		authProvider, err := NewAuthoritativeDNSRecordProvider(t.Context(), dc, pa, provider.Config{})
 		assert.NotNil(t, authProvider)
 		assert.NoError(t, err)
 
@@ -144,14 +142,14 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 		assert.Equal(t, zone.DNSName, authRecord.Spec.RootHost)
 
 		//Check only the one record exists
-		dnsRecords := &v1alpha1.DNSRecordList{}
-		err = c.List(t.Context(), dnsRecords, client.InNamespace("test-namespace"))
+		dnsRecordsGVR := v1alpha1.GroupVersion.WithResource("dnsrecords")
+		uList, err := dc.Resource(dnsRecordsGVR).Namespace("test-namespace").List(t.Context(), metav1.ListOptions{})
 		assert.NoError(t, err)
-		assert.Len(t, dnsRecords.Items, 1)
+		assert.Len(t, uList.Items, 1)
 	})
 }
 
-func Test_authoritativeRecordProviderSecret(t *testing.T) {
+func Test_authoritativeRecordProviderSecretFor(t *testing.T) {
 	record := &v1alpha1.DNSRecord{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-record",
@@ -174,7 +172,7 @@ func Test_authoritativeRecordProviderSecret(t *testing.T) {
 		Type: "kuadrant.io/endpoint",
 	}
 
-	actualSecret := authoritativeRecordProviderSecret(record)
+	actualSecret := authoritativeRecordProviderSecretFor(record)
 	assert.Equal(t, expectedSecret, actualSecret)
 }
 

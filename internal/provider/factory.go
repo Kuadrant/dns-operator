@@ -30,7 +30,7 @@ var (
 // An error will be returned if the appropriate provider is not registered.
 type ProviderConstructor func(context.Context, *v1.Secret, Config) (Provider, error)
 type ProviderConstructorWithClient func(context.Context, dynamic.Interface, *v1.Secret, Config) (Provider, error)
-type DelegationProviderFunc func(context.Context, client.Client, dynamic.Interface, v1alpha1.ProviderAccessor, Config) (Provider, error)
+type DelegationProviderFunc func(context.Context, dynamic.Interface, v1alpha1.ProviderAccessor, Config) (Provider, error)
 
 var (
 	constructors     = make(map[string]interface{})
@@ -126,7 +126,7 @@ func (f *factory) delegationProviderFor(ctx context.Context, pa v1alpha1.Provide
 	if f.delegationProviderFunc == nil {
 		return nil, errDelegationProviderNotConfigured
 	}
-	return f.delegationProviderFunc(ctx, f.Client, f.dynamicClient, pa, pConfig)
+	return f.delegationProviderFunc(ctx, f.dynamicClient, pa, pConfig)
 }
 
 func (f *factory) providerForSecret(ctx context.Context, pSecret *v1.Secret, pConfig Config) (Provider, error) {
