@@ -1,4 +1,4 @@
-module github.com/kuadrant/coredns-kuadrant
+module github.com/kuadrant/dns-operator/coredns/plugin
 
 go 1.22.7
 
