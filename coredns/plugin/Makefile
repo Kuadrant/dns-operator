@@ -4,7 +4,7 @@ COREDNS_IMG ?= $(COREDNS_DEFAULT_IMG)
 
 CONTAINER_TOOL ?= docker
 
-VERSION ?= 0.0.0
+VERSION ?= 0.1.0
 GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
 
 .PHONY: all

@@ -22,7 +22,6 @@ import (
 	_ "github.com/coredns/coredns/plugin/metadata"
 	_ "github.com/coredns/coredns/plugin/metrics"
 	_ "github.com/coredns/coredns/plugin/minimal"
-	_ "github.com/coredns/coredns/plugin/multisocket"
 	_ "github.com/coredns/coredns/plugin/nsid"
 	_ "github.com/coredns/coredns/plugin/ready"
 	_ "github.com/coredns/coredns/plugin/reload"
@@ -51,7 +50,6 @@ var Directives = []string{
 	"cancel",
 	"tls",
 	"timeouts",
-	"multisocket",
 	"reload",
 	"nsid",
 	"debug",
