@@ -9,8 +9,8 @@ import (
 	"github.com/coredns/coredns/coremain"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 
-	_ "github.com/kuadrant/coredns-kuadrant"
-	"github.com/kuadrant/coredns-kuadrant/cmd/plugin"
+	_ "github.com/kuadrant/dns-operator/coredns/plugin"
+	"github.com/kuadrant/dns-operator/coredns/plugin/cmd/plugin"
 )
 
 var (

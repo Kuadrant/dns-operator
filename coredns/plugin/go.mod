@@ -1,10 +1,10 @@
-module github.com/kuadrant/coredns-kuadrant
+module github.com/kuadrant/dns-operator/coredns/plugin
 
 go 1.22.7
 
 require (
-	github.com/coredns/caddy v1.1.2-0.20241029205200-8de985351a98
-	github.com/coredns/coredns v1.12.0
+	github.com/coredns/caddy v1.1.1
+	github.com/coredns/coredns v1.11.1
 	github.com/kuadrant/dns-operator v0.12.0
 	github.com/miekg/dns v1.1.64
 	github.com/stretchr/testify v1.10.0
@@ -16,12 +16,12 @@ require (
 )
 
 require (
+	github.com/antonmedv/expr v1.15.5 // indirect
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dnstap/golang-dnstap v0.4.0 // indirect
-	github.com/expr-lang/expr v1.17.0 // indirect
 	github.com/farsightsec/golang-framestream v0.3.0 // indirect
 	github.com/flynn/go-shlex v0.0.0-20150515145356-3f9db97f8568 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
@@ -55,7 +55,6 @@ require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
@@ -81,4 +80,4 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/coredns/coredns => github.com/mikenairn/coredns v0.0.0-20250225081735-144d171bb58f
+replace github.com/coredns/coredns => github.com/kuadrant/coredns v1.1.4-0.20250924192513-137cd0a65ece
