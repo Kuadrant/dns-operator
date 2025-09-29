@@ -29,10 +29,6 @@ install-coredns: kustomize ## Install CoreDNS
 install-coredns-unmonitored: kustomize ## Install CoreDNS without ServiceMonitor
 	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-unmonitored
 
-.PHONY: install-coredns-multi
-install-coredns-multi: kustomize ## Install CoreDNS Multi POC Setup
-	${MAKE} install-coredns COREDNS_KUSTOMIZATION=config/coredns-multi
-
 .PHONY: install-bind9
 install-bind9: BIND9_KUSTOMIZATION=config/bind9
 install-bind9: kustomize ## Install Bind9
