@@ -1069,17 +1069,8 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(err).To(MatchError(ContainSubstring("not found")))
 				}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
 
-				By("verifying the authoritative record endpoints are empty")
-				Eventually(func(g Gomega) {
-					// Get the authoritative record on the primary
-					g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)).To(Succeed())
-					//authoritative record should contain no endpoints
-					g.Expect(authRecord.Spec.Endpoints).To(BeEmpty())
-				}, TestTimeoutMedium, time.Second).Should(Succeed())
-
-				By("deleting the authoritative record")
-				Expect(primaryK8sClient.Delete(ctx, authRecord)).To(Succeed())
-				// primary record should be removed
+				By("verifying the primary authoritative record is removed")
+				// authoritative record should be removed
 				Eventually(func(g Gomega) {
 					err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(authRecord), authRecord)
 					g.Expect(err).To(HaveOccurred())
@@ -1751,21 +1742,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(err).To(MatchError(ContainSubstring("not found")))
 				}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
 
-				By("verifying the primary-1 and primary-2 authoritative record endpoints are empty")
-				Eventually(func(g Gomega) {
-					// Get the authoritative record on primary-1
-					g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(primary1AuthRecord), primary1AuthRecord)).To(Succeed())
-					//authoritative record should contain no endpoints
-					g.Expect(primary1AuthRecord.Spec.Endpoints).To(BeEmpty())
-					// Get the authoritative record on primary-2
-					g.Expect(primary2K8sClient.Get(ctx, client.ObjectKeyFromObject(primary2AuthRecord), primary2AuthRecord)).To(Succeed())
-					//authoritative record should contain no endpoints
-					g.Expect(primary2AuthRecord.Spec.Endpoints).To(BeEmpty())
-				}, TestTimeoutMedium, time.Second).Should(Succeed())
-
-				By("deleting the primary-1 and primary-2 authoritative records")
-				Expect(primaryK8sClient.Delete(ctx, primary1AuthRecord)).To(Succeed())
-				Expect(primary2K8sClient.Delete(ctx, primary2AuthRecord)).To(Succeed())
+				By("verifying the primary-1 and primary-2 authoritative records are removed")
 				// primary-1 and primary-2 auth record should be removed
 				Eventually(func(g Gomega) {
 					err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(primary1AuthRecord), primary1AuthRecord)

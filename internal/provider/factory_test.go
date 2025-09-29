@@ -14,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/dynamic"
 	cgfake "k8s.io/client-go/dynamic/fake"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	crfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
@@ -268,7 +267,7 @@ func newFakeCoreDNSProvider(_ context.Context, _ *corev1.Secret, _ Config) (Prov
 	return &fakeProvider{"coredns"}, nil
 }
 
-func newFakeDelegationProvider(_ context.Context, _ client.Client, _ dynamic.Interface, _ v1alpha1.ProviderAccessor, _ Config) (Provider, error) {
+func newFakeDelegationProvider(_ context.Context, _ dynamic.Interface, _ v1alpha1.ProviderAccessor, _ Config) (Provider, error) {
 	return &fakeProvider{"fake-delegation-provider"}, nil
 }
 
