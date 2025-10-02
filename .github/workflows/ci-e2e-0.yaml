@@ -101,7 +101,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
       - uses: actions/setup-go@v5
         with:
-          go-version: v1.24.x
+          go-version-file: go.mod
           cache: false
       - name: Create AWS provider configuration
         run: |
