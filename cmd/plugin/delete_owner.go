@@ -6,12 +6,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// Defines logic for the delete-owner subcommand
-func deleteOwnerCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:  "delete-owner",
-		RunE: deleteOwner,
-	}
+var deleteOwnerCMD = &cobra.Command{
+	Use:  "delete-owner",
+	RunE: deleteOwner,
 }
 
 func deleteOwner(_ *cobra.Command, _ []string) error {

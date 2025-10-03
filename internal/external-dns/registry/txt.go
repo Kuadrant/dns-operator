@@ -46,8 +46,8 @@ var (
 		endpoint.OwnerLabelKey,
 	}
 
-	legacyAffixMappers = map[string]func(string, string, string) nameMapper{
-		externalDNSMapperVersion: newExternalDNSAffixNameMapper,
+	legacyAffixMappers = map[string]func(string, string, string) NameMapper{
+		externalDNSMapperVersion: NewExternalDNSAffixNameMapper,
 	}
 )
 
@@ -55,7 +55,7 @@ var (
 type TXTRegistry struct {
 	provider provider.Provider
 	ownerID  string // refers to the owner id of the current instance
-	mapper   nameMapper
+	mapper   NameMapper
 
 	// cache the records in memory and update on an interval instead.
 	recordsCache            []*endpoint.Endpoint
@@ -168,7 +168,7 @@ func (im *TXTRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, error
 		for _, target := range record.Targets {
 
 			var labelsFromTarget endpoint.Labels
-			ownerID, version, labelsFromTarget, err = im.NewLabelsFromString(target, im.txtEncryptAESKey)
+			ownerID, version, labelsFromTarget, err = NewLabelsFromString(target, im.txtEncryptAESKey)
 			if errors.Is(err, endpoint.ErrInvalidHeritage) {
 				break
 			}
@@ -193,7 +193,7 @@ func (im *TXTRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, error
 		}
 
 		// convert TXT record name into the name of endpoint and recordType
-		endpointName, recordType := im.mapper.toEndpointName(record.DNSName, version)
+		endpointName, recordType := im.mapper.ToEndpointName(record.DNSName, version)
 		// compose endpoint key; this is an actual endpoint in the provider.
 
 		key := endpoint.EndpointKey{
@@ -357,7 +357,7 @@ func (im *TXTRegistry) generateTXTRecord(r *endpoint.Endpoint) []*endpoint.Endpo
 		targets[key] = value
 	}
 
-	txtNew := endpoint.NewEndpoint(im.mapper.toTXTName(r.DNSName, im.OwnerID(), recordType), endpoint.RecordTypeTXT, targets.Serialize(true, im.txtEncryptEnabled, im.txtEncryptAESKey))
+	txtNew := endpoint.NewEndpoint(im.mapper.ToTXTName(r.DNSName, im.OwnerID(), recordType), endpoint.RecordTypeTXT, targets.Serialize(true, im.txtEncryptEnabled, im.txtEncryptAESKey))
 	if txtNew != nil {
 		txtNew.WithSetIdentifier(r.SetIdentifier)
 		txtNew.Labels[endpoint.OwnedRecordLabelKey] = r.DNSName
@@ -480,7 +480,7 @@ func (im *TXTRegistry) removeFromCache(ep *endpoint.Endpoint) {
 	}
 }
 
-func (im *TXTRegistry) NewLabelsFromString(labelText string, aesKey []byte) (owner, version string, labels endpoint.Labels, err error) {
+func NewLabelsFromString(labelText string, aesKey []byte) (owner, version string, labels endpoint.Labels, err error) {
 	owner, version = "", ""
 
 	labels, err = endpoint.NewLabelsFromString(labelText, aesKey)
