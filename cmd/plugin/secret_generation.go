@@ -17,19 +17,23 @@ import (
 
 const kubectl = "kubectl"
 
-var rootCmd = &cobra.Command{
-	Use:   "secret-generation",
-	RunE:  secretGeneration,
-	Short: "Create a kubeconfig secret",
-}
-
-var (
+type GenerateSecretFlags struct {
 	contextName    string
 	name           string
 	namespace      string
 	serviceAccount string
-	dirty          bool = false
-)
+	dirty          bool
+}
+
+var generateSecretFlags = GenerateSecretFlags{
+	dirty: false,
+}
+
+var generateSecretCMD = &cobra.Command{
+	Use:   "secret-generation",
+	RunE:  secretGeneration,
+	Short: "Create a kubeconfig secret",
+}
 
 type Secret struct {
 	APIVersion string            `yaml:"apiVersion"`
@@ -89,19 +93,15 @@ type User struct {
 	Token string `yaml:"token"`
 }
 
-func secretGenerationCommand() *cobra.Command {
-	return rootCmd
-}
-
 func init() {
-	rootCmd.Flags().StringVarP(&contextName, "context", "c", "", "kubeconfig context for the secondry cluster (required)")
-	if err := rootCmd.MarkFlagRequired("context"); err != nil {
+	generateSecretCMD.Flags().StringVarP(&generateSecretFlags.contextName, "context", "c", "", "kubeconfig context for the secondry cluster (required)")
+	if err := generateSecretCMD.MarkFlagRequired("context"); err != nil {
 		panic(err)
 	}
 
-	rootCmd.Flags().StringVar(&name, "name", "", "name for the secret (defaults to context name)")
-	rootCmd.Flags().StringVarP(&namespace, "namespace", "n", "dns-operator-system", "namespace to create the secret in")
-	rootCmd.Flags().StringVarP(&serviceAccount, "service-account", "a", "dns-operator-remote-cluster", "service account name to use")
+	generateSecretCMD.Flags().StringVar(&generateSecretFlags.name, "name", "", "name for the secret (defaults to context name)")
+	generateSecretCMD.Flags().StringVarP(&generateSecretFlags.namespace, "namespace", "n", "dns-operator-system", "namespace to create the secret in")
+	generateSecretCMD.Flags().StringVarP(&generateSecretFlags.serviceAccount, "service-account", "a", "dns-operator-remote-cluster", "service account name to use")
 }
 
 func secretGeneration(_ *cobra.Command, _ []string) error {
@@ -110,12 +110,12 @@ func secretGeneration(_ *cobra.Command, _ []string) error {
 	dirtyStr := os.Getenv("KUBECTL_DNS_DIRTY")
 	if strings.Compare(strings.ToLower(dirtyStr), "true") == 0 {
 		log.V(1).Info("kubectl-dns running in dirty mode")
-		dirty = true
+		generateSecretFlags.dirty = true
 	}
 
-	log.V(1).Info("Set the secret name to context name if not set", "context", contextName, "name", name)
-	if len(name) == 0 {
-		name = contextName
+	log.V(1).Info("Set the secret name to context name if not set", "context", generateSecretFlags.contextName, "name", generateSecretFlags.name)
+	if len(generateSecretFlags.name) == 0 {
+		generateSecretFlags.name = generateSecretFlags.contextName
 	}
 
 	err := checkKubectl(log)
@@ -193,7 +193,7 @@ func secretGeneration(_ *cobra.Command, _ []string) error {
 func getClusterCA(log logr.Logger) (string, error) {
 	log.V(1).Info("Get the cluster CA certificate from the remote cluster")
 	args := []string{
-		fmt.Sprintf("--context=%v", contextName),
+		fmt.Sprintf("--context=%v", generateSecretFlags.contextName),
 		"config",
 		"view",
 		"--raw",
@@ -209,9 +209,9 @@ func getClusterCA(log logr.Logger) (string, error) {
 	clusterCARaw, err := cmd.Output()
 	if err != nil {
 		if log.V(1).Enabled() {
-			log.V(1).Error(err, "unable to get certificate authority from kubeconfig", "context", contextName, "stdErr", stderr.String(), "stdOut", cmd.Stdout)
+			log.V(1).Error(err, "unable to get certificate authority from kubeconfig", "context", generateSecretFlags.contextName, "stdErr", stderr.String(), "stdOut", cmd.Stdout)
 		}
-		return "", fmt.Errorf("unable to get certificate for %v from kubeconfig", contextName)
+		return "", fmt.Errorf("unable to get certificate for %v from kubeconfig", generateSecretFlags.contextName)
 	}
 	clusterCA := string(clusterCARaw)
 	clusterCA = strings.Trim(clusterCA, "'")
@@ -222,7 +222,7 @@ func getClusterCA(log logr.Logger) (string, error) {
 func getClusterServer(log logr.Logger) (string, error) {
 	log.V(1).Info("Get the cluster server URL from the remote cluster")
 	args := []string{
-		fmt.Sprintf("--context=%v", contextName),
+		fmt.Sprintf("--context=%v", generateSecretFlags.contextName),
 		"config",
 		"view",
 		"--raw",
@@ -239,9 +239,9 @@ func getClusterServer(log logr.Logger) (string, error) {
 	clusterServerRaw, err := cmd.Output()
 	if err != nil {
 		if log.V(1).Enabled() {
-			log.V(1).Error(err, "unable to get server url from kubeconfig", "context", contextName, "stdErr", stderr.String(), "stdOut", cmd.Stdout)
+			log.V(1).Error(err, "unable to get server url from kubeconfig", "context", generateSecretFlags.contextName, "stdErr", stderr.String(), "stdOut", cmd.Stdout)
 		}
-		return "", fmt.Errorf("unable to get server url for %v from kubeconfig", contextName)
+		return "", fmt.Errorf("unable to get server url for %v from kubeconfig", generateSecretFlags.contextName)
 	}
 	clusterServer := string(clusterServerRaw)
 	clusterServer = strings.Trim(clusterServer, "'")
@@ -253,12 +253,12 @@ func getClusterServer(log logr.Logger) (string, error) {
 func generateServiceAccountToken(log logr.Logger) (string, error) {
 	log.V(1).Info("Get the service account token from the remote cluster")
 	args := []string{
-		fmt.Sprintf("--context=%v", contextName),
+		fmt.Sprintf("--context=%v", generateSecretFlags.contextName),
 		"--namespace",
-		namespace,
+		generateSecretFlags.namespace,
 		"create",
 		"token",
-		serviceAccount,
+		generateSecretFlags.serviceAccount,
 		"--duration=8760h",
 	}
 	cmd := exec.Command(kubectl, args...)
@@ -268,9 +268,9 @@ func generateServiceAccountToken(log logr.Logger) (string, error) {
 	serviceAccountToken, err := cmd.Output()
 	if err != nil {
 		if log.V(1).Enabled() {
-			log.V(1).Error(err, "unable to generate service account token from kubeconfig", "context", contextName, "stdErr", stderr.String(), "stdOut", cmd.Stdout)
+			log.V(1).Error(err, "unable to generate service account token from kubeconfig", "context", generateSecretFlags.contextName, "stdErr", stderr.String(), "stdOut", cmd.Stdout)
 		}
-		return "", fmt.Errorf("unable to generate service account token for %v from kubeconfig", contextName)
+		return "", fmt.Errorf("unable to generate service account token for %v from kubeconfig", generateSecretFlags.contextName)
 
 	}
 
@@ -284,7 +284,7 @@ func defineKubeConfig(log logr.Logger, clusterServer, clusterCA, serviceAccountT
 		Kind:       "Config",
 		Clusters: []NamedCluster{
 			{
-				Name: name,
+				Name: generateSecretFlags.name,
 				Cluster: Cluster{
 					Server:                   clusterServer,
 					CertificateAuthorityData: clusterCA,
@@ -293,17 +293,17 @@ func defineKubeConfig(log logr.Logger, clusterServer, clusterCA, serviceAccountT
 		},
 		Contexts: []NamedContext{
 			{
-				Name: name,
+				Name: generateSecretFlags.name,
 				Context: Context{
-					Cluster: name,
-					User:    serviceAccount,
+					Cluster: generateSecretFlags.name,
+					User:    generateSecretFlags.serviceAccount,
 				},
 			},
 		},
-		CurrentContext: name,
+		CurrentContext: generateSecretFlags.name,
 		Users: []NamedUser{
 			{
-				Name: serviceAccount,
+				Name: generateSecretFlags.serviceAccount,
 				User: User{
 					Token: serviceAccountToken,
 				},
@@ -392,8 +392,8 @@ func generateSecret(log logr.Logger, kubeConfig Config) (*Secret, error) {
 		APIVersion: "v1",
 		Kind:       "Secret",
 		Metadata: Metadata{
-			Name:      name,
-			Namespace: namespace,
+			Name:      generateSecretFlags.name,
+			Namespace: generateSecretFlags.namespace,
 			Labels: map[string]string{
 				"kuadrant.io/multicluster-kubeconfig": "true",
 			},
@@ -460,14 +460,14 @@ func applySecretToCluser(log logr.Logger, secretFile string) error {
 		return errors.New("unable to write secret to cluster")
 	}
 
-	log.Info(fmt.Sprintf("Secert %s created in namespace %s", name, namespace))
+	log.Info(fmt.Sprintf("Secert %s created in namespace %s", generateSecretFlags.name, generateSecretFlags.namespace))
 
 	return nil
 }
 
 func tidyFiles(log logr.Logger, path string) error {
 	log.V(1).Info("Removing file/directory", "path", path)
-	if dirty && log.V(1).Enabled() {
+	if generateSecretFlags.dirty && log.V(1).Enabled() {
 		log.V(1).Info("Running in a dirty mode not removing the file/directory.")
 		return nil
 	}
