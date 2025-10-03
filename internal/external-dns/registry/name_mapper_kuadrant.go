@@ -11,13 +11,13 @@ import (
   and the endpoint for the TXT record.
 */
 
-type nameMapper interface {
-	toEndpointName(txtDNSName, version string) (endpointName, recordType string)
-	toTXTName(string, string, string) string
+type NameMapper interface {
+	ToEndpointName(txtDNSName, version string) (endpointName, recordType string)
+	ToTXTName(string, string, string) string
 }
 
 type kuadrantAffixNameMapper struct {
-	legacyMappers       map[string]nameMapper
+	legacyMappers       map[string]NameMapper
 	prefix              string
 	wildcardReplacement string
 }
@@ -28,10 +28,10 @@ type legacyMapperTemplate map[string]struct {
 	wildcardReplacement string
 }
 
-var _ nameMapper = kuadrantAffixNameMapper{}
+var _ NameMapper = kuadrantAffixNameMapper{}
 
-func newKuadrantAffixMapper(legacyMappersFor legacyMapperTemplate, prefix, wildcardReplacement string) nameMapper {
-	affixMappers := make(map[string]nameMapper)
+func newKuadrantAffixMapper(legacyMappersFor legacyMapperTemplate, prefix, wildcardReplacement string) NameMapper {
+	affixMappers := make(map[string]NameMapper)
 
 	for version, params := range legacyMappersFor {
 		affixMappers[version] = legacyAffixMappers[version](params.prefix, params.suffix, params.wildcardReplacement)
@@ -43,10 +43,10 @@ func newKuadrantAffixMapper(legacyMappersFor legacyMapperTemplate, prefix, wildc
 	}
 }
 
-func (pr kuadrantAffixNameMapper) toEndpointName(txtDNSName, version string) (endpointName, recordType string) {
+func (pr kuadrantAffixNameMapper) ToEndpointName(txtDNSName, version string) (endpointName, recordType string) {
 	// legacy
 	if version != txtFormatVersion {
-		return pr.legacyMappers[version].toEndpointName(txtDNSName, version)
+		return pr.legacyMappers[version].ToEndpointName(txtDNSName, version)
 	}
 
 	// ID-recordType-endpoint
@@ -74,7 +74,7 @@ func (pr kuadrantAffixNameMapper) toEndpointName(txtDNSName, version string) (en
 	return endpointName, recordType
 }
 
-func (pr kuadrantAffixNameMapper) toTXTName(endpointDNSName, id, recordType string) string {
+func (pr kuadrantAffixNameMapper) ToTXTName(endpointDNSName, id, recordType string) string {
 	prefix := pr.prefix
 	if !strings.HasSuffix(prefix, affixSeparator) {
 		prefix = prefix + affixSeparator
