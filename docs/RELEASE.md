@@ -36,8 +36,6 @@ git push upstream v0.2.0
 
 9. Verify the new version can be installed from the catalog image, see [Verify OLM Deployment](#verify-olm-deployment)
 
-10. Release to the [community operator index catalogs](#community-operator-index-catalogs).
-
 ### New Patch version
 
 1. Checkout minor release branch:
@@ -59,8 +57,6 @@ git push upstream v0.2.1
 4. Verify that the build [release tag workflow](https://github.com/Kuadrant/dns-operator/actions/workflows/build-images-for-tag-release.yaml) is triggered and completes for the new tag
 
 5. Verify the new version can be installed from the catalog image, see [Verify OLM Deployment](#verify-olm-deployment)
-
-6. Release to the [community operator index catalogs](#community-operator-index-catalogs).
 
 ### Verify OLM Deployment
 
@@ -94,3 +90,5 @@ olm.owner.namespace=dns-operator-system,olm.owner=dns-operator.v0.2.0-dev,operat
 
 - [Operatorhub Community Operators](https://github.com/k8s-operatorhub/community-operators/tree/main/operators/dns-operator)
 - [Openshift Community Operators](https://github.com/redhat-openshift-ecosystem/community-operators-prod/tree/main/operators/dns-operator)
+
+>Note: These are no longer updated as part of a release, links are here for historical reference only.
