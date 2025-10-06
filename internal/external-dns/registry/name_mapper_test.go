@@ -9,7 +9,7 @@ import (
 
 // ExternalDNS only
 func TestDropPrefix(t *testing.T) {
-	mapper := newExternalDNSAffixNameMapper("foo-", "", "").(externalDNSAffixNameMapper)
+	mapper := NewExternalDNSAffixNameMapper("foo-", "", "").(externalDNSAffixNameMapper)
 
 	tests := []struct {
 		txtName          string
@@ -39,7 +39,7 @@ func TestDropPrefix(t *testing.T) {
 }
 
 func TestDropSuffix(t *testing.T) {
-	mapper := newExternalDNSAffixNameMapper("", "-foo", "").(externalDNSAffixNameMapper)
+	mapper := NewExternalDNSAffixNameMapper("", "-foo", "").(externalDNSAffixNameMapper)
 
 	tests := []struct {
 		txtName      string
@@ -70,7 +70,7 @@ func TestDropSuffix(t *testing.T) {
 }
 
 func TestExtractRecordTypeDefaultPosition(t *testing.T) {
-	mapper := newExternalDNSAffixNameMapper("", "-foo", "").(externalDNSAffixNameMapper)
+	mapper := NewExternalDNSAffixNameMapper("", "-foo", "").(externalDNSAffixNameMapper)
 
 	tests := []struct {
 		input        string
@@ -111,7 +111,7 @@ func TestExtractRecordTypeDefaultPosition(t *testing.T) {
 func TestToTXTName(t *testing.T) {
 	tests := []struct {
 		name       string
-		mapper     nameMapper
+		mapper     NameMapper
 		domain     string
 		txtDomain  string
 		recordType string
@@ -129,7 +129,7 @@ func TestToTXTName(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.txtDomain, tc.mapper.toTXTName(tc.domain, tc.id, tc.recordType))
+			assert.Equal(t, tc.txtDomain, tc.mapper.ToTXTName(tc.domain, tc.id, tc.recordType))
 		})
 	}
 }
@@ -137,7 +137,7 @@ func TestToTXTName(t *testing.T) {
 func TestToEndpointsName(t *testing.T) {
 	tests := []struct {
 		name               string
-		mapper             nameMapper
+		mapper             NameMapper
 		txtName            string
 		expectedDomain     string
 		expectedRecordType string
@@ -236,7 +236,7 @@ func TestToEndpointsName(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			domain, recordType := tc.mapper.toEndpointName(tc.txtName, tc.version)
+			domain, recordType := tc.mapper.ToEndpointName(tc.txtName, tc.version)
 			assert.Equal(t, tc.expectedDomain, domain)
 			assert.Equal(t, tc.expectedRecordType, recordType)
 		})

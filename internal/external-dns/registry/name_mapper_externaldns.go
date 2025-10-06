@@ -10,9 +10,9 @@ type externalDNSAffixNameMapper struct {
 	wildcardReplacement string
 }
 
-var _ nameMapper = externalDNSAffixNameMapper{}
+var _ NameMapper = externalDNSAffixNameMapper{}
 
-func newExternalDNSAffixNameMapper(prefix, suffix, wildcardReplacement string) nameMapper {
+func NewExternalDNSAffixNameMapper(prefix, suffix, wildcardReplacement string) NameMapper {
 	return externalDNSAffixNameMapper{prefix: strings.ToLower(prefix), suffix: strings.ToLower(suffix), wildcardReplacement: strings.ToLower(wildcardReplacement)}
 }
 
@@ -77,7 +77,7 @@ func (pr externalDNSAffixNameMapper) isSuffix() bool {
 	return len(pr.prefix) == 0 && len(pr.suffix) > 0
 }
 
-func (pr externalDNSAffixNameMapper) toEndpointName(txtDNSName, _ string) (endpointName, recordType string) {
+func (pr externalDNSAffixNameMapper) ToEndpointName(txtDNSName, _ string) (endpointName, recordType string) {
 	lowerDNSName := strings.ToLower(txtDNSName)
 
 	// drop prefix
@@ -115,7 +115,7 @@ func (pr externalDNSAffixNameMapper) normalizeAffixTemplate(afix, recordType str
 	return afix
 }
 
-func (pr externalDNSAffixNameMapper) toTXTName(endpointDNSName, _, recordType string) string {
+func (pr externalDNSAffixNameMapper) ToTXTName(endpointDNSName, _, recordType string) string {
 	DNSName := strings.SplitN(endpointDNSName, ".", 2)
 	recordType = strings.ToLower(recordType)
 	recordT := recordType + "-"

@@ -67,6 +67,7 @@ func RegisteredDefaultProviders() []string {
 // It determines which provider implementation to use by introspecting the given ProviderAccessor resource.
 type Factory interface {
 	ProviderFor(context.Context, v1alpha1.ProviderAccessor, Config) (Provider, error)
+	ProviderForSecret(ctx context.Context, pSecret *v1.Secret, pConfig Config) (Provider, error)
 }
 
 // factory is the default Factory implementation
@@ -109,7 +110,7 @@ func (f *factory) ProviderFor(ctx context.Context, pa v1alpha1.ProviderAccessor,
 			return nil, err
 		}
 
-		provider, err = f.providerForSecret(ctx, pSecret, c)
+		provider, err = f.ProviderForSecret(ctx, pSecret, c)
 		if err != nil {
 			return nil, err
 		}
@@ -129,7 +130,7 @@ func (f *factory) delegationProviderFor(ctx context.Context, pa v1alpha1.Provide
 	return f.delegationProviderFunc(ctx, f.dynamicClient, pa, pConfig)
 }
 
-func (f *factory) providerForSecret(ctx context.Context, pSecret *v1.Secret, pConfig Config) (Provider, error) {
+func (f *factory) ProviderForSecret(ctx context.Context, pSecret *v1.Secret, pConfig Config) (Provider, error) {
 	logger := log.FromContext(ctx)
 
 	providerName, err := NameForProviderSecret(pSecret)
