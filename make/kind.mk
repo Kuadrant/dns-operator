@@ -37,7 +37,7 @@ kind-delete-all-clusters: kind ## Delete the all "kuadrant-dns-local*" kind clus
 kind-load-image: kind ## Load image to "kuadrant-dns-local" kind cluster.
 	$(eval TMP_DIR := $(shell mktemp -d))
 	$(CONTAINER_TOOL) save -o $(TMP_DIR)/image.tar $(IMG) \
-	   && KIND_EXPERIMENTAL_PROVIDER=$(CONTAINER_TOOL) $(KIND) load image-archive $(TMP_DIR)/image.tar $(IMG) --name $(KIND_CLUSTER_NAME) ; \
+	   && KIND_EXPERIMENTAL_PROVIDER=$(CONTAINER_TOOL) $(KIND) load image-archive $(TMP_DIR)/image.tar --name $(KIND_CLUSTER_NAME) ; \
 	   EXITVAL=$$? ; \
 	   rm -rf $(TMP_DIR) ; \
 	   exit $${EXITVAL}
