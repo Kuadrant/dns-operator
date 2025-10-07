@@ -40,7 +40,7 @@ func (r *DNSRecordReconciler) ReconcileHealthChecks(ctx context.Context, dnsReco
 
 	for _, probe := range desiredProbes {
 		// if one of them fails - health checks for this record are invalid anyway, so no sense to continue
-		if err := controllerruntime.SetControllerReference(dnsRecord, probe, r.Scheme); err != nil {
+		if err := controllerruntime.SetControllerReference(dnsRecord, probe, r.BaseDNSRecordReconciler.Scheme); err != nil {
 			return err
 		}
 		if err := r.ensureProbe(ctx, probe, logger); err != nil {

@@ -25,6 +25,7 @@ import (
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
+var _ DNSRecordAccessor = &DNSRecord{}
 var _ DNSRecordAccessor = &RemoteDNSRecord{}
 
 type DNSRecordAccessor interface {
@@ -39,6 +40,7 @@ type DNSRecordAccessor interface {
 	GetSpec() *v1alpha1.DNSRecordSpec
 	GetStatus() *v1alpha1.DNSRecordStatus
 	SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string)
+	SetStatusOwnerID(id string)
 	SetStatusZoneID(id string)
 	SetStatusZoneDomainName(domainName string)
 	SetStatusDomainOwners(owners []string)
@@ -46,6 +48,71 @@ type DNSRecordAccessor interface {
 	SetStatusObservedGeneration(observedGeneration int64)
 	HasOwnerIDAssigned() bool
 	HasDNSZoneAssigned() bool
+}
+
+type DNSRecord struct {
+	*v1alpha1.DNSRecord
+}
+
+func (s *DNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {
+	return s.DNSRecord
+}
+
+func (s *DNSRecord) GetOwnerID() string {
+	return s.GetStatus().OwnerID
+}
+
+func (s *DNSRecord) GetZoneDomainName() string {
+	return s.GetStatus().ZoneDomainName
+}
+
+func (s *DNSRecord) GetZoneID() string {
+	return s.GetStatus().ZoneID
+}
+
+func (s *DNSRecord) GetSpec() *v1alpha1.DNSRecordSpec {
+	return &s.Spec
+}
+
+func (s *DNSRecord) GetStatus() *v1alpha1.DNSRecordStatus {
+	return &s.Status
+}
+
+func (s *DNSRecord) SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string) {
+	cond := metav1.Condition{
+		Type:               conditionType,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: s.Generation,
+	}
+	conditions := s.GetStatus().Conditions
+	meta.SetStatusCondition(&conditions, cond)
+	s.GetStatus().Conditions = conditions
+}
+
+func (s *DNSRecord) SetStatusOwnerID(id string) {
+	s.GetStatus().OwnerID = id
+}
+
+func (s *DNSRecord) SetStatusZoneID(id string) {
+	s.GetStatus().ZoneID = id
+}
+
+func (s *DNSRecord) SetStatusZoneDomainName(domainName string) {
+	s.GetStatus().ZoneDomainName = domainName
+}
+
+func (s *DNSRecord) SetStatusDomainOwners(owners []string) {
+	s.GetStatus().DomainOwners = owners
+}
+
+func (s *DNSRecord) SetStatusEndpoints(endpoints []*externaldns.Endpoint) {
+	s.GetStatus().Endpoints = endpoints
+}
+
+func (s *DNSRecord) SetStatusObservedGeneration(observedGeneration int64) {
+	s.GetStatus().ObservedGeneration = observedGeneration
 }
 
 type RemoteDNSRecord struct {
@@ -96,6 +163,11 @@ func (s *RemoteDNSRecord) SetStatusCondition(conditionType string, status metav1
 	meta.SetStatusCondition(&conditions, cond)
 	s.GetStatus().Conditions = conditions
 	s.setStatus()
+}
+
+func (s *RemoteDNSRecord) SetStatusOwnerID(id string) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (s *RemoteDNSRecord) SetStatusZoneID(id string) {
