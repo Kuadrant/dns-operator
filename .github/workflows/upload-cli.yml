@@ -1,12 +1,22 @@
-name: Release CLI
+name: Upload CLI binary
 on:
   release:
     types:
-      - published
+      - created
+  workflow_dispatch:
+    inputs:
+      operatorTag:
+        description: Release tag
+        default: v0.0.0
+        type: string
+
+permissions:
+  contents: write
+  packages: write
 
 jobs:
   release-matrix:
-    name: Release dns-operator CLI Binary
+    name: Upload dns-operator CLI Binary
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -20,7 +30,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
-          goversion: ./go.mod
           project_path: ./cmd/plugin/
           binary_name: kubectl-dns
+          release_tag: ${{ github.event.release.tag_name || inputs.operatorTag }}
           ldflags: -X "main.gitSHA=${{ github.sha }}" -X "main.version=${{ github.ref_name }}"
