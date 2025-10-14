@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/coredns/coredns/plugin/file"
+	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
 
 	"k8s.io/utils/ptr"
@@ -12,16 +13,11 @@ import (
 )
 
 func TestZone_InsertEndpoint(t *testing.T) {
-	type fields struct {
-		file   *file.Zone
-		rrData map[string]rrData
-	}
 	type args struct {
 		ep *endpoint.Endpoint
 	}
 	tests := []struct {
 		name           string
-		fields         fields
 		args           args
 		expectedRRData map[string]rrData
 	}{
@@ -206,14 +202,10 @@ func TestZone_InsertEndpoint(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			z := &Zone{
-				file.NewZone("example.com", ""),
-				map[string]rrData{},
-			}
-			if tt.fields.file != nil {
-				z.file = tt.fields.file
-			}
-			if tt.fields.rrData != nil {
-				z.rrData = tt.fields.rrData
+				origin:  dns.Fqdn("example.com"),
+				origLen: dns.CountLabel(dns.Fqdn("example.com")),
+				Zone:    file.NewZone("example.com", ""),
+				rrData:  map[string]rrData{},
 			}
 			assert.NoError(t, z.InsertEndpoint(tt.args.ep), fmt.Sprintf("InsertEndpoint(%v)", tt.args.ep))
 			assert.Equal(t, tt.expectedRRData, z.rrData)

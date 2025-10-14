@@ -29,15 +29,22 @@ type rrData struct {
 	geo    *string
 }
 
+type RRResolver func(ctx context.Context, state request.Request, rrs []dns.RR) dns.RR
+
 type Zone struct {
-	file   *file.Zone
-	rrData map[string]rrData
+	*file.Zone
+	origin     string
+	origLen    int
+	rrData     map[string]rrData
+	RRResolver RRResolver
 }
 
 func NewZone(name string) *Zone {
 	z := &Zone{
-		file.NewZone(name, ""),
-		map[string]rrData{},
+		origin:  dns.Fqdn(name),
+		origLen: dns.CountLabel(dns.Fqdn(name)),
+		Zone:    file.NewZone(name, ""),
+		rrData:  map[string]rrData{},
 	}
 
 	// The file plugin will do a recursive lookup of CNAMEs when resolving queries, default behaviour of this is to use
@@ -45,7 +52,7 @@ func NewZone(name string) *Zone {
 	// apply our own logic for weighting and geo at each step. This can be called multiple times for a single query
 	// depending on the configuration of the DNSRecord endpoints allowing for geo and weighted endpoints in a single
 	// response.
-	z.file.RRResolver = func(ctx context.Context, state request.Request, rrs []dns.RR) dns.RR {
+	z.RRResolver = func(ctx context.Context, state request.Request, rrs []dns.RR) dns.RR {
 		log.Debugf("resolving %s in zone %s", rrs[0].Header().Name, name)
 		rrMeta := z.rrData[rrs[0].String()]
 		if rrMeta.geo != nil {
@@ -62,7 +69,7 @@ func NewZone(name string) *Zone {
 	ns := &dns.NS{Hdr: dns.RR_Header{Name: dns.Fqdn(name), Rrtype: dns.TypeNS, Ttl: ttlSOA, Class: dns.ClassINET},
 		Ns: dnsutil.Join("ns1", name),
 	}
-	z.file.Insert(ns)
+	z.Insert(ns)
 
 	soa := &dns.SOA{Hdr: dns.RR_Header{Name: dns.Fqdn(name), Rrtype: dns.TypeSOA, Ttl: ttlSOA, Class: dns.ClassINET},
 		Mbox:    dnsutil.Join("hostmaster", name),
@@ -73,7 +80,7 @@ func NewZone(name string) *Zone {
 		Expire:  86400,
 		Minttl:  ttlSOA,
 	}
-	z.file.Insert(soa)
+	z.Insert(soa)
 
 	return z
 }
@@ -129,23 +136,19 @@ func (z *Zone) InsertEndpoint(ep *endpoint.Endpoint) error {
 			rrd.geo = &gProp
 		}
 		z.rrData[rrs[i].String()] = rrd
-		z.file.Insert(rrs[i])
+		z.Insert(rrs[i])
 	}
 
 	return nil
 }
 
-func (z *Zone) Lookup(ctx context.Context, state request.Request, qname string) ([]dns.RR, []dns.RR, []dns.RR, file.Result) {
-	return z.file.Lookup(ctx, state, qname)
-}
-
 func (z *Zone) RefreshFrom(newZ *Zone) {
 	// copy elements we need
-	z.file.Lock()
-	z.file.Apex = newZ.file.Apex
-	z.file.Tree = newZ.file.Tree
+	z.Lock()
+	z.Apex = newZ.Apex
+	z.Tree = newZ.Tree
 	z.rrData = newZ.rrData
-	z.file.Unlock()
+	z.Unlock()
 }
 
 // parseWeightedAnswers takes a slice of answers for a dns name and reduces it down to a single answer based on weight.
