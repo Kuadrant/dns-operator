@@ -8,7 +8,7 @@ git checkout -b release-0.2
 ```
 2. Run prepare release:
 ```sh
-make prepare-release IMG_TAG=release-0.2 VERSION=0.2.0-dev CHANNELS=alpha REPLACES_VERSION=0.1.0
+make prepare-release IMG_TAG=release-0.2 VERSION=0.2.0-dev CHANNELS=alpha
 ```
 3. Verify local changes, commit and push:
 ```sh
@@ -22,7 +22,7 @@ git push upstream release-0.2
 
 6. Run prepare release for final version
 ```sh
-make prepare-release VERSION=0.2.0 CHANNELS=stable REPLACES_VERSION=0.1.0
+make prepare-release VERSION=0.2.0 CHANNELS=stable
 ```
 7. Verify local changes, commit, push and tag:
 ```sh
@@ -44,7 +44,7 @@ git checkout release-0.2
 ```
 2. Run prepare release:
 ```sh
-make prepare-release VERSION=0.2.1 CHANNELS=stable REPLACES_VERSION=0.2.0
+make prepare-release VERSION=0.2.1 CHANNELS=stable
 ```
 3. Verify local changes, commit and push:
 ```sh

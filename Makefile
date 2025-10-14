@@ -125,17 +125,12 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: manifests-gen-base-csv
-REPLACES_VERSION ?= ""
 manifests-gen-base-csv: yq ## Generate base CSV for the current configuration (VERSION, IMG, CHANNELS etc..)
 	$(YQ) -i '.metadata.annotations.containerImage = "$(IMG)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml
 	$(YQ) -i '.metadata.name = "dns-operator.v$(VERSION)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml
 	$(YQ) -i '.spec.version = "$(VERSION)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml
-	@if [ "$(REPLACES_VERSION)" != "" ]; then\
-		$(YQ) -i '.spec.replaces = "dns-operator.v$(REPLACES_VERSION)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml; \
-	 else \
-		$(YQ) -i 'del(.spec.replaces)' config/manifests/bases/dns-operator.clusterserviceversion.yaml; \
-	fi
-
+	$(YQ) -i 'del(.spec.replaces)' config/manifests/bases/dns-operator.clusterserviceversion.yaml
+	
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
@@ -627,8 +622,7 @@ RELEASE_FILE = $(shell pwd)/make/release.mk
 prepare-release: IMG_TAG=v$(VERSION)
 prepare-release: ## Generates a makefile that will override environment variables for a specific release and runs bundle.
 	echo -e "#Release default values\\nIMG=$(IMAGE_TAG_BASE):$(IMG_TAG)\nBUNDLE_IMG=$(IMAGE_TAG_BASE)-bundle:$(IMG_TAG)\n\
-	CATALOG_IMG=$(IMAGE_TAG_BASE)-catalog:$(IMG_TAG)\nCHANNELS=$(CHANNELS)\nBUNDLE_CHANNELS=--channels=$(CHANNELS)\n\
-	VERSION=$(VERSION)\nREPLACES_VERSION=$(REPLACES_VERSION)" > $(RELEASE_FILE)
+	CATALOG_IMG=$(IMAGE_TAG_BASE)-catalog:$(IMG_TAG)\nCHANNELS=$(CHANNELS)\nBUNDLE_CHANNELS=--channels=$(CHANNELS)" > $(RELEASE_FILE)
 	$(MAKE) bundle
 	$(MAKE) helm-build VERSION=$(VERSION)
 
