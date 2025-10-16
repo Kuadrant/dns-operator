@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/coredns/coredns/plugin"
-	"github.com/coredns/coredns/plugin/file"
 	"github.com/coredns/coredns/plugin/transfer"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
@@ -55,9 +54,9 @@ func (k *Kuadrant) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 		return dns.RcodeRefused, nil
 	}
 
-	z.file.RLock()
-	exp := z.file.Expired
-	z.file.RUnlock()
+	z.RLock()
+	exp := z.Expired
+	z.RUnlock()
 	if exp {
 		log.Errorf("Zone %s is expired", zone)
 		return dns.RcodeServerFailure, nil
@@ -71,13 +70,13 @@ func (k *Kuadrant) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 	m.Answer, m.Ns, m.Extra = answer, ns, extra
 
 	switch result {
-	case file.Success:
-	case file.NoData:
-	case file.NameError:
+	case Success:
+	case NoData:
+	case NameError:
 		m.Rcode = dns.RcodeNameError
-	case file.Delegation:
+	case Delegation:
 		m.Authoritative = false
-	case file.ServerFailure:
+	case ServerFailure:
 		// If the result is SERVFAIL and the answer is non-empty, then the SERVFAIL came from an
 		// external CNAME lookup and the answer contains the CNAME with no target record. We should
 		// write the CNAME record to the client instead of sending an empty SERVFAIL response.
@@ -102,7 +101,7 @@ func (k *Kuadrant) Transfer(zone string, serial uint32) (<-chan []dns.RR, error)
 	if !ok || z == nil {
 		return nil, transfer.ErrNotAuthoritative
 	}
-	return z.file.Transfer(serial)
+	return z.Transfer(serial)
 }
 
 // Strips the closing dot unless it's "."

@@ -25,6 +25,7 @@ COPY kuadrant.go kuadrant.go
 COPY setup.go setup.go
 COPY weighted.go weighted.go
 COPY zone.go zone.go
+COPY lookup.go lookup.go
 
 # Build
 # the GOARCH has not a default value to allow the binary be built according to the host where the command

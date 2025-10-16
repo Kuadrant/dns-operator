@@ -79,5 +79,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
-
-replace github.com/coredns/coredns => github.com/kuadrant/coredns v1.1.4-0.20250924192513-137cd0a65ece
