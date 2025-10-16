@@ -30,11 +30,11 @@ import (
 
 const (
 	host      = "host"
-	DNSRecord = "DNSRecord"
+	DNSRecord = "dnsrecord"
 )
 
 var getZoneRecordsCMD = &cobra.Command{
-	Use:     "zone-records",
+	Use:     "zone-records --type <type> --name <name> [ --namespace <namespace> | --provideRef <namespace>/<name> ]",
 	PreRunE: flagValidate,
 	RunE:    getZoneRecords,
 	Short:   "Get all zone records for a host, or DNSrecord.",
@@ -54,16 +54,16 @@ type resourceRef struct {
 
 func (p resourceRef) parse(providerRef string) (*resourceRef, error) {
 	parts := strings.Split(providerRef, "/")
-	if len(parts) != 2 {
-		return nil, errors.New("input providerRef was not split into two parts, <namespace> / <name>")
+	if providerRef != "" && len(parts) != 2 {
+		return nil, errors.New("providerRef most be in the format of '<namespace>/<name>'")
 	}
 
 	return &resourceRef{Namespace: parts[0], Name: parts[1]}, nil
 }
 
 func flagValidate(_ *cobra.Command, _ []string) error {
-	if !slices.Contains(allowedResourceTypes, resourceType) {
-		return errors.New("Invalid type given")
+	if !slices.Contains(allowedResourceTypes, strings.ToLower(resourceType)) {
+		return fmt.Errorf("Invalid type given. Acceptable types are: %s", strings.Join(allowedResourceTypes, ", "))
 	}
 
 	if resourceType == DNSRecord && providerRef != "" {
@@ -83,10 +83,9 @@ func flagValidate(_ *cobra.Command, _ []string) error {
 }
 
 func init() {
-	noShortHand := ""
 	noDefault := ""
 
-	getZoneRecordsCMD.Flags().StringVarP(&name, "name", noShortHand, noDefault, "name for resource")
+	getZoneRecordsCMD.Flags().StringVar(&name, "name", noDefault, "name for resource")
 	if err := getZoneRecordsCMD.MarkFlagRequired("name"); err != nil {
 		panic(err)
 	}
@@ -96,7 +95,7 @@ func init() {
 		panic(err)
 	}
 
-	getZoneRecordsCMD.Flags().StringVarP(&providerRef, "providerRef", noShortHand, noDefault,
+	getZoneRecordsCMD.Flags().StringVar(&providerRef, "providerRef", noDefault,
 		fmt.Sprintf("A provider reference to the secert to use when querying. This can only be used with the type of %s. Format = '<namespace>/<name>'", host))
 
 	getZoneRecordsCMD.Flags().StringVarP(&namespace, "namespace", "n", "dns-operator-system", "namespace where resources exist")
@@ -125,18 +124,18 @@ func getZoneRecords(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	switch resourceType {
+	switch strings.ToLower(resourceType) {
 	case host:
 		return hostWorkFlow(ctx, log, k8sClient, dynClient)
 	case DNSRecord:
 		return dnsRecordWorkFlow(ctx, log, k8sClient, dynClient)
 	default:
-		return fmt.Errorf("no workflow found for type: %s, this should never happen", resourceType)
+		return fmt.Errorf("no workflow found for type: %s, this should be set to one of host of dnsrecord", resourceType)
 	}
 }
 
 func hostWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Client, dynClient *dynamic.DynamicClient) error {
-	log.V(1).Info("Get secert from cluster based on the providerRef.")
+	log.V(1).Info("Get secret from cluster based on the providerRef.")
 	secretRef, err := resourceRef{}.parse(providerRef)
 	if err != nil {
 		return err
@@ -159,27 +158,13 @@ func hostWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Client,
 		return err
 	}
 
-	log.V(1).Info("found provider", "provider.name", p.Name())
-
-	endpoints, err := p.Records(ctx)
+	endpoints, err := getEndpoints(ctx, p)
 	if err != nil {
-		log.Error(err, "unable to get records from provider")
+		log.Error(err, "unable to get endpoints from provider")
 		return err
 	}
 
-	endpoints = slice.Filter(endpoints, func(e *externaldns.Endpoint) bool {
-		if e == nil {
-			return false
-		}
-
-		if strings.HasSuffix(e.DNSName, name) {
-			return true
-		}
-		return false
-	},
-	)
-
-	renderTable(endpoints)
+	render(endpoints)
 
 	return err
 }
@@ -206,27 +191,13 @@ func dnsRecordWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Cl
 		return err
 	}
 
-	log.V(1).Info("found provider", "provider.name", p.Name())
-
-	endpoints, err := p.Records(ctx)
+	endpoints, err := getEndpoints(ctx, p)
 	if err != nil {
-		log.Error(err, "unable to get records from provider")
+		log.Error(err, "unable to get endpoints from provider")
 		return err
 	}
 
-	endpoints = slice.Filter(endpoints, func(e *externaldns.Endpoint) bool {
-		if e == nil {
-			return false
-		}
-
-		if strings.HasSuffix(e.DNSName, dnsRecord.GetRootHost()) {
-			return true
-		}
-		return false
-	},
-	)
-
-	renderTable(endpoints)
+	render(endpoints)
 
 	return err
 }
@@ -239,7 +210,7 @@ func getProviderFromSecret(ctx context.Context, log logr.Logger, k8sClient clien
 		return nil, err
 	}
 
-	log.Info("secret passed", "secret", secret)
+	log.V(1).Info("secret passed", "secret", secret)
 
 	providerFactory, err := provider.NewFactory(k8sClient, dynClient, provider.RegisteredDefaultProviders(), endpoint.NewAuthoritativeDNSRecordProvider)
 	if err != nil {
@@ -259,11 +230,35 @@ func getProviderFromSecret(ctx context.Context, log logr.Logger, k8sClient clien
 
 }
 
-func renderTable(endpoints []*externaldns.Endpoint) {
+func getEndpoints(ctx context.Context, p provider.Provider) ([]*externaldns.Endpoint, error) {
+	log.V(1).Info("found provider", "provider.name", p.Name())
+
+	endpoints, err := p.Records(ctx)
+	if err != nil {
+		log.Error(err, "unable to get records from provider")
+		return nil, err
+	}
+
+	endpoints = slice.Filter(endpoints, func(e *externaldns.Endpoint) bool {
+		if e == nil {
+			return false
+		}
+
+		if strings.HasSuffix(e.DNSName, name) {
+			return true
+		}
+		return false
+	},
+	)
+
+	return endpoints, nil
+}
+
+func render(endpoints []*externaldns.Endpoint) {
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
 	t.SetStyle(table.StyleLight)
-	t.AppendHeader(table.Row{"Type", "Record", "Targets", "TTL", "Labels"})
+	t.AppendHeader(table.Row{"Type", "Record", "Targets", "TTL"})
 
 	for _, e := range endpoints {
 		var targets string
@@ -279,11 +274,7 @@ func renderTable(endpoints []*externaldns.Endpoint) {
 			targets = e.Targets.String()
 		}
 
-		if len(e.Labels) > 0 {
-			t.AppendRow([]any{e.RecordType, e.DNSName, targets, e.RecordTTL, e.Labels})
-		} else {
-			t.AppendRow([]any{e.RecordType, e.DNSName, targets, e.RecordTTL})
-		}
+		t.AppendRow([]any{e.RecordType, e.DNSName, targets, e.RecordTTL})
 		t.AppendSeparator()
 	}
 	t.Render()
