@@ -1,4 +1,4 @@
-package main
+package records
 
 import (
 	"context"
@@ -33,7 +33,7 @@ const (
 	DNSRecord = "dnsrecord"
 )
 
-var getZoneRecordsCMD = &cobra.Command{
+var GetZoneRecordsCMD = &cobra.Command{
 	Use:     "zone-records --type <type> --name <name> [ --namespace <namespace> | --provideRef <namespace>/<name> ]",
 	PreRunE: flagValidate,
 	RunE:    getZoneRecords,
@@ -85,24 +85,24 @@ func flagValidate(_ *cobra.Command, _ []string) error {
 func init() {
 	noDefault := ""
 
-	getZoneRecordsCMD.Flags().StringVar(&name, "name", noDefault, "name for resource")
-	if err := getZoneRecordsCMD.MarkFlagRequired("name"); err != nil {
+	GetZoneRecordsCMD.Flags().StringVar(&name, "name", noDefault, "name for resource")
+	if err := GetZoneRecordsCMD.MarkFlagRequired("name"); err != nil {
 		panic(err)
 	}
 
-	getZoneRecordsCMD.Flags().StringVarP(&resourceType, "type", "t", noDefault, fmt.Sprintf("Type of resource being passed. (%s)", strings.Join(allowedResourceTypes, ", ")))
-	if err := getZoneRecordsCMD.MarkFlagRequired("type"); err != nil {
+	GetZoneRecordsCMD.Flags().StringVarP(&resourceType, "type", "t", noDefault, fmt.Sprintf("Type of resource being passed. (%s)", strings.Join(allowedResourceTypes, ", ")))
+	if err := GetZoneRecordsCMD.MarkFlagRequired("type"); err != nil {
 		panic(err)
 	}
 
-	getZoneRecordsCMD.Flags().StringVar(&providerRef, "providerRef", noDefault,
+	GetZoneRecordsCMD.Flags().StringVar(&providerRef, "providerRef", noDefault,
 		fmt.Sprintf("A provider reference to the secert to use when querying. This can only be used with the type of %s. Format = '<namespace>/<name>'", host))
 
-	getZoneRecordsCMD.Flags().StringVarP(&namespace, "namespace", "n", "dns-operator-system", "namespace where resources exist")
+	GetZoneRecordsCMD.Flags().StringVarP(&namespace, "namespace", "n", "dns-operator-system", "namespace where resources exist")
 }
 
 func getZoneRecords(_ *cobra.Command, _ []string) error {
-	log = logf.Log.WithName("get-zone-records")
+	log := logf.Log.WithName("get-zone-records")
 
 	d := time.Now().Add(time.Minute * 5)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
@@ -158,7 +158,7 @@ func hostWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Client,
 		return err
 	}
 
-	endpoints, err := getEndpoints(ctx, p)
+	endpoints, err := getEndpoints(ctx, log, p)
 	if err != nil {
 		log.Error(err, "unable to get endpoints from provider")
 		return err
@@ -191,7 +191,7 @@ func dnsRecordWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Cl
 		return err
 	}
 
-	endpoints, err := getEndpoints(ctx, p)
+	endpoints, err := getEndpoints(ctx, log, p)
 	if err != nil {
 		log.Error(err, "unable to get endpoints from provider")
 		return err
@@ -230,7 +230,7 @@ func getProviderFromSecret(ctx context.Context, log logr.Logger, k8sClient clien
 
 }
 
-func getEndpoints(ctx context.Context, p provider.Provider) ([]*externaldns.Endpoint, error) {
+func getEndpoints(ctx context.Context, log logr.Logger, p provider.Provider) ([]*externaldns.Endpoint, error) {
 	log.V(1).Info("found provider", "provider.name", p.Name())
 
 	endpoints, err := p.Records(ctx)

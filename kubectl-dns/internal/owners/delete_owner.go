@@ -1,4 +1,4 @@
-package main
+package owners
 
 import (
 	"github.com/spf13/cobra"
@@ -6,13 +6,13 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var deleteOwnerCMD = &cobra.Command{
+var DeleteOwnerCMD = &cobra.Command{
 	Use:  "delete-owner",
 	RunE: deleteOwner,
 }
 
 func deleteOwner(_ *cobra.Command, _ []string) error {
-	log = logf.Log.WithName("delete-owner")
+	log := logf.Log.WithName("delete-owner")
 
 	log.Info("Deleting owner: TODO")
 	return nil

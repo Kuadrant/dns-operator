@@ -9,13 +9,16 @@ import (
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	"github.com/kuadrant/dns-operator/kubectl-dns/internal/owners"
+	"github.com/kuadrant/dns-operator/kubectl-dns/internal/records"
+	"github.com/kuadrant/dns-operator/kubectl-dns/internal/secrets"
 )
 
 var (
 	verbose bool
 	gitSHA  string // value injected in compilation-time with go linker
 	version string // value injected in compilation-time with go linker
-	log     = logf.Log
 )
 
 var rootCMD = &cobra.Command{
@@ -42,7 +45,12 @@ func init() {
 	rootCMD.SetArgs(os.Args[1:])
 	rootCMD.PersistentFlags().BoolVarP(&verbose, "verbose", "v", true, "verbose output")
 
-	rootCMD.AddCommand(versionCMD, cleanupOldTXTCMD, getZoneRecordsCMD, generateSecretCMD, deleteOwnerCMD)
+	rootCMD.AddCommand(versionCMD,
+		secrets.GenerateSecretCMD,
+		records.CleanupOldTXTCMD,
+		records.GetZoneRecordsCMD,
+		owners.DeleteOwnerCMD,
+	)
 }
 
 func main() {
