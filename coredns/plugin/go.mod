@@ -1,6 +1,6 @@
 module github.com/kuadrant/dns-operator/coredns/plugin
 
-go 1.22.7
+go 1.23.0
 
 require (
 	github.com/coredns/caddy v1.1.1
@@ -60,7 +60,7 @@ require (
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
 	golang.org/x/mod v0.23.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/oauth2 v0.24.0 // indirect
+	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/term v0.29.0 // indirect
