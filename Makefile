@@ -157,24 +157,24 @@ test: test-unit test-integration ## Run tests.
 
 .PHONY: test-unit
 test-unit: manifests generate fmt vet ## Run unit tests.
-	go test ./... -tags=unit -coverprofile cover-unit.out
+	GOWORK=off go test ./... -tags=unit -coverprofile cover-unit.out
 
 .PHONY: test-integration
 test-integration: GINKGO_FLAGS=
 test-integration: manifests generate fmt vet envtest ginkgo ## Run integration tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(GINKGO_FLAGS) -tags=integration ./internal/controller -coverprofile cover-integration.out
+	GOWORK=off KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(GINKGO_FLAGS) -tags=integration ./internal/controller -coverprofile cover-integration.out
 
 .PHONY: test-e2e
 test-e2e: ginkgo
-	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e ./test/e2e
+	GOWORK=off $(GINKGO) $(GINKGO_FLAGS) -tags=e2e ./test/e2e
 
 .PHONY: test-e2e-multi
 test-e2e-multi: ginkgo
-	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=multi_record ./test/e2e
+	GOWORK=off $(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=multi_record ./test/e2e
 
 .PHONY: test-e2e-single
 test-e2e-single: ginkgo
-	$(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=single_record ./test/e2e
+	GOWORK=off $(GINKGO) $(GINKGO_FLAGS) -tags=e2e --label-filter=single_record ./test/e2e
 
 .PHONY: test-scale
 test-scale: export JOB_ITERATIONS := 1

@@ -1,4 +1,4 @@
-package main
+package records
 
 import (
 	"bufio"
@@ -32,7 +32,7 @@ import (
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 )
 
-var cleanupOldTXTCMD = &cobra.Command{
+var CleanupOldTXTCMD = &cobra.Command{
 	Use:   "cleanup-old-txt-records [provider-secret-name]",
 	RunE:  deleteOldTXT,
 	Short: "Remove TXT records from previous version of TXT registry",
@@ -52,14 +52,14 @@ type CleanupOldTXTCMDFlags struct {
 var cleanupOldTXTCMDFlags CleanupOldTXTCMDFlags
 
 func init() {
-	cleanupOldTXTCMD.Flags().StringVarP(&cleanupOldTXTCMDFlags.ns, "namespace", "n", "default", "namespace of a provider secret")
-	cleanupOldTXTCMD.Flags().StringVarP(&cleanupOldTXTCMDFlags.domain, "domain", "d", "", "domain filter to appy to endpoints. Allows only endpoints that end with specified domain")
-	cleanupOldTXTCMD.Flags().BoolVarP(&cleanupOldTXTCMDFlags.assumeyes, "assumeyes", "y", false, "skip confirmation of deletion. Use at your own risk")
+	CleanupOldTXTCMD.Flags().StringVarP(&cleanupOldTXTCMDFlags.ns, "namespace", "n", "default", "namespace of a provider secret")
+	CleanupOldTXTCMD.Flags().StringVarP(&cleanupOldTXTCMDFlags.domain, "domain", "d", "", "domain filter to appy to endpoints. Allows only endpoints that end with specified domain")
+	CleanupOldTXTCMD.Flags().BoolVarP(&cleanupOldTXTCMDFlags.assumeyes, "assumeyes", "y", false, "skip confirmation of deletion. Use at your own risk")
 
 }
 
 func deleteOldTXT(_ *cobra.Command, args []string) error {
-	log = logf.Log.WithName("delete-old-txt")
+	log := logf.Log.WithName("delete-old-txt")
 
 	d := time.Now().Add(time.Minute * 5)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
