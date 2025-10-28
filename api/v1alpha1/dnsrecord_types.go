@@ -67,7 +67,8 @@ type HealthCheckSpec struct {
 	// +optional
 	AdditionalHeadersRef *AdditionalHeadersRef `json:"additionalHeadersRef,omitempty"`
 
-	// FailureThreshold is a limit of consecutive failures that must occur for a host to be considered unhealthy
+	// FailureThreshold is the number of consecutive failures that must be exceeded for a host to be considered unhealthy.
+	// When the number of consecutive failures exceeds this threshold, the health check will be marked as unhealthy.
 	// Defaults to 5
 	// +kubebuilder:validation:XValidation:rule="self > 0",message="Failure threshold must be greater than 0"
 	// +kubebuilder:default=5
