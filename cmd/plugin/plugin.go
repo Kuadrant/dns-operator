@@ -19,7 +19,7 @@ var (
 )
 
 var rootCMD = &cobra.Command{
-	Use:   "dns",
+	Use:   "kuadrant-dns",
 	Short: "DNS Operator command line utility",
 	Long:  "DNS Operator command line utility",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -42,7 +42,7 @@ func init() {
 	rootCMD.SetArgs(os.Args[1:])
 	rootCMD.PersistentFlags().BoolVarP(&verbose, "verbose", "v", true, "verbose output")
 
-	rootCMD.AddCommand(versionCMD, cleanupOldTXTCMD, getZoneRecordsCMD, generateSecretCMD, deleteOwnerCMD)
+	rootCMD.AddCommand(versionCMD, cleanupOldTXTCMD, getZoneRecordsCMD, addClusterSecretCMD, removeOwnerCMD)
 }
 
 func main() {

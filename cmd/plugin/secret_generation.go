@@ -29,9 +29,9 @@ var generateSecretFlags = GenerateSecretFlags{
 	dirty: false,
 }
 
-var generateSecretCMD = &cobra.Command{
-	Use:   "secret-generation",
-	RunE:  secretGeneration,
+var addClusterSecretCMD = &cobra.Command{
+	Use:   "add-cluster-secret",
+	RunE:  addClusterSecret,
 	Short: "Create a kubeconfig secret",
 }
 
@@ -94,18 +94,18 @@ type User struct {
 }
 
 func init() {
-	generateSecretCMD.Flags().StringVarP(&generateSecretFlags.contextName, "context", "c", "", "kubeconfig context for the secondry cluster (required)")
-	if err := generateSecretCMD.MarkFlagRequired("context"); err != nil {
+	addClusterSecretCMD.Flags().StringVarP(&generateSecretFlags.contextName, "context", "c", "", "kubeconfig context for the secondry cluster (required)")
+	if err := addClusterSecretCMD.MarkFlagRequired("context"); err != nil {
 		panic(err)
 	}
 
-	generateSecretCMD.Flags().StringVar(&generateSecretFlags.name, "name", "", "name for the secret (defaults to context name)")
-	generateSecretCMD.Flags().StringVarP(&generateSecretFlags.namespace, "namespace", "n", "dns-operator-system", "namespace to create the secret in")
-	generateSecretCMD.Flags().StringVarP(&generateSecretFlags.serviceAccount, "service-account", "a", "dns-operator-remote-cluster", "service account name to use")
+	addClusterSecretCMD.Flags().StringVar(&generateSecretFlags.name, "name", "", "name for the secret (defaults to context name)")
+	addClusterSecretCMD.Flags().StringVarP(&generateSecretFlags.namespace, "namespace", "n", "dns-operator-system", "namespace to create the secret in")
+	addClusterSecretCMD.Flags().StringVarP(&generateSecretFlags.serviceAccount, "service-account", "a", "dns-operator-remote-cluster", "service account name to use")
 }
 
-func secretGeneration(_ *cobra.Command, _ []string) error {
-	log = logf.Log.WithName("secret-generation")
+func addClusterSecret(_ *cobra.Command, _ []string) error {
+	log = logf.Log.WithName("add-cluster-secret")
 
 	dirtyStr := os.Getenv("KUBECTL_DNS_DIRTY")
 	if strings.Compare(strings.ToLower(dirtyStr), "true") == 0 {

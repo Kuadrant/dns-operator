@@ -11,7 +11,7 @@ kubeconfig-secret-create: REMOTE_CONTEXT=kind-kuadrant-dns-local-2
 kubeconfig-secret-create: SERVICE_ACCOUNT=dns-operator-remote-cluster
 kubeconfig-secret-create: kubectl-dns ## Create a kubeconfig (cluster) secret on a target "primary" cluster to access a "remote" cluster
 	$(KUBECTL) config use-context $(TARGET_CONTEXT)
-	$(KUBECTL_DNS) secret-generation --context $(REMOTE_CONTEXT) --service-account $(SERVICE_ACCOUNT) --namespace $(NAMESPACE) --name $(NAME)
+	$(KUBECTL_DNS) add-cluster-secret --context $(REMOTE_CONTEXT) --service-account $(SERVICE_ACCOUNT) --namespace $(NAMESPACE) --name $(NAME)
 
 # When using kind and deployed operators, cluster secrets need to be created with the correct server url in order for communication to be established correctly.
 .PHONY: kubeconfig-secret-create-kind-internal
@@ -26,7 +26,7 @@ kubeconfig-secret-create-kind-internal: kubectl-dns ## Create a kubeconfig secre
 		-v $(shell pwd):/tmp/dns-operator:z \
 		--network kind \
 		-e KUBECONFIG=/tmp/dns-operator/tmp/kubeconfigs/kuadrant-local-all.internal.kubeconfig alpine/k8s:1.30.13 \
-		/tmp/dns-operator/bin/kubectl-dns secret-generation --context $(REMOTE_CONTEXT) --service-account $(SERVICE_ACCOUNT) --namespace $(NAMESPACE) --name $(NAME)
+		/tmp/dns-operator/bin/kubectl-dns add-cluster-secret --context $(REMOTE_CONTEXT) --service-account $(SERVICE_ACCOUNT) --namespace $(NAMESPACE) --name $(NAME)
 
 .PHONY: kubeconfig-secret-delete
 kubeconfig-secret-delete: NAMESPACE=dns-operator-system
