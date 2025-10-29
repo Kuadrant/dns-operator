@@ -1,4 +1,4 @@
-package main
+package secrets
 
 import (
 	"bytes"
@@ -29,7 +29,7 @@ var generateSecretFlags = GenerateSecretFlags{
 	dirty: false,
 }
 
-var generateSecretCMD = &cobra.Command{
+var GenerateSecretCMD = &cobra.Command{
 	Use:   "secret-generation",
 	RunE:  secretGeneration,
 	Short: "Create a kubeconfig secret",
@@ -94,18 +94,18 @@ type User struct {
 }
 
 func init() {
-	generateSecretCMD.Flags().StringVarP(&generateSecretFlags.contextName, "context", "c", "", "kubeconfig context for the secondry cluster (required)")
-	if err := generateSecretCMD.MarkFlagRequired("context"); err != nil {
+	GenerateSecretCMD.Flags().StringVarP(&generateSecretFlags.contextName, "context", "c", "", "kubeconfig context for the secondry cluster (required)")
+	if err := GenerateSecretCMD.MarkFlagRequired("context"); err != nil {
 		panic(err)
 	}
 
-	generateSecretCMD.Flags().StringVar(&generateSecretFlags.name, "name", "", "name for the secret (defaults to context name)")
-	generateSecretCMD.Flags().StringVarP(&generateSecretFlags.namespace, "namespace", "n", "dns-operator-system", "namespace to create the secret in")
-	generateSecretCMD.Flags().StringVarP(&generateSecretFlags.serviceAccount, "service-account", "a", "dns-operator-remote-cluster", "service account name to use")
+	GenerateSecretCMD.Flags().StringVar(&generateSecretFlags.name, "name", "", "name for the secret (defaults to context name)")
+	GenerateSecretCMD.Flags().StringVarP(&generateSecretFlags.namespace, "namespace", "n", "dns-operator-system", "namespace to create the secret in")
+	GenerateSecretCMD.Flags().StringVarP(&generateSecretFlags.serviceAccount, "service-account", "a", "dns-operator-remote-cluster", "service account name to use")
 }
 
 func secretGeneration(_ *cobra.Command, _ []string) error {
-	log = logf.Log.WithName("secret-generation")
+	log := logf.Log.WithName("secret-generation")
 
 	dirtyStr := os.Getenv("KUBECTL_DNS_DIRTY")
 	if strings.Compare(strings.ToLower(dirtyStr), "true") == 0 {
