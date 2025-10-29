@@ -179,7 +179,7 @@ Default provider secret must have label: `kuadrant.io/default-provider=true`
 - Primary: `--delegation-role=primary` (default) or `DELEGATION_ROLE=primary`
 - Secondary: `--delegation-role=secondary` or `DELEGATION_ROLE=secondary`
 - Multi-cluster secrets labeled: `kuadrant.io/multicluster-kubeconfig=true`
-- Use `kubectl-dns secret-generation` to create connection secrets
+- Use `kubectl-kuadrant_dns add-cluster-secret` to create connection secrets (obtain by `make build-cli`)
 
 **Important Constraints:**
 - `delegate` field is immutable (requires DNSRecord deletion/recreation to change)

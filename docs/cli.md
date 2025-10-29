@@ -1,7 +1,7 @@
 # Overview 
-The `kubectl-dns` is a CLI that is shipped alongside the DNS-operator. 
+The `kuadrant-dns` (`kubect-kuadrant_dns` is the binary name) is a CLI that is shipped alongside the DNS-operator. 
 
-It is intended to be used for advanced configuration (such as automated configuration of cluster secrets for CoreDNS), gathering of the debug information (i.e. get all records from the managed zone), and to manually adjust the managed zone (i.e. delete the owner). See `kubectl-dns help` for a list of available functions
+It is intended to be used for advanced configuration (such as automated configuration of cluster secrets for CoreDNS), gathering of the debug information (i.e. get all records from the managed zone), and to manually adjust the managed zone (i.e. delete the owner). See `kubectl kuadrant-dns help` for a list of available functions
 
 If located in `PATH`, it will act as a kubectl plugin and will embed itself into `kuadrantctl`, but can be used as a standalone. 
 
