@@ -14,7 +14,7 @@ build-cli: fmt vet
 		fi; \
 	fi; \
 	LDFLAGS="-X 'main.gitSHA=$$GIT_HASH' -X 'main.version=$(CLI_VERSION)'"; \
-	CGO_ENABLED=0 go build -ldflags "$$LDFLAGS" -o bin/kubectl-dns cmd/plugin/*.go
+	CGO_ENABLED=0 go build -ldflags "$$LDFLAGS" -o bin/kubectl-kuadrant_dns cmd/plugin/*.go
 	@echo "To embed plugin in kubectl move it to PATH or use 'make cp-cli'"
 
 .PHONY: cp-cli
