@@ -194,7 +194,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 
 		setDNSRecordCondition(dnsRecord, string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsRemoved), "DNS records removed from provider")
-		dnsRecord.Status.ZoneEndpoints = nil
 		dnsRecord.Status.ZoneDomainName = ""
 		dnsRecord.Status.ZoneID = ""
 
@@ -796,11 +795,6 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return false, []string{}, fmt.Errorf("adjusting statusEndpoints: %w", err)
 	}
 
-	// add related endpoints to the record
-	dnsRecord.Status.ZoneEndpoints = mergeZoneEndpoints(
-		dnsRecord.Status.ZoneEndpoints,
-		filterEndpoints(rootDomainName, zoneEndpoints))
-
 	//Note: All endpoint lists should be in the same provider specific format at this point
 	logger.V(1).Info("applyChanges", "zoneEndpoints", zoneEndpoints,
 		"specEndpoints", healthySpecEndpoints, "statusEndpoints", statusEndpoints)
@@ -825,47 +819,4 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return hasChanges, notHealthyProbes, err
 	}
 	return false, notHealthyProbes, nil
-}
-
-// filterEndpoints takes a list of zoneEndpoints and removes from it all endpoints
-// that do not belong to the rootDomainName (some.example.com does belong to the example.com domain).
-// it is not using ownerID of this record as well as domainOwners from the status for filtering
-func filterEndpoints(rootDomainName string, zoneEndpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
-	// these are records that share domain but are not defined in the spec of DNSRecord
-	var filteredEndpoints []*externaldnsendpoint.Endpoint
-
-	// setup domain filter since we can't be sure that zone records are sharing domain with DNSRecord
-	rootDomain, _ := strings.CutPrefix(rootDomainName, v1alpha1.WildcardPrefix)
-	rootDomainFilter := externaldnsendpoint.NewDomainFilter([]string{rootDomain})
-
-	// go through all EPs in the zone
-	for _, zoneEndpoint := range zoneEndpoints {
-		// if zoneEndpoint matches domain filter, it must be added to related EPs
-		if rootDomainFilter.Match(zoneEndpoint.DNSName) {
-			filteredEndpoints = append(filteredEndpoints, zoneEndpoint)
-		}
-	}
-	return filteredEndpoints
-}
-
-// mergeZoneEndpoints merges existing endpoints with new and ensures there are no duplicates
-func mergeZoneEndpoints(currentEndpoints, newEndpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
-	// map to use as filter
-	combinedMap := make(map[string]*externaldnsendpoint.Endpoint)
-	// return struct
-	var combinedEndpoints []*externaldnsendpoint.Endpoint
-
-	// Use DNSName of EP as unique key. Ensures no duplicates
-	for _, endpoint := range currentEndpoints {
-		combinedMap[endpoint.DNSName] = endpoint
-	}
-	for _, endpoint := range newEndpoints {
-		combinedMap[endpoint.DNSName] = endpoint
-	}
-
-	// Convert a map into an array
-	for _, endpoint := range combinedMap {
-		combinedEndpoints = append(combinedEndpoints, endpoint)
-	}
-	return combinedEndpoints
 }

@@ -154,9 +154,6 @@ type DNSRecordStatus struct {
 	// endpoints are the last endpoints that were successfully published to the provider zone
 	Endpoints []*externaldns.Endpoint `json:"endpoints,omitempty"`
 
-	// ZoneEndpoints are all the endpoints for the DNSRecordSpec.RootHost that are present in the provider
-	ZoneEndpoints []*externaldns.Endpoint `json:"relatedEndpoints,omitempty"`
-
 	HealthCheck *HealthCheckStatus `json:"healthCheck,omitempty"`
 
 	// ownerID is a unique string used to identify the owner of this record.
