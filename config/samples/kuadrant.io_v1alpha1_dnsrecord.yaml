@@ -10,11 +10,12 @@ metadata:
   name: dnsrecord-sample
 spec:
   providerRef:
-    name: dns-provider-creds
+    name: dns-provider-credentials-inmemory 
   endpoints:
-    - dnsName: dnsrecord-simple.example.com
+    - dnsName: dnsrecord-simple.kuadrant.local
       recordTTL: 60
       recordType: A
       targets:
         - 52.215.108.61
         - 52.30.101.221
+  rootHost: dnsrecord-simple.kuadrant.local

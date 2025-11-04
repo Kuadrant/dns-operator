@@ -40,7 +40,7 @@ metadata:
           "spec": {
             "endpoints": [
               {
-                "dnsName": "dnsrecord-simple.example.com",
+                "dnsName": "dnsrecord-simple.kuadrant.local",
                 "recordTTL": 60,
                 "recordType": "A",
                 "targets": [
@@ -50,8 +50,9 @@ metadata:
               }
             ],
             "providerRef": {
-              "name": "dns-provider-creds"
-            }
+              "name": "dns-provider-credentials-inmemory"
+            },
+            "rootHost": "dnsrecord-simple.kuadrant.local"
           }
         }
       ]

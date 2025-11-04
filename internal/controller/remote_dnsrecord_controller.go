@@ -50,6 +50,7 @@ import (
 	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
+	"github.com/kuadrant/dns-operator/types"
 )
 
 // RemoteDNSRecordReconciler reconciles a DNSRecord object on a remote cluster.
@@ -57,6 +58,7 @@ type RemoteDNSRecordReconciler struct {
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
 	DelegationRole  string
+	Group           *types.Group
 
 	clusterUID string
 	mgr        mcmanager.Manager
@@ -91,6 +93,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	logger := baseLogger
 
 	logger.Info("Remote Reconcile", "req", req.String())
+	logger.V(1).Info("temporary to prove the data is being passed", "group", r.Group)
 
 	defer r.postReconcile(ctx, req.Name, req.Namespace, req.ClusterName)
 

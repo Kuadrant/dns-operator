@@ -47,6 +47,7 @@ import (
 	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
+	"github.com/kuadrant/dns-operator/types"
 )
 
 const (
@@ -82,6 +83,7 @@ type DNSRecordReconciler struct {
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
 	DelegationRole  string
+	Group           *types.Group
 }
 
 func postReconcile(ctx context.Context, name, ns string) {
@@ -114,6 +116,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	logger := baseLogger
 
 	logger.Info("Reconciling DNSRecord")
+	logger.V(1).Info("temporary to prove the data is being passed", "group", r.Group)
 
 	reconcileStart = metav1.Now()
 	probes := &v1alpha1.DNSHealthCheckProbeList{}
