@@ -24,4 +24,4 @@ The TXT registry structure above is not the first iteration. It could happen tha
 
 To migrate, run a newer version of the dns-operator. It will be able to read the old format and save that metadata into the new format of records. The logic gives precedence to the new format, meaning that once the new set of TXTs is created, the old ones are effectively ignored. 
 
-Once migrated to clean up, consider using the `kubectl-dns` plugin. See `kubectl  dns cleanup-old-txt-records --help` for more details. You will need to specify the name of the provider secret (unless you have a default secret configured - this is what it will look for in case no secret is provided). 
+Once migrated to clean up, consider using the `kubectl-dns` plugin. See `kubectl  dns prune-legacy-txt-records --help` for more details. You will need to specify the name of the provider secret (unless you have a default secret configured - this is what it will look for in case no secret is provided). 

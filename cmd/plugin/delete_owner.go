@@ -6,13 +6,13 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var deleteOwnerCMD = &cobra.Command{
-	Use:  "delete-owner",
-	RunE: deleteOwner,
+var removeOwnerCMD = &cobra.Command{
+	Use:  "remove-owner",
+	RunE: removeOwner,
 }
 
-func deleteOwner(_ *cobra.Command, _ []string) error {
-	log = logf.Log.WithName("delete-owner")
+func removeOwner(_ *cobra.Command, _ []string) error {
+	log = logf.Log.WithName("remove-owner")
 
 	log.Info("Deleting owner: TODO")
 	return nil

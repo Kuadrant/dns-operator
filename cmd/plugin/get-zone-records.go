@@ -34,9 +34,9 @@ const (
 )
 
 var getZoneRecordsCMD = &cobra.Command{
-	Use:     "zone-records --type <type> --name <name> [ --namespace <namespace> | --provideRef <namespace>/<name> ]",
+	Use:     "list-records --type <type> --name <name> [ --namespace <namespace> | --provideRef <namespace>/<name> ]",
 	PreRunE: flagValidate,
-	RunE:    getZoneRecords,
+	RunE:    listZoneRecords,
 	Short:   "Get all zone records for a host, or DNSrecord.",
 }
 var (
@@ -101,8 +101,8 @@ func init() {
 	getZoneRecordsCMD.Flags().StringVarP(&namespace, "namespace", "n", "dns-operator-system", "namespace where resources exist")
 }
 
-func getZoneRecords(_ *cobra.Command, _ []string) error {
-	log = logf.Log.WithName("get-zone-records")
+func listZoneRecords(_ *cobra.Command, _ []string) error {
+	log = logf.Log.WithName("list-records")
 
 	d := time.Now().Add(time.Minute * 5)
 	ctx, cancel := context.WithDeadline(context.Background(), d)

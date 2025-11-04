@@ -33,7 +33,7 @@ import (
 )
 
 var cleanupOldTXTCMD = &cobra.Command{
-	Use:   "cleanup-old-txt-records [provider-secret-name]",
+	Use:   "prune-legacy-txt-records [provider-secret-name]",
 	RunE:  deleteOldTXT,
 	Short: "Remove TXT records from previous version of TXT registry",
 	Long: "Retrieves the list of all the records from the zone based on the providers secret." +
@@ -59,7 +59,7 @@ func init() {
 }
 
 func deleteOldTXT(_ *cobra.Command, args []string) error {
-	log = logf.Log.WithName("delete-old-txt")
+	log = logf.Log.WithName("prune-legacy-txt")
 
 	d := time.Now().Add(time.Minute * 5)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
