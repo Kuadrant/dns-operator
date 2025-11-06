@@ -52,6 +52,7 @@ import (
 	ep "github.com/kuadrant/dns-operator/internal/provider/endpoint"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
+	"github.com/kuadrant/dns-operator/types"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -76,6 +77,7 @@ var (
 	clusterSecretLabel     string
 	watchNamespaces        string
 	delegationRole         string
+	group                  types.Group
 
 	// represents booth flag and envar key
 	metricsAddrKey            = variableKey("metrics-bind-address")
@@ -91,6 +93,7 @@ var (
 	clusterSecretLabelKey     = variableKey("cluster-secret-label")
 	watchNamespacesKey        = variableKey("watch-namespaces")
 	delegationRoleKey         = variableKey("delegation-role")
+	groupKey                  = variableKey("group")
 )
 
 const (
@@ -137,6 +140,8 @@ func main() {
 
 	flag.Var(newDelegationRoleValue(controller.DelegationRolePrimary, &delegationRole), delegationRoleKey.Flag(), "The delegation role for this controller. Must be one of 'primary'(default), or 'secondary'")
 
+	flag.Var(&group, groupKey.Flag(), "Set Group for dns-operater")
+
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -172,6 +177,7 @@ func main() {
 	var mgr ctrl.Manager
 	var mcmgr mcmanager.Manager
 	var err error
+	setupLog.Info(fmt.Sprintf("using group: %s", group))
 	setupLog.Info("using delegation role: ", "delegationRole", delegationRole)
 	if delegationRole == controller.DelegationRoleSecondary {
 		setupLog.Info("Creating manager")
@@ -241,6 +247,7 @@ func main() {
 		Scheme:          mgr.GetScheme(),
 		ProviderFactory: providerFactory,
 		DelegationRole:  delegationRole,
+		Group:           &group,
 	}
 
 	if err = dnsRecordController.SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
@@ -253,6 +260,7 @@ func main() {
 			Scheme:          mgr.GetScheme(),
 			ProviderFactory: providerFactory,
 			DelegationRole:  delegationRole,
+			Group:           &group,
 		}
 
 		if err = remoteDNSRecordController.SetupWithManager(mcmgr, false); err != nil {
@@ -362,6 +370,13 @@ func overrideControllerFlags() {
 			if parseErr == nil {
 				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", delegationRoleKey.Flag(), v))
 			}
+		case groupKey.Envar():
+			parseErr := group.Set(v)
+			if parseErr != nil {
+				setupLog.Info("unable to parse group type from configmap", "value", v, "error", parseErr)
+				os.Exit(1)
+			}
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", groupKey.Flag(), v))
 		}
 	}
 }
