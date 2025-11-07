@@ -21,9 +21,9 @@ const (
 	HostnameRegex        = "^(?:[\\w\\-.~:\\/?#[\\]@!$&'()*+,;=]+)\\.(?:[\\w\\-.~:\\/?#[\\]@!$&'()*+,;=]+)$"
 	WildcardGeo   string = "*"
 
-	DefaultTTL      = 60
-	DefaultCnameTTL = 300
-	IDLength        = 6
+	DefaultTTL             = 60
+	DefaultLoadBalancedTTL = 300
+	IDLength               = 6
 )
 
 // Target wraps a kubernetes ingress traffic resource e.g.Gateway, Ingress, Route etc.. but can wrap any resources
@@ -48,6 +48,10 @@ type EndpointsBuilder struct {
 	// If set the builder will create a loadbalanced set of endpoints for the target resource.
 	// If unset, the builder will create a simple set of endpoints for the target resource.
 	loadBalancing *LoadBalancing
+
+	// Builder specific defaultTTL and defaultLoadBalancedTTL values
+	defaultTTL             externaldns.TTL
+	defaultLoadBalancedTTL externaldns.TTL
 }
 
 type AddressType string
@@ -80,9 +84,23 @@ type LoadBalancing struct {
 // NewEndpointsBuilder returns a new endpoints builder
 func NewEndpointsBuilder(target Target, hostname string) *EndpointsBuilder {
 	return &EndpointsBuilder{
-		target:   target,
-		hostname: hostname,
+		target:                 target,
+		hostname:               hostname,
+		defaultTTL:             externaldns.TTL(DefaultTTL),
+		defaultLoadBalancedTTL: externaldns.TTL(DefaultLoadBalancedTTL),
 	}
+}
+
+// SetDefaultTTL changes the default TTL for simple and endpoint dns records
+func (builder *EndpointsBuilder) SetDefaultTTL(defaultTTL int) *EndpointsBuilder {
+	builder.defaultTTL = externaldns.TTL(defaultTTL)
+	return builder
+}
+
+// SetDefaultLoadBalancedTTL changes the default TTL for loadbalancing CNAME records
+func (builder *EndpointsBuilder) SetDefaultLoadBalancedTTL(defaultLoadBalancedTTL int) *EndpointsBuilder {
+	builder.defaultLoadBalancedTTL = externaldns.TTL(defaultLoadBalancedTTL)
+	return builder
 }
 
 // WithLoadBalancing provides builder with necessary parameters to generate a load-balancing set of endpoints.
@@ -170,12 +188,12 @@ func (builder *EndpointsBuilder) getSimpleEndpoints() []*externaldns.Endpoint {
 	ipValues, hostValues := targetsFromAddresses(builder.target.GetAddresses())
 
 	if len(ipValues) > 0 {
-		endpoint := createEndpoint(builder.hostname, ipValues, v1alpha1.ARecordType, "", DefaultTTL)
+		endpoint := createEndpoint(builder.hostname, ipValues, v1alpha1.ARecordType, "", builder.defaultTTL)
 		endpoints = append(endpoints, endpoint)
 	}
 
 	if len(hostValues) > 0 {
-		endpoint := createEndpoint(builder.hostname, hostValues, v1alpha1.CNAMERecordType, "", DefaultTTL)
+		endpoint := createEndpoint(builder.hostname, hostValues, v1alpha1.CNAMERecordType, "", builder.defaultTTL)
 		endpoints = append(endpoints, endpoint)
 	}
 
@@ -218,13 +236,13 @@ func (builder *EndpointsBuilder) getLoadBalancedEndpoints() []*externaldns.Endpo
 
 	if len(ipValues) > 0 {
 		aRecordLbName := strings.ToLower(fmt.Sprintf("%s-%s.%s", getShortCode(builder.loadBalancing.Id), getShortCode(fmt.Sprintf("%s-%s", builder.target.GetName(), builder.target.GetNamespace())), lbName))
-		endpoint = createEndpoint(aRecordLbName, ipValues, v1alpha1.ARecordType, "", DefaultTTL)
+		endpoint = createEndpoint(aRecordLbName, ipValues, v1alpha1.ARecordType, "", builder.defaultTTL)
 		endpoints = append(endpoints, endpoint)
 		hostValues = append(hostValues, aRecordLbName)
 	}
 
 	for _, hostValue := range hostValues {
-		endpoint = createEndpoint(geoLbName, []string{hostValue}, v1alpha1.CNAMERecordType, hostValue, DefaultTTL)
+		endpoint = createEndpoint(geoLbName, []string{hostValue}, v1alpha1.CNAMERecordType, hostValue, builder.defaultTTL)
 		endpoint.SetProviderSpecificProperty(v1alpha1.ProviderSpecificWeight, strconv.Itoa(int(builder.loadBalancing.Weight)))
 		endpoints = append(endpoints, endpoint)
 	}
@@ -235,20 +253,20 @@ func (builder *EndpointsBuilder) getLoadBalancedEndpoints() []*externaldns.Endpo
 	}
 
 	//Create lbName CNAME (lb-a1b2.shop.example.com -> <geoCode>.lb-a1b2.shop.example.com)
-	endpoint = createEndpoint(lbName, []string{geoLbName}, v1alpha1.CNAMERecordType, geoCode, DefaultCnameTTL)
+	endpoint = createEndpoint(lbName, []string{geoLbName}, v1alpha1.CNAMERecordType, geoCode, builder.defaultLoadBalancedTTL)
 	endpoint.SetProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode, geoCode)
 	endpoints = append(endpoints, endpoint)
 
 	//Add a default geo (*) endpoint if the current geoCode is a default geo
 	if builder.loadBalancing.IsDefaultGeo {
-		endpoint = createEndpoint(lbName, []string{geoLbName}, v1alpha1.CNAMERecordType, "default", DefaultCnameTTL)
+		endpoint = createEndpoint(lbName, []string{geoLbName}, v1alpha1.CNAMERecordType, "default", builder.defaultLoadBalancedTTL)
 		endpoint.SetProviderSpecificProperty(v1alpha1.ProviderSpecificGeoCode, WildcardGeo)
 		endpoints = append(endpoints, endpoint)
 	}
 
 	if len(endpoints) > 0 {
 		//Create gwListenerHost CNAME (shop.example.com -> lb-a1b2.shop.example.com)
-		endpoint = createEndpoint(builder.hostname, []string{lbName}, v1alpha1.CNAMERecordType, "", DefaultCnameTTL)
+		endpoint = createEndpoint(builder.hostname, []string{lbName}, v1alpha1.CNAMERecordType, "", builder.defaultLoadBalancedTTL)
 		endpoints = append(endpoints, endpoint)
 	}
 
