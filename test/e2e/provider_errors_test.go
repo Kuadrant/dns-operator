@@ -171,7 +171,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 				"foo.example.com",
 			},
 			RecordType:    "CNAME",
-			RecordTTL:     300,
+			RecordTTL:     builder.DefaultLoadBalancedTTL,
 			SetIdentifier: "foo.example.com",
 			ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 				{
@@ -291,7 +291,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 				"foo.example.com",
 			},
 			RecordType:    "CNAME",
-			RecordTTL:     300,
+			RecordTTL:     builder.DefaultLoadBalancedTTL,
 			SetIdentifier: "foo.example.com",
 			ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 				{
@@ -406,7 +406,7 @@ func testBuildDNSRecord(name, ns, dnsProviderSecretName, ownerID, rootHost strin
 						"127.0.0.1",
 					},
 					RecordType: "A",
-					RecordTTL:  60,
+					RecordTTL:  builder.DefaultTTL,
 				},
 			},
 		},

@@ -22,6 +22,7 @@ import (
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/hash"
 	"github.com/kuadrant/dns-operator/internal/provider"
+	builder "github.com/kuadrant/dns-operator/pkg/builder"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
@@ -172,7 +173,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 											config.testTargetIP,
 										},
 										RecordType: "A",
-										RecordTTL:  60,
+										RecordTTL:  builder.DefaultTTL,
 									},
 								},
 								HealthCheck: nil,
@@ -252,7 +253,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					"Targets":       ConsistOf(allTargetIps),
 					"RecordType":    Equal("A"),
 					"SetIdentifier": Equal(""),
-					"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+					"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 				})),
 			}
 
@@ -322,7 +323,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					"Targets":       Not(ContainElement(recordToDelete.config.testTargetIP)),
 					"RecordType":    Equal("A"),
 					"SetIdentifier": Equal(""),
-					"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+					"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 				})),
 			}
 			if txtRegistryEnabled {
@@ -471,7 +472,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 											config.testTargetIP,
 										},
 										RecordType: "A",
-										RecordTTL:  60,
+										RecordTTL:  builder.DefaultTTL,
 									},
 									{
 										DNSName: testHostname,
@@ -479,7 +480,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 											klbHostName,
 										},
 										RecordType: "CNAME",
-										RecordTTL:  300,
+										RecordTTL:  builder.DefaultLoadBalancedTTL,
 									},
 									{
 										DNSName: geoKlbHostName,
@@ -487,7 +488,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 											clusterKlbHostName,
 										},
 										RecordType:    "CNAME",
-										RecordTTL:     60,
+										RecordTTL:     builder.DefaultTTL,
 										SetIdentifier: clusterKlbHostName,
 										ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 											{
@@ -502,7 +503,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 											geoKlbHostName,
 										},
 										RecordType:    "CNAME",
-										RecordTTL:     300,
+										RecordTTL:     builder.DefaultLoadBalancedTTL,
 										SetIdentifier: config.testGeoCode,
 										ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 											{
@@ -517,7 +518,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 											defaultGeoKlbHostName,
 										},
 										RecordType:    "CNAME",
-										RecordTTL:     300,
+										RecordTTL:     builder.DefaultLoadBalancedTTL,
 										SetIdentifier: "default",
 										ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 											{
@@ -679,7 +680,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 				"Targets":       ConsistOf(testRecords[0].config.hostnames.klb),
 				"RecordType":    Equal("CNAME"),
 				"SetIdentifier": Equal(""),
-				"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+				"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 			}))))
 			totalEndpointsChecked++
 			// common endpoint should be owner by all owners - check for txt record per owner
@@ -720,7 +721,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					"Targets":          ConsistOf(allKlbGeoHostnames),
 					"RecordType":       Equal("CNAME"),
 					"SetIdentifier":    Equal(""),
-					"RecordTTL":        Equal(externaldnsendpoint.TTL(300)),
+					"RecordTTL":        Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 					"ProviderSpecific": ContainElements(gcpGeoProps),
 				}))))
 				totalEndpointsChecked++
@@ -754,7 +755,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					"Targets":          ConsistOf(allKlbGeoHostnames),
 					"RecordType":       Equal("CNAME"),
 					"SetIdentifier":    Equal(""),
-					"RecordTTL":        Equal(externaldnsendpoint.TTL(300)),
+					"RecordTTL":        Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 					"ProviderSpecific": ContainElements(gcpGeoProps),
 				}))))
 				totalEndpointsChecked++
@@ -788,7 +789,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						"Targets":       ConsistOf(geoKlbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(geoCode),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "alias", Value: "false"},
 							{Name: awsGeoCodeKey, Value: awsGeoCodeValue},
@@ -832,7 +833,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					"Targets":       ConsistOf(defaultGeoKlbHostName),
 					"RecordType":    Equal("CNAME"),
 					"SetIdentifier": Equal("default"),
-					"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+					"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 					"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 						{Name: "alias", Value: "false"},
 						{Name: "aws/geolocation-country-code", Value: "*"},
@@ -863,7 +864,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						"Targets":          ConsistOf(allGeoClusterHostnames),
 						"RecordType":       Equal("CNAME"),
 						"SetIdentifier":    Equal(""),
-						"RecordTTL":        Equal(externaldnsendpoint.TTL(60)),
+						"RecordTTL":        Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 						"ProviderSpecific": ContainElements(gcpWeightProps),
 					}))))
 					totalEndpointsChecked++
@@ -901,7 +902,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 						"Targets":          ConsistOf(allGeoClusterHostnames),
 						"RecordType":       Equal("CNAME"),
 						"SetIdentifier":    Equal(""),
-						"RecordTTL":        Equal(externaldnsendpoint.TTL(60)),
+						"RecordTTL":        Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 						"ProviderSpecific": ContainElements(gcpWeightProps),
 					}))))
 					totalEndpointsChecked++
@@ -931,7 +932,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 							"Targets":       ConsistOf(clusterKlbHostName),
 							"RecordType":    Equal("CNAME"),
 							"SetIdentifier": Equal(clusterKlbHostName),
-							"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+							"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 							"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 								{Name: "alias", Value: "false"},
 								{Name: "aws/weight", Value: "200"},
@@ -965,7 +966,7 @@ var _ = Describe("Multi Record Test", Labels{"multi_record"}, func() {
 					"Targets":       ConsistOf(clusterTargetIP),
 					"RecordType":    Equal("A"),
 					"SetIdentifier": Equal(""),
-					"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+					"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 				}))))
 				totalEndpointsChecked++
 				if txtRegistryEnabled {

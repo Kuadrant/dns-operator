@@ -20,6 +20,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	builder "github.com/kuadrant/dns-operator/pkg/builder"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
@@ -40,7 +41,7 @@ func createDNSRecordWithHealthCheck(testID string, namespace string, hostname st
 					DNSName:    hostname,
 					Targets:    []string{targetIP},
 					RecordType: "A",
-					RecordTTL:  60,
+					RecordTTL:  builder.DefaultTTL,
 				},
 			},
 			HealthCheck: &v1alpha1.HealthCheckSpec{
