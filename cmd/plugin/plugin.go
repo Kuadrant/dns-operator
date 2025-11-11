@@ -9,6 +9,8 @@ import (
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	"github.com/kuadrant/dns-operator/cmd/plugin/failover"
 )
 
 var (
@@ -43,6 +45,7 @@ func init() {
 	rootCMD.PersistentFlags().BoolVarP(&verbose, "verbose", "v", true, "verbose output")
 
 	rootCMD.AddCommand(versionCMD, cleanupOldTXTCMD, getZoneRecordsCMD, addClusterSecretCMD, removeOwnerCMD)
+	rootCMD.AddCommand(failover.AddActiveGroupCMD)
 }
 
 func main() {
