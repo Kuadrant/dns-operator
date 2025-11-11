@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -155,7 +156,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 				return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 			}
 
-			_, err = deleteRecord(ctx, dnsRecord, dnsProvider)
+			_, err = deleteRecord(ctx, dnsRecord, dnsProvider, r.Group)
 			if err != nil {
 				logger.Error(err, "Failed to delete DNSRecord")
 				return ctrl.Result{}, err
@@ -213,7 +214,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	}
 
 	// Publish the record
-	_, err = publishRecord(ctx, dnsRecord, dnsProvider)
+	_, err = publishRecord(ctx, dnsRecord, dnsProvider, r.Group)
 	if err != nil {
 		logger.Error(err, "Failed to publish record")
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
@@ -263,10 +264,10 @@ func (r *RemoteDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecor
 }
 
 // deleteRecord deletes record(s) in the DNSProvider(i.e. route53) zone (dnsRecord.GetZoneID()).
-func deleteRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
+func deleteRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider, group *types.Group) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	hadChanges, err := applyChanges(ctx, dnsRecord, dnsProvider, true)
+	hadChanges, err := applyChanges(ctx, dnsRecord, dnsProvider, true, group)
 	if err != nil {
 		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
 			logger.Info("Record not found in zone, continuing")
@@ -284,9 +285,9 @@ func deleteRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider 
 
 // publishRecord publishes record(s) to the DNSProvider(i.e. route53) zone (dnsRecord.GetZoneID()).
 // returns if it had changes, if record is healthy and an error. If had no changes - the healthy bool can be ignored
-func publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
+func publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider, group *types.Group) (bool, error) {
 	logger := log.FromContext(ctx)
-	hadChanges, err := applyChanges(ctx, dnsRecord, dnsProvider, false)
+	hadChanges, err := applyChanges(ctx, dnsRecord, dnsProvider, false, group)
 	if err != nil {
 		return hadChanges, err
 	}
@@ -297,7 +298,7 @@ func publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider
 
 // applyChanges creates the Plan and applies it to the registry. Returns true only if the Plan had no errors and there were changes to apply.
 // The error is nil only if the changes were successfully applied or there were no changes to be made.
-func applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider, isDelete bool) (bool, error) {
+func applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider, isDelete bool, group *types.Group) (bool, error) {
 	logger := log.FromContext(ctx)
 	rootDomainName := dnsRecord.GetRootHost()
 	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetZoneDomainName()})
@@ -336,6 +337,16 @@ func applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider 
 		return false, fmt.Errorf("adjusting specEndpoints: %w", err)
 	}
 
+	// Add group label to all endpoints if set
+	if group.IsSet() {
+		for _, ep := range specEndpoints {
+			if ep.Labels == nil {
+				ep.Labels = externaldnsendpoint.NewLabels()
+			}
+			maps.Copy(ep.Labels, group.Labels())
+		}
+	}
+
 	//statusEndpoints = Records that were created/updated by this DNSRecord last
 	statusEndpoints, err := registry.AdjustEndpoints(dnsRecord.GetStatus().Endpoints)
 	if err != nil {
@@ -355,6 +366,14 @@ func applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider 
 	if err = plan.Error(); err != nil {
 		return false, err
 	}
+
+	if group.IsSet() {
+		dnsRecord.SetStatusGroup(*group)
+	} else {
+		// ensure if group is removed from deployment, it is also removed from the status
+		dnsRecord.SetStatusGroup("")
+	}
+
 	dnsRecord.SetStatusDomainOwners(plan.Owners)
 	dnsRecord.SetStatusEndpoints(specEndpoints)
 	if plan.Changes.HasChanges() {

@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -786,6 +787,16 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return false, []string{}, fmt.Errorf("adjusting specEndpoints: %w", err)
 	}
 
+	// Add group label to all endpoints if set
+	if r.Group.IsSet() {
+		for _, ep := range specEndpoints {
+			if ep.Labels == nil {
+				ep.Labels = externaldnsendpoint.NewLabels()
+			}
+			maps.Copy(ep.Labels, r.Group.Labels())
+		}
+	}
+
 	// healthySpecEndpoints = Records that this DNSRecord expects to exist, that do not have matching unhealthy probes
 	healthySpecEndpoints, notHealthyProbes, err := removeUnhealthyEndpoints(specEndpoints, dnsRecord, probes)
 	if err != nil {
@@ -812,6 +823,14 @@ func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alp
 		return false, notHealthyProbes, err
 	}
 	dnsRecord.Status.DomainOwners = plan.Owners
+
+	if r.Group.IsSet() {
+		dnsRecord.Status.Group = *r.Group
+	} else {
+		// ensure if group is removed from deployment, it is also removed from the status
+		dnsRecord.Status.Group = ""
+	}
+
 	dnsRecord.Status.Endpoints = healthySpecEndpoints
 	if plan.Changes.HasChanges() {
 		//ToDo (mnairn) CoreDNS will always think it has changes as long as provider.Records() returns an empty slice
