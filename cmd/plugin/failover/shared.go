@@ -70,7 +70,6 @@ func EnsureGroupTXTRecord(groupName string, existingRecord *endpoint.Endpoint) *
 	}
 
 	activeGroups = append(activeGroups, groupName)
-
 	slices.Sort(activeGroups)
 	activeGroups = slices.Compact(activeGroups)
 
@@ -88,4 +87,27 @@ func inputYes(log logr.Logger) bool {
 	answer = strings.TrimSpace(strings.ToLower(answer))
 
 	return answer == "y" || answer == "yes"
+}
+
+// GetActiveGroupsFromTarget returns a list of active groups from the endpoint target and a boolean indication that it is a current version
+func GetActiveGroupsFromTarget(target string) ([]string, bool) {
+	target = strings.Trim(target, "\"")
+	activeGroups := make([]string, 0)
+
+	// make sure we are expecting this version
+	groups, found := strings.CutPrefix(target, fmt.Sprintf("version=%s", TXTRecordVersion))
+	if !found {
+		// unknown version - legacy support will be done here
+		return activeGroups, false
+	}
+
+	// cut off groups key and a separator
+	groups, found = strings.CutPrefix(groups, fmt.Sprintf("%s%s=", TXTRecordKeysSeparator, TXTRecordGroupKey))
+	if !found {
+		return activeGroups, true
+	}
+
+	activeGroups = strings.Split(groups, GroupSeparator)
+
+	return activeGroups, true
 }

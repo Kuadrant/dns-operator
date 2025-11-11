@@ -37,3 +37,7 @@ If more than one zone is found it will prompt asking which of the zones to selec
 unless `-y` is provided in which case it will apply the change to all relevant zones..
 When adding a group to the set of active groups in the selected zone the command will first ensure the group is not already present.
 If the group is not present, it will either update the existing `kuadrant-active-groups.<domain>` TXT record, or create it. 
+
+### get-active-group
+Will fetch a list of active groups from the `kuadrant-active-groups.<domain>` TXT record and display them. 
+Active groups will be listed under the corresponding zone.
