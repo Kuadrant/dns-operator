@@ -38,3 +38,7 @@ func (g *Group) IsSet() bool {
 	}
 	return false
 }
+
+func (g *Group) Labels() map[string]string {
+	return map[string]string{"group": g.String()}
+}
