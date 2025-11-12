@@ -37,8 +37,10 @@ type DNSRecordAccessor interface {
 	GetRootHost() string
 	GetZoneDomainName() string
 	GetZoneID() string
+	GetEndpoints() []*externaldns.Endpoint
 	GetSpec() *v1alpha1.DNSRecordSpec
 	GetStatus() *v1alpha1.DNSRecordStatus
+	SetStatusConditions(hadChanges bool)
 	SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string)
 	SetStatusOwnerID(id string)
 	SetStatusZoneID(id string)
@@ -48,10 +50,21 @@ type DNSRecordAccessor interface {
 	SetStatusObservedGeneration(observedGeneration int64)
 	HasOwnerIDAssigned() bool
 	HasDNSZoneAssigned() bool
+	HasProviderSecretAssigned() bool
+	IsDeleting() bool
 }
 
 type DNSRecord struct {
 	*v1alpha1.DNSRecord
+}
+
+func (s *DNSRecord) SetStatusConditions(_ bool) {
+	//ToDo We do nothing here at the moment!!
+	return
+}
+
+func (s *DNSRecord) GetEndpoints() []*externaldns.Endpoint {
+	return s.GetSpec().Endpoints
 }
 
 func (s *DNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {
@@ -119,6 +132,15 @@ type RemoteDNSRecord struct {
 	*v1alpha1.DNSRecord
 	ClusterID string
 	status    *v1alpha1.DNSRecordStatus
+}
+
+func (s *RemoteDNSRecord) SetStatusConditions(_ bool) {
+	//ToDo We do nothing here at the moment!!
+	return
+}
+
+func (s *RemoteDNSRecord) GetEndpoints() []*externaldns.Endpoint {
+	return s.GetSpec().Endpoints
 }
 
 func (s *RemoteDNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {

@@ -113,7 +113,8 @@ func publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider
 // The error is nil only if the changes were successfully applied or there were no changes to be made.
 func applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider, isDelete bool) (bool, error) {
 	logger := log.FromContext(ctx)
-	rootDomainName := dnsRecord.GetRootHost()
+	//ToDo We can't use GetRootHost() here as it currently removes any wildcard prefix which needs to be maintained in this scenario.
+	rootDomainName := dnsRecord.GetSpec().RootHost
 	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetZoneDomainName()})
 	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
 	var excludeDNSRecordTypes []string
@@ -131,7 +132,7 @@ func applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider 
 		return false, fmt.Errorf("unknown policy: %s", policyID)
 	}
 
-	specEndpoints := dnsRecord.GetSpec().Endpoints
+	specEndpoints := dnsRecord.GetEndpoints()
 
 	//If we are deleting set the expected endpoints to an empty array
 	if isDelete {

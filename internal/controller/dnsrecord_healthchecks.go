@@ -205,3 +205,64 @@ func BuildOwnerLabelValue(record *v1alpha1.DNSRecord) string {
 func GetOwnerFromLabel(probe *v1alpha1.DNSHealthCheckProbe) string {
 	return probe.GetLabels()[ProbeOwnerLabel]
 }
+
+type healthCheckAdapter struct {
+	DNSRecordAccessor
+	probes               *v1alpha1.DNSHealthCheckProbeList
+	healthySpecEndpoints []*endpoint.Endpoint
+	notHealthyProbes     []string
+}
+
+func newHealthCheckAdapter(accessor DNSRecordAccessor, probes *v1alpha1.DNSHealthCheckProbeList) (*healthCheckAdapter, error) {
+	hca := &healthCheckAdapter{
+		DNSRecordAccessor: accessor,
+		probes:            probes,
+	}
+	err := hca.removeUnhealthyEndpoints()
+	if err != nil {
+		return nil, err
+	}
+	return hca, nil
+}
+
+func (s *healthCheckAdapter) removeUnhealthyEndpoints() error {
+	//ToDo removeUnhealthyEndpoints is manipulating the record spec and producing incorrect spec data with duplicate target values.
+	// Current workaround is to pass in a copy of the record since we only care about the return values anyway.
+	recCopy := s.GetDNSRecord().DeepCopy()
+	// healthySpecEndpoints = Records that this DNSRecord expects to exist, that do not have matching unhealthy probes
+	healthySpecEndpoints, notHealthyProbes, err := removeUnhealthyEndpoints(recCopy.Spec.Endpoints, recCopy, s.probes)
+	if err != nil {
+		return fmt.Errorf("removing unhealthy specEndpoints: %w", err)
+	}
+
+	s.healthySpecEndpoints = healthySpecEndpoints
+	s.notHealthyProbes = notHealthyProbes
+	return nil
+}
+
+func (s *healthCheckAdapter) GetEndpoints() []*endpoint.Endpoint {
+	return s.healthySpecEndpoints
+}
+
+func (s *healthCheckAdapter) SetStatusConditions(_ bool) {
+	// we don't have probes yet
+	if cap(s.notHealthyProbes) == 0 {
+		s.SetStatusCondition(string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Probes are creating")
+		return
+	}
+
+	// we have healthy probes
+	if len(s.notHealthyProbes) < cap(s.notHealthyProbes) {
+		if len(s.notHealthyProbes) == 0 {
+			// all probes are healthy
+			s.SetStatusCondition(string(v1alpha1.ConditionTypeHealthy), metav1.ConditionTrue, string(v1alpha1.ConditionReasonHealthy), "All healthchecks succeeded")
+		} else {
+			// at least one of the probes is healthy
+			s.SetStatusCondition(string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonPartiallyHealthy), fmt.Sprintf("Not healthy addresses: %s", s.notHealthyProbes))
+		}
+		return
+	}
+	// none of the probes is healthy
+	s.SetStatusCondition(string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), fmt.Sprintf("Not healthy addresses: %s", s.notHealthyProbes))
+	return
+}
