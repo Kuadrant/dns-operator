@@ -19,7 +19,6 @@ package controller
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -29,16 +28,16 @@ var _ DNSRecordAccessor = &DNSRecord{}
 var _ DNSRecordAccessor = &RemoteDNSRecord{}
 
 type DNSRecordAccessor interface {
-	metav1.Object
-	runtime.Object
 	v1alpha1.ProviderAccessor
 	GetDNSRecord() *v1alpha1.DNSRecord
 	GetOwnerID() string
 	GetRootHost() string
 	GetZoneDomainName() string
 	GetZoneID() string
+	GetEndpoints() []*externaldns.Endpoint
 	GetSpec() *v1alpha1.DNSRecordSpec
 	GetStatus() *v1alpha1.DNSRecordStatus
+	SetStatusConditions(hadChanges bool)
 	SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string)
 	SetStatusOwnerID(id string)
 	SetStatusZoneID(id string)
@@ -48,10 +47,16 @@ type DNSRecordAccessor interface {
 	SetStatusObservedGeneration(observedGeneration int64)
 	HasOwnerIDAssigned() bool
 	HasDNSZoneAssigned() bool
+	HasProviderSecretAssigned() bool
+	IsDeleting() bool
 }
 
 type DNSRecord struct {
 	*v1alpha1.DNSRecord
+}
+
+func (s *DNSRecord) GetEndpoints() []*externaldns.Endpoint {
+	return s.GetSpec().Endpoints
 }
 
 func (s *DNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {
@@ -76,6 +81,11 @@ func (s *DNSRecord) GetSpec() *v1alpha1.DNSRecordSpec {
 
 func (s *DNSRecord) GetStatus() *v1alpha1.DNSRecordStatus {
 	return &s.Status
+}
+
+func (s *DNSRecord) SetStatusConditions(_ bool) {
+	//We do nothing here at the moment!!
+	return
 }
 
 func (s *DNSRecord) SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string) {
@@ -121,6 +131,10 @@ type RemoteDNSRecord struct {
 	status    *v1alpha1.DNSRecordStatus
 }
 
+func (s *RemoteDNSRecord) GetEndpoints() []*externaldns.Endpoint {
+	return s.GetSpec().Endpoints
+}
+
 func (s *RemoteDNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {
 	return s.DNSRecord
 }
@@ -151,6 +165,11 @@ func (s *RemoteDNSRecord) GetStatus() *v1alpha1.DNSRecordStatus {
 	return s.status
 }
 
+func (s *RemoteDNSRecord) SetStatusConditions(_ bool) {
+	//We do nothing here at the moment!!
+	return
+}
+
 func (s *RemoteDNSRecord) SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string) {
 	cond := metav1.Condition{
 		Type:               conditionType,
@@ -165,9 +184,8 @@ func (s *RemoteDNSRecord) SetStatusCondition(conditionType string, status metav1
 	s.setStatus()
 }
 
-func (s *RemoteDNSRecord) SetStatusOwnerID(id string) {
-	//TODO implement me
-	panic("implement me")
+func (s *RemoteDNSRecord) SetStatusOwnerID(_ string) {
+	panic("cannot set OwnerID on remote record")
 }
 
 func (s *RemoteDNSRecord) SetStatusZoneID(id string) {

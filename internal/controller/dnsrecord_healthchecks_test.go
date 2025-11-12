@@ -20,7 +20,7 @@ import (
 	"github.com/kuadrant/dns-operator/pkg/builder"
 )
 
-var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
+var _ = Describe("DNSRecordReconciler_HealthChecks", Labels{"health_checks"}, func() {
 	var (
 		dnsRecord *v1alpha1.DNSRecord
 
@@ -266,7 +266,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
-	It("Should not publish unhealthy enpoints", func() {
+	It("Should not publish unhealthy endpoints", func() {
 		//Create default test dnsrecord
 		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
 
@@ -565,7 +565,7 @@ var _ = Describe("DNSRecordReconciler_HealthChecks", func() {
 						}),
 					)),
 				))
-		}, time.Hour, time.Second).Should(Succeed())
+		}, time.Minute, time.Second).Should(Succeed())
 	})
 
 })

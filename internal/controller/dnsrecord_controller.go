@@ -35,12 +35,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common"
-	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
-	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
@@ -121,24 +118,25 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, err
 		}
 	}
-	previous := &DNSRecord{
+	var previous, dnsRecord DNSRecordAccessor
+	previous = &DNSRecord{
 		DNSRecord: rec,
 	}
-	dnsRecord := &DNSRecord{
+	dnsRecord = &DNSRecord{
 		DNSRecord: rec.DeepCopy(),
 	}
 
-	defer postReconcileMetrics(dnsRecord.GetDNSRecord(), meta.IsStatusConditionTrue(dnsRecord.Status.Conditions, string(v1alpha1.ConditionTypeReady)))
+	defer postReconcileMetrics(dnsRecord.GetDNSRecord(), meta.IsStatusConditionTrue(dnsRecord.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady)))
 
 	// Update the logger with appropriate record/zone metadata from the dnsRecord
 	ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 
 	if dnsRecord.IsDeleting() {
 		logger.Info("Deleting DNSRecord")
-		if dnsRecord.Status.ProviderEndpointsRemoved() {
+		if dnsRecord.GetStatus().ProviderEndpointsRemoved() {
 			logger.V(1).Info("Status ProviderEndpointRemoved is true, finalizer can be removed")
 			logger.Info("Removing Finalizer", "finalizer_name", DNSRecordFinalizer)
-			controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
+			controllerutil.RemoveFinalizer(dnsRecord.GetDNSRecord(), DNSRecordFinalizer)
 			if err = r.Update(ctx, dnsRecord.GetDNSRecord()); client.IgnoreNotFound(err) != nil {
 				if apierrors.IsConflict(err) {
 					return ctrl.Result{Requeue: true}, nil
@@ -153,7 +151,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		if !dnsRecord.GetStatus().ProviderEndpointsDeletion() {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
-			result, err := r.updateStatus(ctx, previous, dnsRecord, probes, true, []string{}, err)
+			result, err := r.updateStatus(ctx, previous, dnsRecord, true, err)
 			return result, err
 		}
 
@@ -163,7 +161,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			if err != nil {
 				logger.Error(err, "Failed to load DNS Provider")
 				dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
-				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
+				return r.updateStatus(ctx, previous, dnsRecord, false, err)
 			}
 
 			if probesEnabled {
@@ -171,7 +169,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					return ctrl.Result{}, err
 				}
 			}
-			hadChanges, err := r.deleteRecord(ctx, dnsRecord.GetDNSRecord(), dnsProvider)
+			hadChanges, err := deleteRecord(ctx, dnsRecord, dnsProvider)
 			if err != nil {
 				logger.Error(err, "Failed to delete DNSRecord")
 				return ctrl.Result{}, err
@@ -213,25 +211,26 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			LabelSelector: labels.SelectorFromSet(map[string]string{
 				ProbeOwnerLabel: BuildOwnerLabelValue(dnsRecord.GetDNSRecord()),
 			}),
-			Namespace: dnsRecord.Namespace,
+			Namespace: dnsRecord.GetNamespace(),
 		}); err != nil {
 			return ctrl.Result{}, err
 		}
+		dnsRecord = newHealthCheckAdapter(dnsRecord, probes)
 	}
 
-	err = dnsRecord.Validate()
+	err = dnsRecord.GetDNSRecord().Validate()
 	if err != nil {
 		logger.Error(err, "Failed to validate record")
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonValidationError), fmt.Sprintf("validation of DNSRecord failed: %v", err))
-		return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
+		return r.updateStatus(ctx, previous, dnsRecord, false, err)
 	}
 
 	//Ensure an Owner ID has been assigned to the record (OwnerID set in the status)
 	if !dnsRecord.HasOwnerIDAssigned() {
-		if dnsRecord.Spec.OwnerID != "" {
-			dnsRecord.SetStatusOwnerID(dnsRecord.Spec.OwnerID)
+		if dnsRecord.GetSpec().OwnerID != "" {
+			dnsRecord.SetStatusOwnerID(dnsRecord.GetSpec().OwnerID)
 		} else {
-			dnsRecord.SetStatusOwnerID(dnsRecord.GetUIDHash())
+			dnsRecord.SetStatusOwnerID(dnsRecord.GetDNSRecord().GetUIDHash())
 		}
 		//Update logger and context so it includes updated owner metadata
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
@@ -258,8 +257,8 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Ensure we have provider secret
 	if !dnsRecord.IsDelegating() && !dnsRecord.HasProviderSecretAssigned() {
-		if dnsRecord.Spec.ProviderRef != nil && dnsRecord.Spec.ProviderRef.Name != "" {
-			dnsRecord.Status.ProviderRef = *dnsRecord.Spec.ProviderRef
+		if dnsRecord.GetSpec().ProviderRef != nil && dnsRecord.GetSpec().ProviderRef.Name != "" {
+			dnsRecord.GetStatus().ProviderRef = *dnsRecord.GetSpec().ProviderRef
 		} else {
 			// try to find the default secret
 			defaultSecretList := &v1.SecretList{}
@@ -267,52 +266,52 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					v1alpha1.DefaultProviderSecretLabel: "true",
 				}),
-				Namespace: dnsRecord.Namespace,
+				Namespace: dnsRecord.GetNamespace(),
 			})
 
 			// failed to fetch
 			if err != nil {
 				dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 					"DNSProviderError", fmt.Sprintf("The default dns provider secret could not be loaded: %v", err))
-				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
+				return r.updateStatus(ctx, previous, dnsRecord, false, err)
 			}
 
 			// no secrets
 			if len(defaultSecretList.Items) == 0 {
 				dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 					"DNSProviderError", fmt.Sprintf("No default provider secret labeled %s was found", v1alpha1.DefaultProviderSecretLabel))
-				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, errors.New("no default secret found"))
+				return r.updateStatus(ctx, previous, dnsRecord, false, errors.New("no default secret found"))
 			}
 
 			// multiple defaults
 			if len(defaultSecretList.Items) > 1 {
 				dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 					"DNSProviderError", "Multiple default providers secrets found. Only one expected")
-				return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, errors.New("multiple default provider secrets found"))
+				return r.updateStatus(ctx, previous, dnsRecord, false, errors.New("multiple default provider secrets found"))
 			}
 
 			// set default secret as a provider secret to this record
-			dnsRecord.Status.ProviderRef.Name = defaultSecretList.Items[0].Name
+			dnsRecord.GetStatus().ProviderRef.Name = defaultSecretList.Items[0].Name
 		}
 	}
 
 	// Ensure a DNS Zone has been assigned to the record (ZoneID and ZoneDomainName are set in the status)
 	if !dnsRecord.HasDNSZoneAssigned() {
-		logger.Info(fmt.Sprintf("provider zone not assigned for root host %s, finding suitable zone", dnsRecord.Spec.RootHost))
+		logger.Info(fmt.Sprintf("provider zone not assigned for root host %s, finding suitable zone", dnsRecord.GetRootHost()))
 
 		// Create a dns provider with no config to list all potential zones available from the configured provider
 		p, err := r.ProviderFactory.ProviderFor(ctx, dnsRecord.GetDNSRecord(), provider.Config{})
 		if err != nil {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 				"DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
-			return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
+			return r.updateStatus(ctx, previous, dnsRecord, false, err)
 		}
 
-		z, err := p.DNSZoneForHost(ctx, dnsRecord.Spec.RootHost)
+		z, err := p.DNSZoneForHost(ctx, dnsRecord.GetRootHost())
 		if err != nil {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 				"DNSProviderError", fmt.Sprintf("Unable to find suitable zone in provider: %v", provider.SanitizeError(err)))
-			return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
+			return r.updateStatus(ctx, previous, dnsRecord, false, err)
 		}
 
 		//Add zone id/domainName to status
@@ -328,7 +327,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err != nil {
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			string(v1alpha1.ConditionReasonProviderError), fmt.Sprintf("The dns provider could not be loaded: %v", err))
-		return r.updateStatus(ctx, previous, dnsRecord, probes, false, []string{}, err)
+		return r.updateStatus(ctx, previous, dnsRecord, false, err)
 	}
 
 	// Ensure provider labels are added
@@ -342,18 +341,18 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Publish the record
-	hadChanges, notHealthyProbes, err := r.publishRecord(ctx, dnsRecord.GetDNSRecord(), probes, dnsProvider)
+	hadChanges, err := publishRecord(ctx, dnsRecord, dnsProvider)
 	if err != nil {
 		logger.Error(err, "Failed to publish record")
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			"ProviderError", fmt.Sprintf("The DNS provider failed to ensure the record: %v", provider.SanitizeError(err)))
-		return r.updateStatus(ctx, previous, dnsRecord, probes, hadChanges, notHealthyProbes, err)
+		return r.updateStatus(ctx, previous, dnsRecord, hadChanges, err)
 	}
 
-	return r.updateStatus(ctx, previous, dnsRecord, probes, hadChanges, notHealthyProbes, nil)
+	return r.updateStatus(ctx, previous, dnsRecord, hadChanges, nil)
 }
 
-func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, current DNSRecordAccessor, probes *v1alpha1.DNSHealthCheckProbeList, hadChanges bool, notHealthyProbes []string, specErr error) (reconcile.Result, error) {
+func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, current DNSRecordAccessor, hadChanges bool, specErr error) (reconcile.Result, error) {
 	var requeueTime time.Duration
 	logger := log.FromContext(ctx)
 
@@ -370,7 +369,7 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 	}
 
 	// short loop. We don't publish anything so not changing status
-	if prematurely, requeueIn := recordReceivedPrematurely(current.GetDNSRecord(), probes); prematurely {
+	if prematurely, requeueIn := recordReceivedPrematurely(current); prematurely {
 		return reconcile.Result{RequeueAfter: requeueIn}, nil
 	}
 
@@ -380,7 +379,7 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 		// implies that they were overridden - bump write counter
 		if !generationChanged(current.GetDNSRecord()) {
 			current.GetStatus().WriteCounter++
-			metrics.WriteCounter.WithLabelValues(current.GetName(), current.GetNamespace()).Inc()
+			metrics.WriteCounter.WithLabelValues(current.GetDNSRecord().GetName(), current.GetDNSRecord().GetNamespace()).Inc()
 			logger.V(1).Info("Changes needed on the same generation of record")
 		}
 		requeueTime = randomizedValidationRequeue
@@ -409,7 +408,7 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 		}
 	}
 
-	setStatusConditions(current, hadChanges, notHealthyProbes)
+	setStatusConditions(current, hadChanges)
 
 	// valid for is always a requeue time
 	current.GetStatus().ValidFor = requeueTime.String()
@@ -417,11 +416,11 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 	// reset the counter on the gen change regardless of having changes in the plan
 	if generationChanged(current.GetDNSRecord()) {
 		current.GetStatus().WriteCounter = 0
-		metrics.WriteCounter.WithLabelValues(current.GetName(), current.GetNamespace()).Set(0)
+		metrics.WriteCounter.WithLabelValues(current.GetDNSRecord().GetName(), current.GetNamespace()).Set(0)
 		logger.V(1).Info("Resetting write counter on the generation change")
 	}
 
-	current.GetStatus().ObservedGeneration = current.GetGeneration()
+	current.GetStatus().ObservedGeneration = current.GetDNSRecord().GetGeneration()
 	current.GetStatus().QueuedAt = reconcileStart
 
 	return r.updateStatusAndRequeue(ctx, r.Client, previous, current, requeueTime)
@@ -517,64 +516,28 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, val
 		Complete(r)
 }
 
-// deleteRecord deletes record(s) in the DNSPRovider(i.e. route53) zone (dnsRecord.Status.ZoneID).
-func (r *DNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, dnsProvider provider.Provider) (bool, error) {
-	logger := log.FromContext(ctx)
-
-	hadChanges, _, err := r.applyChanges(ctx, dnsRecord, nil, dnsProvider, true)
-	if err != nil {
-		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
-			logger.Info("Record not found in zone, continuing")
-			return false, nil
-		} else if strings.Contains(err.Error(), "no endpoints") {
-			logger.Info("DNS record had no endpoint, continuing")
-			return false, nil
-		}
-		return false, err
-	}
-	logger.Info("Deleted DNSRecord in zone")
-
-	return hadChanges, nil
-}
-
-// publishRecord publishes record(s) to the DNSPRovider(i.e. route53) zone (dnsRecord.Status.ZoneID).
-// returns if it had changes, if record is healthy and an error. If had no changes - the healthy bool can be ignored
-func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider) (bool, []string, error) {
-	logger := log.FromContext(ctx)
-	if prematurely, _ := recordReceivedPrematurely(dnsRecord, probes); prematurely {
-		logger.V(1).Info("Skipping DNSRecord - is still valid")
-		return false, []string{}, nil
-	}
-
-	hadChanges, notHealthyProbes, err := r.applyChanges(ctx, dnsRecord, probes, dnsProvider, false)
-	if err != nil {
-		return hadChanges, notHealthyProbes, err
-	}
-	logger.Info("Published DNSRecord to zone")
-
-	return hadChanges, notHealthyProbes, nil
-}
-
 // recordReceivedPrematurely returns true if the current reconciliation loop started before
 // the last loop plus validFor duration.
 // It also returns a duration for which the record should have been requeued. Meaning that if the record was valid
 // for 30 minutes and was received in 29 minutes, the function will return (true, 30 min).
 // It will make an exception and will let through premature records if healthcheck probes change their health status
-func recordReceivedPrematurely(record *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList) (bool, time.Duration) {
+func recordReceivedPrematurely(record DNSRecordAccessor) (bool, time.Duration) {
 	var prematurely bool
 
 	requeueIn := validFor
-	if record.Status.ValidFor != "" {
-		requeueIn, _ = time.ParseDuration(record.Status.ValidFor)
+	if record.GetStatus().ValidFor != "" {
+		requeueIn, _ = time.ParseDuration(record.GetStatus().ValidFor)
 	}
-	expiryTime := metav1.NewTime(record.Status.QueuedAt.Add(requeueIn))
-	prematurely = !generationChanged(record) && reconcileStart.Before(&expiryTime)
+	expiryTime := metav1.NewTime(record.GetStatus().QueuedAt.Add(requeueIn))
+	prematurely = !generationChanged(record.GetDNSRecord()) && reconcileStart.Before(&expiryTime)
+
+	hca, hasHealthChecks := record.(*healthCheckAdapter)
 
 	// Check for the exception if we are received prematurely.
 	// This cuts off all the cases when we are creating.
 	// If this evaluates to true, we must have created probes and must have healthy condition
-	if prematurely && probesEnabled && record.Spec.HealthCheck != nil {
-		healthyCond := meta.FindStatusCondition(record.Status.Conditions, string(v1alpha1.ConditionTypeHealthy))
+	if prematurely && hasHealthChecks && record.GetSpec().HealthCheck != nil {
+		healthyCond := meta.FindStatusCondition(record.GetStatus().Conditions, string(v1alpha1.ConditionTypeHealthy))
 		// this is caused only by an error during reconciliation
 		if healthyCond == nil {
 			return false, requeueIn
@@ -584,7 +547,7 @@ func recordReceivedPrematurely(record *v1alpha1.DNSRecord, probes *v1alpha1.DNSH
 
 		// if at least one is healthy - this will lock in true
 		allProbesHealthy := false
-		for _, probe := range probes.Items {
+		for _, probe := range hca.probes.Items {
 			if probe.Status.Healthy != nil {
 				allProbesHealthy = allProbesHealthy || *probe.Status.Healthy
 			}
@@ -617,7 +580,7 @@ func exponentialRequeueTime(lastRequeueTime string) time.Duration {
 }
 
 // setStatusConditions sets healthy and ready condition on given DNSRecord
-func setStatusConditions(record DNSRecordAccessor, hadChanges bool, notHealthyProbes []string) {
+func setStatusConditions(record DNSRecordAccessor, hadChanges bool) {
 	// we get here only when spec err is nil - can trust hadChanges bool
 
 	readyCond := meta.FindStatusCondition(record.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady))
@@ -645,100 +608,5 @@ func setStatusConditions(record DNSRecordAccessor, hadChanges bool, notHealthyPr
 		record.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Not publishing unhealthy records")
 	}
 
-	// we don't have probes yet
-	if cap(notHealthyProbes) == 0 {
-		record.SetStatusCondition(string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Probes are creating")
-		return
-	}
-
-	// we have healthy probes
-	if len(notHealthyProbes) < cap(notHealthyProbes) {
-		if len(notHealthyProbes) == 0 {
-			// all probes are healthy
-			record.SetStatusCondition(string(v1alpha1.ConditionTypeHealthy), metav1.ConditionTrue, string(v1alpha1.ConditionReasonHealthy), "All healthchecks succeeded")
-		} else {
-			// at least one of the probes is healthy
-			record.SetStatusCondition(string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonPartiallyHealthy), fmt.Sprintf("Not healthy addresses: %s", notHealthyProbes))
-		}
-		return
-	}
-	// none of the probes is healthy
-	record.SetStatusCondition(string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), fmt.Sprintf("Not healthy addresses: %s", notHealthyProbes))
-}
-
-// applyChanges creates the Plan and applies it to the registry. This is used only for external cloud provider DNS. Returns true only if the Plan had no errors and there were changes to apply.
-// The error is nil only if the changes were successfully applied or there were no changes to be made.
-func (r *DNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord *v1alpha1.DNSRecord, probes *v1alpha1.DNSHealthCheckProbeList, dnsProvider provider.Provider, isDelete bool) (bool, []string, error) {
-	logger := log.FromContext(ctx)
-	rootDomainName := dnsRecord.Spec.RootHost
-	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{dnsRecord.Status.ZoneDomainName})
-	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
-	var excludeDNSRecordTypes []string
-
-	registry, err := externaldnsregistry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
-		dnsRecord.Status.OwnerID, txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
-		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
-	if err != nil {
-		return false, []string{}, err
-	}
-
-	policyID := "sync"
-	policy, exists := externaldnsplan.Policies[policyID]
-	if !exists {
-		return false, []string{}, fmt.Errorf("unknown policy: %s", policyID)
-	}
-
-	//If we are deleting set the expected endpoints to an empty array
-	if isDelete {
-		dnsRecord.Spec.Endpoints = []*externaldnsendpoint.Endpoint{}
-	}
-
-	//zoneEndpoints = Records in the current dns provider zone
-	zoneEndpoints, err := registry.Records(ctx)
-	if err != nil {
-		return false, []string{}, err
-	}
-
-	//specEndpoints = Records that this DNSRecord expects to exist
-	specEndpoints, err := registry.AdjustEndpoints(dnsRecord.Spec.Endpoints)
-	if err != nil {
-		return false, []string{}, fmt.Errorf("adjusting specEndpoints: %w", err)
-	}
-
-	// healthySpecEndpoints = Records that this DNSRecord expects to exist, that do not have matching unhealthy probes
-	healthySpecEndpoints, notHealthyProbes, err := removeUnhealthyEndpoints(specEndpoints, dnsRecord, probes)
-	if err != nil {
-		return false, []string{}, fmt.Errorf("removing unhealthy specEndpoints: %w", err)
-	}
-
-	//statusEndpoints = Records that were created/updated by this DNSRecord last
-	statusEndpoints, err := registry.AdjustEndpoints(dnsRecord.Status.Endpoints)
-	if err != nil {
-		return false, []string{}, fmt.Errorf("adjusting statusEndpoints: %w", err)
-	}
-
-	//Note: All endpoint lists should be in the same provider specific format at this point
-	logger.V(1).Info("applyChanges", "zoneEndpoints", zoneEndpoints,
-		"specEndpoints", healthySpecEndpoints, "statusEndpoints", statusEndpoints)
-
-	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, healthySpecEndpoints, []externaldnsplan.Policy{policy},
-		externaldnsendpoint.MatchAllDomainFilters{&zoneDomainFilter}, managedDNSRecordTypes, excludeDNSRecordTypes,
-		registry.OwnerID(), &rootDomainName,
-	)
-
-	plan = plan.Calculate()
-	if err = plan.Error(); err != nil {
-		return false, notHealthyProbes, err
-	}
-	dnsRecord.Status.DomainOwners = plan.Owners
-	dnsRecord.Status.Endpoints = healthySpecEndpoints
-	if plan.Changes.HasChanges() {
-		//ToDo (mnairn) CoreDNS will always think it has changes as long as provider.Records() returns an empty slice
-		// Figure out a better way of doing this that avoids the check for a specific provider here
-		hasChanges := dnsProvider.Name() != provider.DNSProviderCoreDNS
-		logger.Info("Applying changes")
-		err = registry.ApplyChanges(ctx, plan.Changes)
-		return hasChanges, notHealthyProbes, err
-	}
-	return false, notHealthyProbes, nil
+	record.SetStatusConditions(hadChanges)
 }

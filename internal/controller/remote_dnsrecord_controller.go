@@ -98,11 +98,12 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 			return ctrl.Result{}, err
 		}
 	}
-	previous := &RemoteDNSRecord{
+	var previous, dnsRecord DNSRecordAccessor
+	previous = &RemoteDNSRecord{
 		DNSRecord: rec,
 		ClusterID: clusterID,
 	}
-	dnsRecord := &RemoteDNSRecord{
+	dnsRecord = &RemoteDNSRecord{
 		DNSRecord: rec.DeepCopy(),
 		ClusterID: clusterID,
 	}
@@ -156,14 +157,15 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
 	}
 
-	if !dnsRecord.Status.ReadyForDelegation() {
+	//Note: Can't use GetStatus() here since it's the remote embedded one returned and we need the higher level one for the ReadyForDelegation status
+	if !dnsRecord.GetDNSRecord().Status.ReadyForDelegation() {
 		logger.Info("remote record not ready for processing, skipping")
 		return ctrl.Result{}, nil
 	}
 
 	// Ensure a DNS Zone has been assigned to the record (ZoneID and ZoneDomainName are set in the status)
 	if !dnsRecord.HasDNSZoneAssigned() {
-		logger.Info(fmt.Sprintf("provider zone not assigned for root host %s, finding suitable zone", dnsRecord.Spec.RootHost))
+		logger.Info(fmt.Sprintf("provider zone not assigned for root host %s, finding suitable zone", dnsRecord.GetRootHost()))
 
 		// Create a dns provider with no config to list all potential zones available from the configured provider
 		p, err := r.ProviderFactory.ProviderFor(ctx, dnsRecord.GetDNSRecord(), provider.Config{})
@@ -173,7 +175,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 			return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 		}
 
-		z, err := p.DNSZoneForHost(ctx, dnsRecord.Spec.RootHost)
+		z, err := p.DNSZoneForHost(ctx, dnsRecord.GetRootHost())
 		if err != nil {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 				"DNSProviderError", fmt.Sprintf("Unable to find suitable zone in provider: %v", provider.SanitizeError(err)))
@@ -206,7 +208,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	}
 
 	dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
-	dnsRecord.SetStatusObservedGeneration(dnsRecord.GetGeneration())
+	dnsRecord.SetStatusObservedGeneration(dnsRecord.GetDNSRecord().GetGeneration())
 	return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
 }
 
