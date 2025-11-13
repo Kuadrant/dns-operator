@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -94,6 +95,7 @@ var (
 	watchNamespacesKey        = variableKey("watch-namespaces")
 	delegationRoleKey         = variableKey("delegation-role")
 	groupKey                  = variableKey("group")
+	logLevelKey               = variableKey("log-level")
 )
 
 const (
@@ -377,6 +379,21 @@ func overrideControllerFlags() {
 				os.Exit(1)
 			}
 			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", groupKey.Flag(), v))
+
+		case logLevelKey.Envar():
+			var level zapcore.Level
+			parseErr := level.UnmarshalText([]byte(v))
+			if parseErr != nil {
+				setupLog.Error(parseErr, "unable to parse log level from configmap", "value", v)
+				os.Exit(1)
+			}
+			// Reconfigure the logger with the new level
+			newOpts := zap.Options{
+				Level: level,
+			}
+			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&newOpts)))
+			setupLog = ctrl.Log.WithName("setup")
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", logLevelKey.Flag(), v))
 		}
 	}
 }
