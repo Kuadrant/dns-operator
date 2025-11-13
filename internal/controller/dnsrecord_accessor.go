@@ -19,7 +19,6 @@ package controller
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -29,8 +28,6 @@ var _ DNSRecordAccessor = &DNSRecord{}
 var _ DNSRecordAccessor = &RemoteDNSRecord{}
 
 type DNSRecordAccessor interface {
-	metav1.Object
-	runtime.Object
 	v1alpha1.ProviderAccessor
 	GetDNSRecord() *v1alpha1.DNSRecord
 	GetOwnerID() string
@@ -59,7 +56,7 @@ type DNSRecord struct {
 }
 
 func (s *DNSRecord) SetStatusConditions(_ bool) {
-	//ToDo We do nothing here at the moment!!
+	//We do nothing here at the moment!!
 	return
 }
 
@@ -135,7 +132,7 @@ type RemoteDNSRecord struct {
 }
 
 func (s *RemoteDNSRecord) SetStatusConditions(_ bool) {
-	//ToDo We do nothing here at the moment!!
+	//We do nothing here at the moment!!
 	return
 }
 

@@ -244,7 +244,9 @@ func (s *healthCheckAdapter) GetEndpoints() []*endpoint.Endpoint {
 	return s.healthySpecEndpoints
 }
 
-func (s *healthCheckAdapter) SetStatusConditions(_ bool) {
+func (s *healthCheckAdapter) SetStatusConditions(hadChanges bool) {
+	s.DNSRecordAccessor.SetStatusConditions(hadChanges)
+
 	// we don't have probes yet
 	if cap(s.notHealthyProbes) == 0 {
 		s.SetStatusCondition(string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Probes are creating")

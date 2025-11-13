@@ -208,7 +208,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	}
 
 	dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
-	dnsRecord.SetStatusObservedGeneration(dnsRecord.GetGeneration())
+	dnsRecord.SetStatusObservedGeneration(dnsRecord.GetDNSRecord().GetGeneration())
 	return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
 }
 

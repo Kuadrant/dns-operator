@@ -136,7 +136,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if dnsRecord.GetStatus().ProviderEndpointsRemoved() {
 			logger.V(1).Info("Status ProviderEndpointRemoved is true, finalizer can be removed")
 			logger.Info("Removing Finalizer", "finalizer_name", DNSRecordFinalizer)
-			controllerutil.RemoveFinalizer(dnsRecord, DNSRecordFinalizer)
+			controllerutil.RemoveFinalizer(dnsRecord.GetDNSRecord(), DNSRecordFinalizer)
 			if err = r.Update(ctx, dnsRecord.GetDNSRecord()); client.IgnoreNotFound(err) != nil {
 				if apierrors.IsConflict(err) {
 					return ctrl.Result{Requeue: true}, nil
@@ -383,7 +383,7 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 		// implies that they were overridden - bump write counter
 		if !generationChanged(current.GetDNSRecord()) {
 			current.GetStatus().WriteCounter++
-			metrics.WriteCounter.WithLabelValues(current.GetName(), current.GetNamespace()).Inc()
+			metrics.WriteCounter.WithLabelValues(current.GetDNSRecord().GetName(), current.GetDNSRecord().GetNamespace()).Inc()
 			logger.V(1).Info("Changes needed on the same generation of record")
 		}
 		requeueTime = randomizedValidationRequeue
@@ -420,11 +420,11 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 	// reset the counter on the gen change regardless of having changes in the plan
 	if generationChanged(current.GetDNSRecord()) {
 		current.GetStatus().WriteCounter = 0
-		metrics.WriteCounter.WithLabelValues(current.GetName(), current.GetNamespace()).Set(0)
+		metrics.WriteCounter.WithLabelValues(current.GetDNSRecord().GetName(), current.GetNamespace()).Set(0)
 		logger.V(1).Info("Resetting write counter on the generation change")
 	}
 
-	current.GetStatus().ObservedGeneration = current.GetGeneration()
+	current.GetStatus().ObservedGeneration = current.GetDNSRecord().GetGeneration()
 	current.GetStatus().QueuedAt = reconcileStart
 
 	return r.updateStatusAndRequeue(ctx, r.Client, previous, current, requeueTime)
