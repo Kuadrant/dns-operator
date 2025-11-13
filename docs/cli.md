@@ -41,3 +41,10 @@ If the group is not present, it will either update the existing `kuadrant-active
 ### get-active-group
 Will fetch a list of active groups from the `kuadrant-active-groups.<domain>` TXT record and display them. 
 Active groups will be listed under the corresponding zone.
+
+### remove-active-group
+Will fetch a list of zones that are an exact match of a domain (the `--domain` flag).
+You can specify `*.<domain>` to match all zones that end with `<domain>`.
+For each zone that has a group in the `kuadrant-active-groups.<domain>` TXT record it will display all endpoints that 
+are associated with the group. Then it will prompt with a confirmation of a deletion unless `-y`/`--assumeyes` flag was provided; 
+in that case it will proceed.
