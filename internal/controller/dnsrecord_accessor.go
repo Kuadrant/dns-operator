@@ -23,6 +23,7 @@ import (
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/types"
 )
 
 var _ DNSRecordAccessor = &RemoteDNSRecord{}
@@ -46,6 +47,7 @@ type DNSRecordAccessor interface {
 	SetStatusObservedGeneration(observedGeneration int64)
 	HasOwnerIDAssigned() bool
 	HasDNSZoneAssigned() bool
+	SetStatusGroup(types.Group)
 }
 
 type RemoteDNSRecord struct {
@@ -128,4 +130,8 @@ func (s *RemoteDNSRecord) setStatus() {
 
 func (s *RemoteDNSRecord) HasDNSZoneAssigned() bool {
 	return s.GetStatus().ZoneID != "" && s.GetStatus().ZoneDomainName != ""
+}
+
+func (s *RemoteDNSRecord) SetStatusGroup(group types.Group) {
+	s.status.Group = group
 }

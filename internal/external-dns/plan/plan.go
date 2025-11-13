@@ -407,7 +407,7 @@ type endpointUpdate struct {
 }
 
 func (e *endpointUpdate) ShouldUpdate() bool {
-	return shouldUpdateOwner(e.desired, e.current) || shouldUpdateTTL(e.desired, e.current) || targetChanged(e.desired, e.current) || shouldUpdateProviderSpecific(e.desired, e.current)
+	return shouldUpdateOwner(e.desired, e.current) || shouldUpdateTTL(e.desired, e.current) || targetChanged(e.desired, e.current) || shouldUpdateProviderSpecific(e.desired, e.current) || shouldUpdateGroup(e.desired, e.current)
 }
 
 func (e *endpointUpdate) IsDeleting() bool {
@@ -635,6 +635,15 @@ func shouldUpdateProviderSpecific(desired, current *endpoint.Endpoint) bool {
 	return len(desiredProperties) > 0
 }
 
+func shouldUpdateGroup(desired, current *endpoint.Endpoint) bool {
+	currentGroup, hasCurrentGroup := current.Labels["group"]
+	desiredGroup, hasDesiredGroup := desired.Labels["group"]
+	if hasCurrentGroup && hasDesiredGroup {
+		return currentGroup != desiredGroup
+	}
+	return hasCurrentGroup != hasDesiredGroup
+}
+
 // normalizeDNSName converts a DNS name to a canonical form, so that we can use string equality
 // it: removes space, converts to lower case, ensures there is a trailing dot
 func normalizeDNSName(dnsName string) string {
@@ -646,15 +655,11 @@ func normalizeDNSName(dnsName string) string {
 }
 
 func IsManagedRecord(record string, managedRecords, excludeRecords []string) bool {
-	for _, r := range excludeRecords {
-		if record == r {
-			return false
-		}
+	if slices.Contains(excludeRecords, record) {
+		return false
 	}
-	for _, r := range managedRecords {
-		if record == r {
-			return true
-		}
+	if slices.Contains(managedRecords, record) {
+		return true
 	}
 	return false
 }
