@@ -50,30 +50,31 @@ func generateGroupTXTRecordTargets(groups ...string) string {
 	return fmt.Sprintf("\"%s\"", target)
 }
 
-func EnsureGroupTXTRecord(groupName string, existingRecord *endpoint.Endpoint) *endpoint.Endpoint {
-	target := strings.Trim(existingRecord.Targets[0], "\"")
-
-	// make sure we are expecting this version
-	groups, found := strings.CutPrefix(target, fmt.Sprintf("version=%s", TXTRecordVersion))
-	if !found {
-		// unknown version - legacy support will be done here
+func EnsureGroupIsActive(groupName string, existingRecord *endpoint.Endpoint) *endpoint.Endpoint {
+	activeGroups, isCurrentVersion := GetActiveGroupsFromTarget(existingRecord.Targets[0])
+	if !isCurrentVersion {
 		return existingRecord
-	}
-
-	// cut off groups key
-	groups = strings.TrimPrefix(groups, fmt.Sprintf("%s%s=", TXTRecordKeysSeparator, TXTRecordGroupKey))
-
-	var activeGroups []string
-
-	if groups != "" {
-		activeGroups = strings.Split(groups, GroupSeparator)
 	}
 
 	activeGroups = append(activeGroups, groupName)
 	slices.Sort(activeGroups)
 	activeGroups = slices.Compact(activeGroups)
 
-	existingRecord.Targets[0] = fmt.Sprintf("\"version=%s%s%s=%s\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey, strings.Join(activeGroups, GroupSeparator))
+	existingRecord.Targets[0] = compileTXTRecordTarget(activeGroups)
+	return existingRecord
+}
+
+func RemoveGroupFromActiveGroups(group string, existingRecord *endpoint.Endpoint) *endpoint.Endpoint {
+	activeGroups, isCurrentVersion := GetActiveGroupsFromTarget(existingRecord.Targets[0])
+	if !isCurrentVersion {
+		return existingRecord
+	}
+
+	activeGroups = slices.DeleteFunc(activeGroups, func(s string) bool {
+		return s == group
+	})
+
+	existingRecord.Targets[0] = compileTXTRecordTarget(activeGroups)
 	return existingRecord
 }
 
@@ -106,8 +107,15 @@ func GetActiveGroupsFromTarget(target string) ([]string, bool) {
 	if !found {
 		return activeGroups, true
 	}
+	return strings.Split(groups, GroupSeparator), true
+}
 
-	activeGroups = strings.Split(groups, GroupSeparator)
+func compileTXTRecordTarget(activeGroups []string) string {
+	var groups string
+	if len(activeGroups) != 0 {
+		groups = fmt.Sprintf("%s%s=%s", TXTRecordKeysSeparator, TXTRecordGroupKey, strings.Join(activeGroups, GroupSeparator))
+	}
+	version := fmt.Sprintf("version=%s", TXTRecordVersion)
 
-	return activeGroups, true
+	return fmt.Sprintf("\"%s%s\"", version, groups)
 }
