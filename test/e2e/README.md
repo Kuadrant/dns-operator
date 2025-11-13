@@ -10,11 +10,12 @@ Tests are organized with [labels](https://onsi.github.io/ginkgo/#spec-labels) al
 | label           | description                                                                               |
 |-----------------|-------------------------------------------------------------------------------------------|
 | multi_record    | Test cases covering multiple DNSRecords updating a set of records in a zone (Distributed) |
-| single_record   | Test cases covering a single DNSRecord updating a set of records in a zone                | 
-| simple          | Test cases for DNSRecords using the simple endpoint structure                             | 
-| loadbalanced    | Test cases for DNSRecords using the loadbalanced endpoint structure                       | 
-| provider_errors | Tests cases that put DNSRecords into known error states                                   | 
-| health_checks   | Tests cases covering DNSRecords with health checks                                        | 
+| single_record   | Test cases covering a single DNSRecord updating a set of records in a zone                |
+| simple          | Test cases for DNSRecords using the simple endpoint structure                             |
+| loadbalanced    | Test cases for DNSRecords using the loadbalanced endpoint structure                       |
+| provider_errors | Tests cases that put DNSRecords into known error states                                   |
+| health_checks   | Tests cases covering DNSRecords with health checks                                        |
+| group           | Test cases covering the group feature on the DNS operator controller                      |
 | happy           | Happy path test cases, minimum set of tests that check basic functionality                | 
 
 ## Local Setup
