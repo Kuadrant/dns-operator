@@ -141,7 +141,8 @@ Logs are following the general guidelines:
 - `logger.Error()` describe only those errors that are not returned in the result of the reconciliation. If error is occurred there should be only one error message. 
 - `logger.V(1).Info()` debug level logs to give information about every change or event caused by the resource as well as every update of the resource.
 
-The `--zap-devel` argument will enable debug level logs for the output. Otherwise, all `V()` logs are ignored.
+The `--log-mode=development` argument will enable debug level logs for the output. Otherwise, all `V()` logs are
+ignored.
 
 ### Common metadata 
 Not exhaustive list of metadata for DNSRecord controller:
