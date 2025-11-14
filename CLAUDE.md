@@ -245,7 +245,7 @@ Follow these guidelines when working with logs:
 - `logger.Error()` - Errors not returned in reconciliation result (one error message only)
 - `logger.V(1).Info()` - Debug logs (every change/event/update)
 
-Use `--zap-devel` flag to enable debug level logs.
+Use `--log-mode=development` flag to enable debug level logs.
 
 Common log metadata:
 - `DNSRecord` - Name/namespace of DNSRecord being reconciled
