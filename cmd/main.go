@@ -35,7 +35,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	zap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -79,6 +79,8 @@ var (
 	watchNamespaces        string
 	delegationRole         string
 	group                  types.Group
+	logMode                string
+	logLevel               string
 
 	// represents booth flag and envar key
 	metricsAddrKey            = variableKey("metrics-bind-address")
@@ -95,6 +97,7 @@ var (
 	watchNamespacesKey        = variableKey("watch-namespaces")
 	delegationRoleKey         = variableKey("delegation-role")
 	groupKey                  = variableKey("group")
+	logModeKey                = variableKey("log-mode")
 	logLevelKey               = variableKey("log-level")
 )
 
@@ -105,6 +108,8 @@ const (
 
 	DefaultClusterSecretNamespace = "dns-operator-system"
 	DefaultClusterSecretLabel     = "kuadrant.io/multicluster-kubeconfig"
+
+	DefaultLogLevel = zapcore.InfoLevel
 )
 
 func init() {
@@ -139,16 +144,16 @@ func main() {
 	flag.StringVar(&clusterSecretNamespace, clusterSecretNamespaceKey.Flag(), DefaultClusterSecretNamespace, "The Namespace to look for cluster secrets.")
 	flag.StringVar(&clusterSecretLabel, clusterSecretLabelKey.Flag(), DefaultClusterSecretLabel, "The label that identifies a Secret resource as a cluster secret.")
 	flag.StringVar(&watchNamespaces, watchNamespacesKey.Flag(), "", "Comma separated list of default namespaces.")
+	flag.StringVar(&logLevel, logLevelKey.Flag(), "", "Log level")
+	flag.StringVar(&logMode, logModeKey.Flag(), "", "Log mode")
 
 	flag.Var(newDelegationRoleValue(controller.DelegationRolePrimary, &delegationRole), delegationRoleKey.Flag(), "The delegation role for this controller. Must be one of 'primary'(default), or 'secondary'")
 
-	flag.Var(&group, groupKey.Flag(), "Set Group for dns-operater")
+	flag.Var(&group, groupKey.Flag(), "Set Group for dns-operator")
 
-	opts := zap.Options{}
-	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	ctrl.SetLogger(zap.New(withLogLevel(logLevel), withLogMode(logMode)))
 
 	printControllerMetaInfo()
 	overrideControllerFlags()
@@ -379,21 +384,6 @@ func overrideControllerFlags() {
 				os.Exit(1)
 			}
 			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", groupKey.Flag(), v))
-
-		case logLevelKey.Envar():
-			var level zapcore.Level
-			parseErr := level.UnmarshalText([]byte(v))
-			if parseErr != nil {
-				setupLog.Error(parseErr, "unable to parse log level from configmap", "value", v)
-				os.Exit(1)
-			}
-			// Reconfigure the logger with the new level
-			newOpts := zap.Options{
-				Level: level,
-			}
-			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&newOpts)))
-			setupLog = ctrl.Log.WithName("setup")
-			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", logLevelKey.Flag(), v))
 		}
 	}
 }
@@ -449,4 +439,34 @@ func (f *delegationRoleValue) Set(val string) error {
 func newDelegationRoleValue(val string, p *string) *delegationRoleValue {
 	*p = val
 	return (*delegationRoleValue)(p)
+}
+
+func withLogLevel(logLevel string) func(*zap.Options) {
+	lvlEnvRaw, ok := os.LookupEnv(logLevelKey.Envar())
+	if ok {
+		logLevel = lvlEnvRaw
+	}
+
+	lvl, err := zapcore.ParseLevel(logLevel)
+	if err != nil {
+		// If unable to parse the log level, set default
+		lvl = DefaultLogLevel
+	}
+
+	return func(options *zap.Options) {
+		options.Level = lvl
+	}
+}
+
+func withLogMode(logMode string) func(*zap.Options) {
+	logModeRaw, ok := os.LookupEnv(logModeKey.Envar())
+	if ok {
+		logMode = logModeRaw
+	}
+
+	devel := logMode == "development"
+
+	return func(options *zap.Options) {
+		options.Development = devel
+	}
 }
