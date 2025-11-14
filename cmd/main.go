@@ -443,9 +443,9 @@ func newDelegationRoleValue(val string, p *string) *delegationRoleValue {
 }
 
 func withLogLevel(logLevel string) func(*zap.Options) {
-	lvlEnvRaw, ok := os.LookupEnv(logLevelKey.Envar())
+	logLevelEnvRaw, ok := os.LookupEnv(logLevelKey.Envar())
 	if ok {
-		logLevel = lvlEnvRaw
+		logLevel = logLevelEnvRaw
 	}
 
 	lvl, err := zapcore.ParseLevel(logLevel)
@@ -460,9 +460,9 @@ func withLogLevel(logLevel string) func(*zap.Options) {
 }
 
 func withLogMode(logMode string) func(*zap.Options) {
-	logModeRaw, ok := os.LookupEnv(logModeKey.Envar())
+	logModeEnvRaw, ok := os.LookupEnv(logModeKey.Envar())
 	if ok {
-		logMode = logModeRaw
+		logMode = logModeEnvRaw
 	}
 
 	devel := logMode == "development"
