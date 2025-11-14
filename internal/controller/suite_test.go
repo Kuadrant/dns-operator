@@ -295,10 +295,12 @@ func setupEnv(delegationRole string, count int) (*envtest.Environment, ctrl.Mana
 	Expect(providerFactory).ToNot(BeNil())
 
 	dnsRecordController := &DNSRecordReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		ProviderFactory: providerFactory,
-		DelegationRole:  delegationRole,
+		Client: mgr.GetClient(),
+		BaseDNSRecordReconciler: BaseDNSRecordReconciler{
+			Scheme:          mgr.GetScheme(),
+			ProviderFactory: providerFactory,
+			DelegationRole:  delegationRole,
+		},
 	}
 
 	err = dnsRecordController.SetupWithManager(mgr, RequeueDuration, ValidityDuration, DefaultValidationDuration, true, true)
@@ -308,9 +310,11 @@ func setupEnv(delegationRole string, count int) (*envtest.Environment, ctrl.Mana
 		Expect(mcmgr).ToNot(BeNil())
 
 		remoteDNSRecordController := &RemoteDNSRecordReconciler{
-			Scheme:          mgr.GetScheme(),
-			ProviderFactory: providerFactory,
-			DelegationRole:  delegationRole,
+			BaseDNSRecordReconciler: BaseDNSRecordReconciler{
+				Scheme:          mgr.GetScheme(),
+				ProviderFactory: providerFactory,
+				DelegationRole:  delegationRole,
+			},
 		}
 
 		err = remoteDNSRecordController.SetupWithManager(mcmgr, true)

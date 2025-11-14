@@ -243,11 +243,13 @@ func main() {
 	}
 
 	dnsRecordController := &controller.DNSRecordReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		ProviderFactory: providerFactory,
-		DelegationRole:  delegationRole,
-		Group:           &group,
+		BaseDNSRecordReconciler: controller.BaseDNSRecordReconciler{
+			Scheme:          mgr.GetScheme(),
+			ProviderFactory: providerFactory,
+			DelegationRole:  delegationRole,
+			Group:           &group,
+		},
+		Client: mgr.GetClient(),
 	}
 
 	if err = dnsRecordController.SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
@@ -257,10 +259,12 @@ func main() {
 
 	if mcmgr != nil {
 		remoteDNSRecordController := &controller.RemoteDNSRecordReconciler{
-			Scheme:          mgr.GetScheme(),
-			ProviderFactory: providerFactory,
-			DelegationRole:  delegationRole,
-			Group:           &group,
+			BaseDNSRecordReconciler: controller.BaseDNSRecordReconciler{
+				Scheme:          mgr.GetScheme(),
+				ProviderFactory: providerFactory,
+				DelegationRole:  delegationRole,
+				Group:           &group,
+			},
 		}
 
 		if err = remoteDNSRecordController.SetupWithManager(mcmgr, false); err != nil {
