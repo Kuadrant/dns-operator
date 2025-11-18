@@ -76,6 +76,9 @@ type PlanTestSuite struct {
 	fooA2Owner1WithSetIdentifier1 *endpoint.Endpoint
 	fooA2Owner1WithSetIdentifier2 *endpoint.Endpoint
 	fooA2Owner2WithSetIdentifier2 *endpoint.Endpoint
+	//A Records with Misc Labels
+	fooA1Owner1WithMiscLabelFooBar *endpoint.Endpoint
+	fooA1Owner1WithMiscLabelFooBaz *endpoint.Endpoint
 	//CNAME Records
 	fooCNAMEv1OwnerNone *endpoint.Endpoint
 	fooCNAMEv2OwnerNone *endpoint.Endpoint
@@ -324,6 +327,24 @@ func (suite *PlanTestSuite) SetupTest() {
 		Targets:    endpoint.Targets{"1.1.1.1"},
 		Labels: map[string]string{
 			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.fooA1Owner1WithMiscLabelFooBar = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+			"foo":                  "bar",
+		},
+	}
+	suite.fooA1Owner1WithMiscLabelFooBaz = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "A",
+		Targets:    endpoint.Targets{"1.1.1.1"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+			"foo":                  "baz",
 		},
 	}
 	suite.fooA1Owner2 = &endpoint.Endpoint{
@@ -1719,6 +1740,56 @@ func (suite *PlanTestSuite) TestMultiOwnerARecordDeleteSameAddress() {
 	}
 
 	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should update when `any` label is added or changed on an endpoint
+func (suite *PlanTestSuite) TestMiscellaneousLabelUpdate() {
+	current := []*endpoint.Endpoint{suite.fooA1Owner1}
+	previous := []*endpoint.Endpoint{suite.fooA1Owner1}
+	desired := []*endpoint.Endpoint{suite.fooA1Owner1WithMiscLabelFooBar}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.fooA1Owner1.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.fooA1Owner1WithMiscLabelFooBar.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner1",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Previous:       previous,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+
+	//Tets update of existing label and value
+	current = []*endpoint.Endpoint{suite.fooA1Owner1WithMiscLabelFooBar}
+	previous = []*endpoint.Endpoint{suite.fooA1Owner1WithMiscLabelFooBar}
+	desired = []*endpoint.Endpoint{suite.fooA1Owner1WithMiscLabelFooBaz}
+	expectedChanges = &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.fooA1Owner1WithMiscLabelFooBar.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.fooA1Owner1WithMiscLabelFooBaz.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p = &Plan{
+		OwnerID:        "owner1",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Previous:       previous,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp = p.Calculate()
 	validateChanges(suite.T(), cp.Changes, expectedChanges)
 	assert.Empty(suite.T(), cp.Errors)
 }
