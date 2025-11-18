@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"golang.org/x/exp/maps"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	externaldnsplan "sigs.k8s.io/external-dns/plan"
@@ -407,7 +408,7 @@ type endpointUpdate struct {
 }
 
 func (e *endpointUpdate) ShouldUpdate() bool {
-	return shouldUpdateOwner(e.desired, e.current) || shouldUpdateTTL(e.desired, e.current) || targetChanged(e.desired, e.current) || shouldUpdateProviderSpecific(e.desired, e.current)
+	return shouldUpdateLabels(e.desired, e.current) || shouldUpdateTTL(e.desired, e.current) || targetChanged(e.desired, e.current) || shouldUpdateProviderSpecific(e.desired, e.current)
 }
 
 func (e *endpointUpdate) IsDeleting() bool {
@@ -599,13 +600,8 @@ func targetChanged(desired, current *endpoint.Endpoint) bool {
 	return !desired.Targets.Same(current.Targets)
 }
 
-func shouldUpdateOwner(desired, current *endpoint.Endpoint) bool {
-	currentOwner, hasCurrentOwner := current.Labels[endpoint.OwnerLabelKey]
-	desiredOwner, hasDesiredOwner := desired.Labels[endpoint.OwnerLabelKey]
-	if hasCurrentOwner && hasDesiredOwner {
-		return currentOwner != desiredOwner
-	}
-	return false
+func shouldUpdateLabels(desired, current *endpoint.Endpoint) bool {
+	return !maps.Equal(desired.Labels, current.Labels)
 }
 
 func shouldUpdateTTL(desired, current *endpoint.Endpoint) bool {
