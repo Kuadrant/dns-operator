@@ -19,26 +19,27 @@ package controller
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
+var _ DNSRecordAccessor = &DNSRecord{}
 var _ DNSRecordAccessor = &RemoteDNSRecord{}
 
 type DNSRecordAccessor interface {
-	metav1.Object
-	runtime.Object
 	v1alpha1.ProviderAccessor
 	GetDNSRecord() *v1alpha1.DNSRecord
 	GetOwnerID() string
 	GetRootHost() string
 	GetZoneDomainName() string
 	GetZoneID() string
+	GetEndpoints() []*externaldns.Endpoint
 	GetSpec() *v1alpha1.DNSRecordSpec
 	GetStatus() *v1alpha1.DNSRecordStatus
+	SetStatusConditions(hadChanges bool)
 	SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string)
+	SetStatusOwnerID(id string)
 	SetStatusZoneID(id string)
 	SetStatusZoneDomainName(domainName string)
 	SetStatusDomainOwners(owners []string)
@@ -46,12 +47,92 @@ type DNSRecordAccessor interface {
 	SetStatusObservedGeneration(observedGeneration int64)
 	HasOwnerIDAssigned() bool
 	HasDNSZoneAssigned() bool
+	HasProviderSecretAssigned() bool
+	IsDeleting() bool
+}
+
+type DNSRecord struct {
+	*v1alpha1.DNSRecord
+}
+
+func (s *DNSRecord) GetEndpoints() []*externaldns.Endpoint {
+	return s.GetSpec().Endpoints
+}
+
+func (s *DNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {
+	return s.DNSRecord
+}
+
+func (s *DNSRecord) GetOwnerID() string {
+	return s.GetStatus().OwnerID
+}
+
+func (s *DNSRecord) GetZoneDomainName() string {
+	return s.GetStatus().ZoneDomainName
+}
+
+func (s *DNSRecord) GetZoneID() string {
+	return s.GetStatus().ZoneID
+}
+
+func (s *DNSRecord) GetSpec() *v1alpha1.DNSRecordSpec {
+	return &s.Spec
+}
+
+func (s *DNSRecord) GetStatus() *v1alpha1.DNSRecordStatus {
+	return &s.Status
+}
+
+func (s *DNSRecord) SetStatusConditions(_ bool) {
+	//We do nothing here at the moment!!
+	return
+}
+
+func (s *DNSRecord) SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string) {
+	cond := metav1.Condition{
+		Type:               conditionType,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: s.Generation,
+	}
+	conditions := s.GetStatus().Conditions
+	meta.SetStatusCondition(&conditions, cond)
+	s.GetStatus().Conditions = conditions
+}
+
+func (s *DNSRecord) SetStatusOwnerID(id string) {
+	s.GetStatus().OwnerID = id
+}
+
+func (s *DNSRecord) SetStatusZoneID(id string) {
+	s.GetStatus().ZoneID = id
+}
+
+func (s *DNSRecord) SetStatusZoneDomainName(domainName string) {
+	s.GetStatus().ZoneDomainName = domainName
+}
+
+func (s *DNSRecord) SetStatusDomainOwners(owners []string) {
+	s.GetStatus().DomainOwners = owners
+}
+
+func (s *DNSRecord) SetStatusEndpoints(endpoints []*externaldns.Endpoint) {
+	s.GetStatus().Endpoints = endpoints
+}
+
+func (s *DNSRecord) SetStatusObservedGeneration(observedGeneration int64) {
+	s.GetStatus().ObservedGeneration = observedGeneration
 }
 
 type RemoteDNSRecord struct {
 	*v1alpha1.DNSRecord
 	ClusterID string
 	status    *v1alpha1.DNSRecordStatus
+}
+
+func (s *RemoteDNSRecord) GetEndpoints() []*externaldns.Endpoint {
+	return s.GetSpec().Endpoints
 }
 
 func (s *RemoteDNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {
@@ -84,6 +165,11 @@ func (s *RemoteDNSRecord) GetStatus() *v1alpha1.DNSRecordStatus {
 	return s.status
 }
 
+func (s *RemoteDNSRecord) SetStatusConditions(_ bool) {
+	//We do nothing here at the moment!!
+	return
+}
+
 func (s *RemoteDNSRecord) SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string) {
 	cond := metav1.Condition{
 		Type:               conditionType,
@@ -96,6 +182,10 @@ func (s *RemoteDNSRecord) SetStatusCondition(conditionType string, status metav1
 	meta.SetStatusCondition(&conditions, cond)
 	s.GetStatus().Conditions = conditions
 	s.setStatus()
+}
+
+func (s *RemoteDNSRecord) SetStatusOwnerID(_ string) {
+	panic("cannot set OwnerID on remote record")
 }
 
 func (s *RemoteDNSRecord) SetStatusZoneID(id string) {
