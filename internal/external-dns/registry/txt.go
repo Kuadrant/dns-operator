@@ -19,7 +19,6 @@ package registry
 import (
 	"context"
 	"errors"
-	"maps"
 	"strings"
 	"time"
 
@@ -175,7 +174,9 @@ func (im *TXTRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, error
 			}
 			// in case we have multiple targets join them into the same map
 			// the latest value takes precedence
-			maps.Copy(labels, labelsFromTarget)
+			for key, value := range labelsFromTarget {
+				labels[key] = value
+			}
 		}
 		// if we failed decoding targets just return this TXT record
 		if errors.Is(err, endpoint.ErrInvalidHeritage) {
@@ -354,16 +355,6 @@ func (im *TXTRegistry) generateTXTRecord(r *endpoint.Endpoint) []*endpoint.Endpo
 			continue
 		}
 		targets[key] = value
-	}
-
-	if groupID, hasGroup := r.Labels["group"]; hasGroup && groupID != "" {
-		filteredTargets := make([]string, 0)
-		for _, target := range r.Targets {
-			filteredTargets = append(filteredTargets, strings.TrimSuffix(target, r.DNSName))
-		}
-		if len(filteredTargets) > 0 {
-			targets["targets"] = strings.Join(filteredTargets, "&&")
-		}
 	}
 
 	txtNew := endpoint.NewEndpoint(im.mapper.ToTXTName(r.DNSName, im.OwnerID(), recordType), endpoint.RecordTypeTXT, targets.Serialize(true, im.txtEncryptEnabled, im.txtEncryptAESKey))
