@@ -109,7 +109,7 @@ func addClusterSecret(_ *cobra.Command, _ []string) error {
 
 	dirtyStr := os.Getenv("KUBECTL_DNS_DIRTY")
 	if strings.Compare(strings.ToLower(dirtyStr), "true") == 0 {
-		log.V(1).Info("kubectl-dns running in dirty mode")
+		log.V(1).Info("kubectl_kuadrant-dns running in dirty mode")
 		generateSecretFlags.dirty = true
 	}
 

@@ -410,7 +410,7 @@ GINKGO ?= $(LOCALBIN)/ginkgo
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 HELM ?= $(LOCALBIN)/helm
 KUBE_BURNER ?= $(LOCALBIN)/kube-burner
-KUBECTL_DNS ?= $(LOCALBIN)/kubectl-dns
+KUBECTL_DNS ?= $(LOCALBIN)/kubectl_kuadrant-dns
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.5.0
@@ -525,7 +525,7 @@ $(KUBE_BURNER):
 	}
 
 .PHONY: kubectl-dns
-kubectl-dns: $(KUBECTL_DNS) ## Build the kubectl-dns locally if required.
+kubectl-dns: $(KUBECTL_DNS) ## Build the kubectl_kuadrant-dns locally if required.
 $(KUBECTL_DNS):
 	$(MAKE) build-cli
 
