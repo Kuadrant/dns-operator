@@ -11,8 +11,8 @@ This is not strictly necessary as the default delegation role is primary.
 Multi cluster communication is done via a secret with the label `kuadrant.io/multicluster-kubeconfig=true`.
 These secrets are created within the same namespace as the dns-operator deployment.
 The secret contains a kubeconfig that allow access to a cluster with multi cluster setup, and there will be one secret pre cluster.
-The `kubectl-dns` plugin provides a command to help with the secret generation.
-See `kubectl-dns add-cluster-secret --help` for more information.
+The `kubectl_kuadrant-dns` plugin provides a command to help with the secret generation.
+See `kubectl_kuadrant-dns add-cluster-secret --help` for more information.
 If there are multiply **primary clusters**, each cluster must have the same cluster connection secrets, and a cluster connection secrets to the other **primary cluster**.
 The **primary cluster B** will generate an identical **authoritative dns record** to **primary cluster A**
 

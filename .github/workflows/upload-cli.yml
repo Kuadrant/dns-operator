@@ -31,6 +31,6 @@ jobs:
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
           project_path: ./cmd/plugin/
-          binary_name: kubectl-dns
+          binary_name: kubectl_kuadrant-dns
           release_tag: ${{ github.event.release.tag_name || inputs.operatorTag }}
           ldflags: -X "main.gitSHA=${{ github.sha }}" -X "main.version=${{ github.ref_name }}"

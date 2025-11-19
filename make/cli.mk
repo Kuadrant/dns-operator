@@ -19,4 +19,4 @@ build-cli: fmt vet
 
 .PHONY: cp-cli
 cp-cli:
-	cp ./bin/kubectl-dns $(HOME)/.local/bin
+	cp ./bin/kubectl_kuadrant-dns $(HOME)/.local/bin
