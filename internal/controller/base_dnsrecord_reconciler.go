@@ -29,7 +29,7 @@ type BaseDNSRecordReconciler struct {
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
 	DelegationRole  string
-	Group           *types.Group
+	Group           types.Group
 }
 
 func (r *BaseDNSRecordReconciler) IsPrimary() bool {
@@ -46,6 +46,7 @@ func (r *BaseDNSRecordReconciler) setLogger(ctx context.Context, logger logr.Log
 	logger = logger.
 		WithValues("rootHost", dnsRecord.GetRootHost()).
 		WithValues("ownerID", dnsRecord.GetOwnerID()).
+		WithValues("group", dnsRecord.GetGroup()).
 		WithValues("zoneID", dnsRecord.GetZoneID()).
 		WithValues("zoneDomainName", dnsRecord.GetZoneDomainName()).
 		WithValues("delegationRole", r.DelegationRole)
