@@ -247,7 +247,7 @@ func main() {
 			Scheme:          mgr.GetScheme(),
 			ProviderFactory: providerFactory,
 			DelegationRole:  delegationRole,
-			Group:           &group,
+			Group:           group,
 		},
 		Client: mgr.GetClient(),
 	}
@@ -263,7 +263,7 @@ func main() {
 				Scheme:          mgr.GetScheme(),
 				ProviderFactory: providerFactory,
 				DelegationRole:  delegationRole,
-				Group:           &group,
+				Group:           group,
 			},
 		}
 
