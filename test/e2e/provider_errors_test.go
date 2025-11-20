@@ -21,6 +21,7 @@ import (
 	"github.com/kuadrant/dns-operator/internal/common"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/pkg/builder"
+	builderDefaults "github.com/kuadrant/dns-operator/pkg/builder"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
@@ -171,7 +172,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 				"foo.example.com",
 			},
 			RecordType:    "CNAME",
-			RecordTTL:     300,
+			RecordTTL:     builderDefaults.DefaultLoadBalancedTTL,
 			SetIdentifier: "foo.example.com",
 			ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 				{
@@ -291,7 +292,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 				"foo.example.com",
 			},
 			RecordType:    "CNAME",
-			RecordTTL:     300,
+			RecordTTL:     builderDefaults.DefaultLoadBalancedTTL,
 			SetIdentifier: "foo.example.com",
 			ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 				{
@@ -406,7 +407,7 @@ func testBuildDNSRecord(name, ns, dnsProviderSecretName, ownerID, rootHost strin
 						"127.0.0.1",
 					},
 					RecordType: "A",
-					RecordTTL:  60,
+					RecordTTL:  builderDefaults.DefaultTTL,
 				},
 			},
 		},
