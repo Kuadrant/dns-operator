@@ -169,7 +169,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					return ctrl.Result{}, err
 				}
 			}
-			hadChanges, err := deleteRecord(ctx, dnsRecord, dnsProvider)
+			hadChanges, err := r.deleteRecord(ctx, dnsRecord, dnsProvider)
 			if err != nil {
 				logger.Error(err, "Failed to delete DNSRecord")
 				return ctrl.Result{}, err
@@ -341,7 +341,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Publish the record
-	hadChanges, err := publishRecord(ctx, dnsRecord, dnsProvider)
+	hadChanges, err := r.publishRecord(ctx, dnsRecord, dnsProvider)
 	if err != nil {
 		logger.Error(err, "Failed to publish record")
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
@@ -350,6 +350,15 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	return r.updateStatus(ctx, previous, dnsRecord, hadChanges, nil)
+}
+
+func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
+	logger := log.FromContext(ctx)
+	if prematurely, _ := recordReceivedPrematurely(dnsRecord); prematurely {
+		logger.V(1).Info("Skipping DNSRecord - is still valid")
+		return false, nil
+	}
+	return r.BaseDNSRecordReconciler.publishRecord(ctx, dnsRecord, dnsProvider)
 }
 
 func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, current DNSRecordAccessor, hadChanges bool, specErr error) (reconcile.Result, error) {

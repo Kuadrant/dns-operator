@@ -140,7 +140,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 				return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 			}
 
-			_, err = deleteRecord(ctx, dnsRecord, dnsProvider)
+			_, err = r.deleteRecord(ctx, dnsRecord, dnsProvider)
 			if err != nil {
 				logger.Error(err, "Failed to delete DNSRecord")
 				return ctrl.Result{}, err
@@ -199,7 +199,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	}
 
 	// Publish the record
-	_, err = publishRecord(ctx, dnsRecord, dnsProvider)
+	_, err = r.publishRecord(ctx, dnsRecord, dnsProvider)
 	if err != nil {
 		logger.Error(err, "Failed to publish record")
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,

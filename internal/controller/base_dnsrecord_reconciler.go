@@ -77,10 +77,10 @@ func (r *BaseDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord 
 }
 
 // deleteRecord deletes record(s) in the DNSProvider(i.e. route53) zone (dnsRecord.GetZoneID()).
-func deleteRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
+func (r *BaseDNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	hadChanges, err := applyChanges(ctx, dnsRecord, dnsProvider, true)
+	hadChanges, err := r.applyChanges(ctx, dnsRecord, dnsProvider, true)
 	if err != nil {
 		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
 			logger.Info("Record not found in zone, continuing")
@@ -98,9 +98,9 @@ func deleteRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider 
 
 // publishRecord publishes record(s) to the DNSProvider(i.e. route53) zone (dnsRecord.GetZoneID()).
 // returns if it had changes, if record is healthy and an error. If had no changes - the healthy bool can be ignored
-func publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
+func (r *BaseDNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
 	logger := log.FromContext(ctx)
-	hadChanges, err := applyChanges(ctx, dnsRecord, dnsProvider, false)
+	hadChanges, err := r.applyChanges(ctx, dnsRecord, dnsProvider, false)
 	if err != nil {
 		return hadChanges, err
 	}
@@ -111,7 +111,7 @@ func publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider
 
 // applyChanges creates the Plan and applies it to the registry. Returns true only if the Plan had no errors and there were changes to apply.
 // The error is nil only if the changes were successfully applied or there were no changes to be made.
-func applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider, isDelete bool) (bool, error) {
+func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider, isDelete bool) (bool, error) {
 	logger := log.FromContext(ctx)
 	//ToDo We can't use GetRootHost() here as it currently removes any wildcard prefix which needs to be maintained in this scenario.
 	rootDomainName := dnsRecord.GetSpec().RootHost
