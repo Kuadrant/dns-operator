@@ -36,7 +36,7 @@ func GetDynamicClient() (dynamic.Interface, error) {
 	return dynamic.NewForConfig(GetK8SConfig())
 }
 
-func GetProviderSecret(ctx context.Context, resourceRef *ResourceRef) (secret *v1.Secret, err error) {
+func GetProviderSecret(ctx context.Context, resourceRef *ResourceRef) (*v1.Secret, error) {
 	if resourceRef == nil {
 		return nil, fmt.Errorf("resource reference is nil")
 	}
@@ -46,6 +46,7 @@ func GetProviderSecret(ctx context.Context, resourceRef *ResourceRef) (secret *v
 		return nil, errors.Wrap(err, "failed to get k8s client")
 	}
 
+	secret := &v1.Secret{}
 	err = k8sClient.Get(ctx, client.ObjectKey{Name: resourceRef.Name, Namespace: resourceRef.Namespace}, secret)
 	return secret, err
 }
