@@ -67,8 +67,10 @@ func (s *DNSRecord) GetEndpoints() []*externaldns.Endpoint {
 				ep.Labels = externaldns.NewLabels()
 			}
 			ep.Labels[types.GroupLabelKey] = recordGroup.String()
+			ep.Labels[types.TargetsLabelKey] = ep.Targets.String()
 		} else {
 			delete(ep.Labels, types.GroupLabelKey)
+			delete(ep.Labels, types.TargetsLabelKey)
 		}
 	}
 	return s.GetSpec().Endpoints

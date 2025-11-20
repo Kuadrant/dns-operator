@@ -6,7 +6,8 @@ import (
 )
 
 const (
-	GroupLabelKey = "group"
+	GroupLabelKey   = "group"
+	TargetsLabelKey = "targets"
 )
 
 // Group string type used for DNS Failover
