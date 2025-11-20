@@ -238,6 +238,14 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 	}
 
+	// This needs to be called after the group is set/updated on the record (at least in memory)
+	dnsRecord = newGroupAdapter(dnsRecord, r.getActiveGroups(ctx, r.Client, dnsRecord))
+
+	if !dnsRecord.IsActive() {
+		_, err := r.updateStatus(ctx, previous, dnsRecord, false, nil)
+		return reconcile.Result{RequeueAfter: InactiveGroupRequeueTime}, err
+	}
+
 	if dnsRecord.IsDelegating() {
 		// ReadyForDelegation can be set to true once:
 		// - finalizer is added
@@ -351,6 +359,16 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, hadChanges, err)
 	}
 
+	// process unpublish of inactive groups once active cluster has no changes to publish
+	if !hadChanges {
+		err = r.unpublishInactiveGroups(ctx, r.Client, dnsRecord, dnsProvider)
+		if err != nil {
+			logger.Error(err, "Failed to unpublish inactive groups")
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+				"ProviderError", fmt.Sprintf("The DNS provider failed to unpublish inactive groups: %v", provider.SanitizeError(err)))
+		}
+	}
+
 	return r.updateStatus(ctx, previous, dnsRecord, hadChanges, nil)
 }
 
@@ -419,10 +437,10 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 		}
 	}
 
-	setStatusConditions(current, hadChanges)
-
 	// valid for is always a requeue time
 	current.GetStatus().ValidFor = requeueTime.String()
+
+	setStatusConditions(current, hadChanges)
 
 	// reset the counter on the gen change regardless of having changes in the plan
 	if generationChanged(current.GetDNSRecord()) {
@@ -592,8 +610,10 @@ func exponentialRequeueTime(lastRequeueTime string) time.Duration {
 
 // setStatusConditions sets healthy and ready condition on given DNSRecord
 func setStatusConditions(record DNSRecordAccessor, hadChanges bool) {
-	// we get here only when spec err is nil - can trust hadChanges bool
 
+	record.SetStatusConditions(hadChanges)
+
+	// we get here only when spec err is nil - can trust hadChanges bool
 	readyCond := meta.FindStatusCondition(record.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady))
 	if readyCond != nil && (readyCond.Reason == string(v1alpha1.ConditionReasonProviderEndpointsRemoved) || readyCond.Reason == string(v1alpha1.ConditionReasonProviderEndpointsDeletion)) {
 		// status already set to the expected value
@@ -619,5 +639,4 @@ func setStatusConditions(record DNSRecordAccessor, hadChanges bool) {
 		record.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Not publishing unhealthy records")
 	}
 
-	record.SetStatusConditions(hadChanges)
 }

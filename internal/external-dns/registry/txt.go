@@ -19,6 +19,8 @@ package registry
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,7 +30,9 @@ import (
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
 
+	"github.com/kuadrant/dns-operator/internal/common/slice"
 	kuadrantPlan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
+	"github.com/kuadrant/dns-operator/types"
 )
 
 const (
@@ -39,6 +43,8 @@ const (
 
 	txtFormatVersion         = "1"
 	externalDNSMapperVersion = ""
+
+	GroupLabelKey = "group"
 )
 
 var (
@@ -371,6 +377,10 @@ func (im *TXTRegistry) generateTXTRecord(r *endpoint.Endpoint) []*endpoint.Endpo
 // ApplyChanges updates dns provider with the changes
 // for each created/deleted record it will also take into account TXT records for creation/deletion
 func (im *TXTRegistry) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
+	logger, err := logr.FromContext(ctx)
+	if err != nil {
+		return err
+	}
 	filteredChanges := &plan.Changes{
 		Create: changes.Create,
 		//ToDo Ideally we would still be able to ensure ownership on update
@@ -415,6 +425,7 @@ func (im *TXTRegistry) ApplyChanges(ctx context.Context, changes *plan.Changes) 
 	for _, updateOldRecord := range filteredChanges.UpdateOld {
 		for _, updateNewRecord := range filteredChanges.UpdateNew {
 			if updateOldRecord.Key() == updateNewRecord.Key() {
+				logger.Info("updating registry", "host", updateOldRecord.DNSName, "old labels", updateOldRecord.Labels, "new labels", updateNewRecord.Labels)
 				// There are 3 reasons for an update:
 				// Adding owner - we need to create a new TXT record
 				// Removing owner - we need to delete TXT record
@@ -501,4 +512,165 @@ func NewLabelsFromString(labelText string, aesKey []byte) (owner, version string
 	delete(labels, txtVersionKey)
 
 	return owner, version, labels, err
+}
+
+type RegistryOwner struct {
+	OwnerID string
+	Labels  map[string]string
+}
+
+type RegistryGroup struct {
+	GroupID types.Group
+	Owners  map[string]*RegistryOwner
+}
+
+type RegistryHost struct {
+	Host            string
+	Groups          map[types.Group]*RegistryGroup
+	UngroupedOwners map[string]*RegistryOwner
+}
+
+type RegistryMap struct {
+	Hosts map[string]*RegistryHost
+}
+
+func (m *RegistryMap) GetHosts() []string {
+	return slices.Collect(maps.Keys(m.Hosts))
+}
+
+func (h *RegistryHost) GetGroupIDs() types.Groups {
+	return slices.Collect(maps.Keys(h.Groups))
+}
+
+func (h *RegistryHost) HasAnyGroup(groups types.Groups) bool {
+	return slices.ContainsFunc(groups, h.HasGroup)
+}
+
+func (h *RegistryHost) HasGroup(group types.Group) bool {
+	return h.GetGroupIDs().HasGroup(group)
+}
+
+func (h *RegistryHost) GetUngroupedTargets() []string {
+	targets := []string{}
+	for _, o := range h.UngroupedOwners {
+		for _, t := range strings.Split(o.Labels["targets"], ",") {
+			if !slice.ContainsString(targets, t) {
+				targets = append(targets, t)
+			}
+		}
+	}
+	return targets
+}
+
+func (h *RegistryHost) GetGroupsTargets(groups types.Groups) []string {
+	targets := []string{}
+	for _, g := range groups {
+		if group, ok := h.Groups[g]; !ok {
+			continue
+		} else {
+			for _, t := range group.GetTargets() {
+				if !slice.ContainsString(targets, t) {
+					targets = append(targets, t)
+				}
+			}
+		}
+	}
+	return targets
+}
+
+func (g *RegistryGroup) GetOwnerIDs() []string {
+	return slices.Collect(maps.Keys(g.Owners))
+}
+
+func (g *RegistryGroup) GetTargets() []string {
+	targets := []string{}
+	for _, o := range g.Owners {
+		for _, t := range strings.Split(o.Labels["targets"], ";") {
+			if !slice.ContainsString(targets, t) {
+				targets = append(targets, t)
+			}
+		}
+	}
+	return targets
+}
+
+func TxtRecordsToRegistryMap(endpoints []*endpoint.Endpoint, prefix, suffix, wildcardReplacement string, txtEncryptAESKey []byte) *RegistryMap {
+	registryMap := &RegistryMap{
+		Hosts: make(map[string]*RegistryHost),
+	}
+
+	nameMapper := newKuadrantAffixMapper(legacyMapperTemplate{
+		"": {
+			prefix:              prefix,
+			suffix:              suffix,
+			wildcardReplacement: wildcardReplacement,
+		},
+	}, prefix, wildcardReplacement)
+
+	for _, ep := range endpoints {
+		if ep.RecordType != endpoint.RecordTypeTXT {
+			continue
+		}
+		labels := make(map[string]string)
+		var ownerID string
+		var version string
+		var err error
+		var hasValidHeritage bool
+		for _, target := range ep.Targets {
+			var labelsFromTarget endpoint.Labels
+			ownerID, version, labelsFromTarget, err = NewLabelsFromString(target, txtEncryptAESKey)
+			if errors.Is(err, endpoint.ErrInvalidHeritage) {
+				continue
+			}
+			hasValidHeritage = true
+			maps.Copy(labels, labelsFromTarget)
+		}
+
+		// Skip if no valid heritage was found in any target
+		if !hasValidHeritage {
+			continue
+		}
+
+		// If ownerID wasn't extracted (no delimiter), get it from labels
+		if ownerID == "" {
+			ownerID = labels[endpoint.OwnerLabelKey]
+		}
+
+		// Convert TXT record name to actual endpoint name
+		endpointName, _ := nameMapper.ToEndpointName(ep.DNSName, version)
+
+		// Use endpoint name as the host key (without record type prefix)
+		hostKey := endpointName
+
+		if _, ok := registryMap.Hosts[hostKey]; !ok {
+			registryMap.Hosts[hostKey] = &RegistryHost{
+				Host:            endpointName,
+				Groups:          make(map[types.Group]*RegistryGroup),
+				UngroupedOwners: make(map[string]*RegistryOwner),
+			}
+		}
+		if gID, ok := labels[GroupLabelKey]; ok {
+			groupID := types.Group(gID)
+			if _, ok := registryMap.Hosts[hostKey].Groups[groupID]; !ok {
+				registryMap.Hosts[hostKey].Groups[groupID] = &RegistryGroup{
+					GroupID: groupID,
+					Owners:  make(map[string]*RegistryOwner),
+				}
+			}
+			if _, ok := registryMap.Hosts[hostKey].Groups[groupID].Owners[ownerID]; !ok {
+				registryMap.Hosts[hostKey].Groups[groupID].Owners[ownerID] = &RegistryOwner{
+					OwnerID: ownerID,
+				}
+			}
+			registryMap.Hosts[hostKey].Groups[groupID].Owners[ownerID].Labels = labels
+		} else {
+			if _, ok := registryMap.Hosts[hostKey].UngroupedOwners[ownerID]; !ok {
+				registryMap.Hosts[hostKey].UngroupedOwners[ownerID] = &RegistryOwner{
+					OwnerID: ownerID,
+				}
+			}
+			registryMap.Hosts[hostKey].UngroupedOwners[ownerID].Labels = labels
+		}
+	}
+	return registryMap
 }

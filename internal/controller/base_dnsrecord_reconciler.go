@@ -26,6 +26,11 @@ import (
 	"github.com/kuadrant/dns-operator/types"
 )
 
+const (
+	activeGroupsTXTRecordName = "kuadrant-active-groups"
+	inactiveGroupRequeueTime  = time.Second * 15
+)
+
 type BaseDNSRecordReconciler struct {
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory

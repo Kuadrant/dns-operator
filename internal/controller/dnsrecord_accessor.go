@@ -17,6 +17,8 @@ limitations under the License.
 package controller
 
 import (
+	"strings"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
@@ -41,6 +43,7 @@ type DNSRecordAccessor interface {
 	GetStatus() *v1alpha1.DNSRecordStatus
 	SetStatusConditions(hadChanges bool)
 	SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string)
+	ClearStatusCondition(conditionType string)
 	SetStatusOwnerID(id string)
 	SetStatusZoneID(id string)
 	SetStatusZoneDomainName(domainName string)
@@ -48,10 +51,12 @@ type DNSRecordAccessor interface {
 	SetStatusEndpoints(endpoints []*externaldns.Endpoint)
 	SetStatusObservedGeneration(observedGeneration int64)
 	SetStatusGroup(types.Group)
+	SetStatusActiveGroups(types.Groups)
 	HasOwnerIDAssigned() bool
 	HasDNSZoneAssigned() bool
 	HasProviderSecretAssigned() bool
 	IsDeleting() bool
+	IsActive() bool
 }
 
 type DNSRecord struct {
@@ -74,6 +79,14 @@ func (s *DNSRecord) GetGroup() types.Group {
 	return s.GetStatus().Group
 }
 
+func (s *DNSRecord) getActiveGroups() types.Groups {
+	activeGroups := types.Groups{}
+	for _, group := range strings.Split(s.GetStatus().ActiveGroups, ",") {
+		activeGroups = append(activeGroups, types.Group(group))
+	}
+	return activeGroups
+}
+
 func (s *DNSRecord) GetZoneDomainName() string {
 	return s.GetStatus().ZoneDomainName
 }
@@ -92,7 +105,12 @@ func (s *DNSRecord) GetStatus() *v1alpha1.DNSRecordStatus {
 
 func (s *DNSRecord) SetStatusConditions(_ bool) {
 	//We do nothing here at the moment!!
-	return
+}
+
+func (s *DNSRecord) ClearStatusCondition(conditionType string) {
+	conditions := s.GetStatus().Conditions
+	meta.RemoveStatusCondition(&conditions, conditionType)
+	s.GetStatus().Conditions = conditions
 }
 
 func (s *DNSRecord) SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string) {
@@ -134,6 +152,10 @@ func (s *DNSRecord) SetStatusObservedGeneration(observedGeneration int64) {
 
 func (s *DNSRecord) SetStatusGroup(group types.Group) {
 	s.GetStatus().Group = group
+}
+
+func (s *DNSRecord) SetStatusActiveGroups(groups types.Groups) {
+	s.GetStatus().ActiveGroups = groups.String()
 }
 
 type RemoteDNSRecord struct {
@@ -182,7 +204,12 @@ func (s *RemoteDNSRecord) GetStatus() *v1alpha1.DNSRecordStatus {
 
 func (s *RemoteDNSRecord) SetStatusConditions(_ bool) {
 	//We do nothing here at the moment!!
-	return
+}
+
+func (s *RemoteDNSRecord) ClearStatusCondition(conditionType string) {
+	conditions := s.GetStatus().Conditions
+	meta.RemoveStatusCondition(&conditions, conditionType)
+	s.GetStatus().Conditions = conditions
 }
 
 func (s *RemoteDNSRecord) SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string) {
@@ -229,6 +256,11 @@ func (s *RemoteDNSRecord) SetStatusObservedGeneration(observedGeneration int64) 
 
 func (s *RemoteDNSRecord) SetStatusGroup(_ types.Group) {
 	panic("cannot set Group on remote record")
+}
+
+func (s *RemoteDNSRecord) SetStatusActiveGroups(groups types.Groups) {
+	s.GetStatus().ActiveGroups = groups.String()
+	s.setStatus()
 }
 
 func (s *RemoteDNSRecord) setStatus() {
