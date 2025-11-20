@@ -226,14 +226,16 @@ func (s *healthCheckAdapter) removeUnhealthyEndpoints() {
 	//ToDo removeUnhealthyEndpoints is manipulating the record spec and producing incorrect spec data with duplicate target values.
 	// Current workaround is to pass in a copy of the record since we only care about the return values anyway.
 	recCopy := s.GetDNSRecord().DeepCopy()
+	specEndpoints := s.DNSRecordAccessor.GetEndpoints()
 	// healthySpecEndpoints = Records that this DNSRecord expects to exist, that do not have matching unhealthy probes
 	// Note: Error is ignored because one is never returned from `removeUnhealthyEndpoints`
-	healthySpecEndpoints, notHealthyProbes, _ := removeUnhealthyEndpoints(recCopy.Spec.Endpoints, recCopy, s.probes)
+	healthySpecEndpoints, notHealthyProbes, _ := removeUnhealthyEndpoints(specEndpoints, recCopy, s.probes)
 	s.healthySpecEndpoints = healthySpecEndpoints
 	s.notHealthyProbes = notHealthyProbes
 }
 
 func (s *healthCheckAdapter) GetEndpoints() []*endpoint.Endpoint {
+	s.removeUnhealthyEndpoints()
 	return s.healthySpecEndpoints
 }
 
