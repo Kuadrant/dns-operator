@@ -354,6 +354,9 @@ spec:
           status:
             description: DNSRecordStatus defines the observed state of DNSRecord
             properties:
+              activeGroups:
+                description: ActiveGroups displays the last read list of active groups
+                type: string
               conditions:
                 description: |-
                   conditions are any conditions associated with the record in the dns provider.

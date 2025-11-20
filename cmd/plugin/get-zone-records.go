@@ -83,7 +83,7 @@ func init() {
 	}
 
 	getZoneRecordsCMD.Flags().StringVar(&providerRef, "providerRef", noDefault,
-		fmt.Sprintf("A provider reference to the secert to use when querying. This can only be used with the type of %s. Format = '<namespace>/<name>'", host))
+		fmt.Sprintf("A provider reference to the secret to use when querying. This can only be used with the type of %s. Format = '<namespace>/<name>'", host))
 
 	getZoneRecordsCMD.Flags().StringVarP(&namespace, "namespace", "n", "dns-operator-system", "namespace where resources exist")
 }

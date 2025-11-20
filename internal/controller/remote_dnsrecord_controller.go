@@ -143,7 +143,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		logger.Info("Deleting DNSRecord")
 
 		if dnsRecord.GetStatus().ProviderEndpointsRemoved() {
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: time.Second}, nil
 		}
 
 		if !dnsRecord.GetStatus().ProviderEndpointsDeletion() {
@@ -163,7 +163,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 			_, err = r.deleteRecord(ctx, dnsRecord, dnsProvider)
 			if err != nil {
 				logger.Error(err, "Failed to delete DNSRecord")
-				return ctrl.Result{}, err
+				return ctrl.Result{RequeueAfter: time.Second}, err
 			}
 		} else {
 			logger.Info("dns zone was never assigned, skipping zone cleanup")
@@ -174,7 +174,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		dnsRecord.SetStatusZoneID("")
 		dnsRecord.SetStatusDomainOwners(nil)
 
-		return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
+		return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, defaultRequeueTime)
 	}
 
 	//Note: Can't use GetStatus() here since it's the remote embedded one returned and we need the higher level one for the ReadyForDelegation status
@@ -218,8 +218,15 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 	}
 
+	dnsRecord = r.applyGroupAdapter(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord)
+
+	if !dnsRecord.IsActive() {
+		logger.V(1).Info("remote record is from an inactive group, exiting reconcile")
+		return reconcile.Result{RequeueAfter: InactiveGroupRequeueTime}, nil
+	}
+
 	// Publish the record
-	_, err = r.publishRecord(ctx, dnsRecord, dnsProvider)
+	hadChanges, err := r.publishRecord(ctx, dnsRecord, dnsProvider)
 	if err != nil {
 		logger.Error(err, "Failed to publish record")
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
@@ -229,7 +236,18 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 	dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
 	dnsRecord.SetStatusObservedGeneration(dnsRecord.GetDNSRecord().GetGeneration())
-	return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
+
+	// process unpublish of inactive groups once active cluster has no changes to publish
+	// not to be processed by ungrouped clusters.
+	if !hadChanges && dnsRecord.GetGroup() != "" {
+		err = r.unpublishInactiveGroups(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord, dnsProvider)
+		if err != nil {
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+				"ProviderError", fmt.Sprintf("The DNS provider failed to unpublish inactive groups: %v", provider.SanitizeError(err)))
+		}
+	}
+
+	return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, defaultRequeueTime)
 }
 
 func (r *RemoteDNSRecordReconciler) getClusterUID(ctx context.Context) (string, error) {
@@ -247,7 +265,8 @@ func (r *RemoteDNSRecordReconciler) getClusterUID(ctx context.Context) (string, 
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *RemoteDNSRecordReconciler) SetupWithManager(mgr mcmanager.Manager, skipNameValidation bool) error {
+func (r *RemoteDNSRecordReconciler) SetupWithManager(mgr mcmanager.Manager, maxRequeue time.Duration, skipNameValidation bool) error {
+	defaultRequeueTime = maxRequeue
 	var gvk schema.GroupVersionKind
 	var err error
 	gvk, err = apiutil.GVKForObject(&v1alpha1.DNSRecord{}, mgr.GetLocalManager().GetScheme())

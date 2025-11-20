@@ -56,10 +56,21 @@ az network dns zone show --name <my domain name> --resource-group <my resource g
 make local-setup
 ```
 
+**Note:** When using DNS Groups functionality with CoreDNS, you can customize where the active groups TXT record is resolved from:
+```sh
+make local-setup EXTERNAL_GROUPS_HOST=<your-external-host>
+```
+Default: `kuadrant-active-groups.hcpapps.net`
+
 1. Run your controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):
 
 ```sh
 make run
+```
+
+To run with a specific group identifier:
+```sh
+make run GROUP=<your-group-name>
 ```
 
 ### Running controller on the cluster
@@ -69,9 +80,50 @@ make run
 make local-setup DEPLOY=true
 ```
 
+#### CoreDNS with DNS Groups
+
+After running the local-setup, some configuration is required to enable the active-groups TXT record
+when running locally with CoreDNS and using DNS Groups.
+
+1. Modify the corefile
+You will need to modify the Corefile in coredns, this is located in a configmap `kuadrant-coredns`
+ by default in the `kuadrant-coredns` namespace. 
+ 
+ Add the following config (change the parts in caps to your usecase):
+```sh
+    rewrite name regex kuadrant-active-groups\.(.*)ZONE_DOMAIN_NAME EXTERNAL_TXT_RECORD_HOST
+    forward EXTERNAL_TXT_RECORD_HOST /etc/resolv.conf
+```
+
+Before the `ready` statement.
+
+Then restart the coredns operator.
+```sh
+kubectl -n kuadrant-coredns rollout restart deployment kuadrant-coredns 
+```
+
 1. Verify controller deployment
 ```sh
 kubectl logs -f deployments/dns-operator-controller-manager -n dns-operator-system
+```
+
+1. Create External record:
+In your dns provider, create the record referred to earlier in your corefile. This record requires the 
+following format (changing the values in caps as required):
+```sh
+version=1;groups=GROUP1&&GROUP2
+```
+
+1. Verify coredns groups resolution
+
+Once the external record has been created, find the local IP of the coredns instance:
+```sh
+NS=$(kubectl get secrets -n dnstest dns-provider-credentials-coredns -o yaml | yq ".data.NAMESERVERS" | base64 -d | cut -f1 -d":")
+```
+Then dig the local TXT record from that IP:
+```sh
+dig @$NS kuadrant-active-groups.k.example.com TXT +short
+"version=1;groups=GROUP1&&GROUP2"
 ```
 
 ### Running controller on existing cluster
@@ -134,6 +186,7 @@ The controller can be started with any of the following flags or environmental v
 | cluster-secret-label      | string        | CLUSTER_SECRET_LABEL      | The label that identifies a Secret resource as a cluster secret.                                                      | "kuadrant.io/multicluster-kubeconfig" |
 | watch-namespaces          | string        | WATCH_NAMESPACES          | Comma separated list of default namespaces.                                                                           | \<empty string\>                      |
 | delegation-role           | string        | DELEGATION_ROLE           | The delegation role for this controller. Must be one of 'primary'(default), or 'secondary'                            | "primary"                             |
+| group                     | string        | GROUP                     | The DNS failover group identifier for this controller instance. Used for active-passive failover across clusters.     | \<empty string\>                      |
 
 ## Logging
 Logs are following the general guidelines: 
@@ -151,7 +204,7 @@ There are two flags to control logging output
 You can find more [here](https://pkg.go.dev/github.com/go-logr/zapr#section-readme).
 
 
-### Common metadata 
+### Common metadata
 Not exhaustive list of metadata for DNSRecord controller:
 - `level` - logging level. Values are: `info`,`debug` or `error`
 - `ts` - timestamp
@@ -160,11 +213,13 @@ Not exhaustive list of metadata for DNSRecord controller:
 - `controller` and `controllerKind` - controller name, and it's kind respectively to output the log
 - `DNSRecord` - name and namespace of the DNS Record CR that is being reconciled
 - `reconcileID`
-- `ownerID` - ID the of owner of the DNS Record 
-- `txtPrefix`/`txtSuffix` - prefix and suffix of the TXT record in provider. 
+- `ownerID` - ID the of owner of the DNS Record
+- `txtPrefix`/`txtSuffix` - prefix and suffix of the TXT record in provider.
 - `zoneEndpoints` - endpoints that exist in the provider
 - `specEndpoints` - endpoints defined in the spec
 - `statusEndpoints` - endpoints that were processed previously
+- `currentGroup` - the group this DNS operator instance belongs to
+- `activeGroups` - the currently active groups read from DNS
 
 > Note that not all the metadata values are present at each of the logs statements. 
 

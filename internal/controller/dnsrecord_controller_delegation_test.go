@@ -1687,7 +1687,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 					err := primary2K8sClient.Get(ctx, client.ObjectKeyFromObject(primary2DNSRecord), primary2DNSRecord)
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(err).To(MatchError(ContainSubstring("not found")))
-				}, TestTimeoutShort, time.Second).Should(Succeed())
+				}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 				By("verifying the primary-2 authoritative record endpoints are updated correctly")
 				Eventually(func(g Gomega) {

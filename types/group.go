@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -46,4 +47,18 @@ func (g *Group) IsSet() bool {
 
 func (g *Group) Labels() map[string]string {
 	return map[string]string{GroupLabelKey: g.String()}
+}
+
+type Groups []Group
+
+func (g Groups) HasGroup(group Group) bool {
+	return slices.Contains(g, group)
+}
+
+func (g Groups) String() string {
+	activeGroupsSlice := []string{}
+	for _, group := range g {
+		activeGroupsSlice = append(activeGroupsSlice, string(group))
+	}
+	return strings.Join(activeGroupsSlice, ",")
 }
