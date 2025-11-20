@@ -3,6 +3,8 @@ package types
 import (
 	"fmt"
 	"strings"
+
+	"github.com/kuadrant/dns-operator/internal/common/slice"
 )
 
 const (
@@ -46,4 +48,18 @@ func (g *Group) IsSet() bool {
 
 func (g *Group) Labels() map[string]string {
 	return map[string]string{GroupLabelKey: g.String()}
+}
+
+type Groups []Group
+
+func (g Groups) HasGroup(group Group) bool {
+	return slice.Contains(g, func(gElem Group) bool { return gElem == group })
+}
+
+func (g Groups) String() string {
+	activeGroupsStr := []string{}
+	for _, group := range g {
+		activeGroupsStr = append(activeGroupsStr, string(group))
+	}
+	return strings.Join(activeGroupsStr, ",")
 }
