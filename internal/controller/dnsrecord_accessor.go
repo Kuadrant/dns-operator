@@ -32,6 +32,7 @@ type DNSRecordAccessor interface {
 	v1alpha1.ProviderAccessor
 	GetDNSRecord() *v1alpha1.DNSRecord
 	GetOwnerID() string
+	GetGroup() types.Group
 	GetRootHost() string
 	GetZoneDomainName() string
 	GetZoneID() string
@@ -67,6 +68,10 @@ func (s *DNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {
 
 func (s *DNSRecord) GetOwnerID() string {
 	return s.GetStatus().OwnerID
+}
+
+func (s *DNSRecord) GetGroup() types.Group {
+	return s.GetStatus().Group
 }
 
 func (s *DNSRecord) GetZoneDomainName() string {
@@ -147,6 +152,10 @@ func (s *RemoteDNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {
 
 func (s *RemoteDNSRecord) GetOwnerID() string {
 	return s.DNSRecord.Status.OwnerID
+}
+
+func (s *RemoteDNSRecord) GetGroup() types.Group {
+	return s.DNSRecord.Status.Group
 }
 
 func (s *RemoteDNSRecord) GetZoneDomainName() string {

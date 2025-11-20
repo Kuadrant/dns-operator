@@ -225,6 +225,8 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, false, err)
 	}
 
+	dnsRecord.SetStatusGroup(r.Group)
+
 	//Ensure an Owner ID has been assigned to the record (OwnerID set in the status)
 	if !dnsRecord.HasOwnerIDAssigned() {
 		if dnsRecord.GetSpec().OwnerID != "" {
