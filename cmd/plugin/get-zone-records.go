@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/cobra"
 
 	corev1 "k8s.io/api/core/v1"
@@ -23,6 +21,7 @@ import (
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/cmd/plugin/common"
 	"github.com/kuadrant/dns-operator/internal/common/slice"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/internal/provider/endpoint"
@@ -164,7 +163,7 @@ func hostWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Client,
 		return err
 	}
 
-	render(endpoints)
+	common.RenderEndpoints(endpoints)
 
 	return err
 }
@@ -197,7 +196,7 @@ func dnsRecordWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Cl
 		return err
 	}
 
-	render(endpoints)
+	common.RenderEndpoints(endpoints)
 
 	return err
 }
@@ -252,30 +251,4 @@ func getEndpoints(ctx context.Context, p provider.Provider) ([]*externaldns.Endp
 	)
 
 	return endpoints, nil
-}
-
-func render(endpoints []*externaldns.Endpoint) {
-	t := table.NewWriter()
-	t.SetOutputMirror(os.Stdout)
-	t.SetStyle(table.StyleLight)
-	t.AppendHeader(table.Row{"Type", "Record", "Targets", "TTL"})
-
-	for _, e := range endpoints {
-		var targets string
-		switch e.RecordType {
-		case externaldns.RecordTypeA:
-			targets = strings.ReplaceAll(e.Targets.String(), ";", "\n")
-		case externaldns.RecordTypeNS:
-			targets = strings.ReplaceAll(e.Targets.String(), ";", "\n")
-		case externaldns.RecordTypeTXT:
-			targets = strings.Trim(e.Targets.String(), "\"")
-			targets = strings.ReplaceAll(targets, ",", "\n")
-		default:
-			targets = e.Targets.String()
-		}
-
-		t.AppendRow([]any{e.RecordType, e.DNSName, targets, e.RecordTTL})
-		t.AppendSeparator()
-	}
-	t.Render()
 }
