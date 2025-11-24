@@ -3,6 +3,7 @@ package failover
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -46,7 +47,14 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("domain is required")
 	}
 
-	var err error
+	// create regexp to filter zones
+	// example.com will become ^example.com$ for an exact match
+	// *.example.com will become ^.*example.com$ to search using wildcard domain
+	domainRegexp, err := regexp.Compile(fmt.Sprintf("^%s$", strings.Replace(domain, "*.", ".*", 1)))
+	if err != nil {
+		return err
+	}
+
 	resourceRef, err = common.ParseProviderRef(providerRef)
 	if err != nil {
 		log.Error(err, "failed to parse provider ref")
@@ -60,9 +68,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 
 	// get all the zones
 	endpointProvider, err := common.GetProviderForConfig(ctx, resourceRef, provider.Config{
-		DomainFilter: externaldnsendpoint.DomainFilter{
-			Filters: []string{domain},
-		},
+		DomainFilter: externaldnsendpoint.NewRegexDomainFilter(domainRegexp, nil),
 	})
 	if err != nil {
 		log.Error(err, "failed to create provider for secret")
@@ -80,6 +86,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 
 	if len(allZones) == 0 {
 		log.Info(fmt.Sprintf("No DNS zones found for domain %s", domain))
+		log.V(1).Info(fmt.Sprintf("Regexp string: %s", domainRegexp.String()))
 		return nil
 	} else if len(allZones) == 1 {
 		selectedZones = allZones
@@ -105,9 +112,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 		var endpoints []*externaldnsendpoint.Endpoint
 
 		providerForZone, err = common.GetProviderForConfig(ctx, resourceRef, provider.Config{
-			DomainFilter: externaldnsendpoint.DomainFilter{
-				Filters: []string{domain},
-			},
+			DomainFilter: externaldnsendpoint.NewRegexDomainFilter(domainRegexp, nil),
 			ZoneIDFilter: externaldnsprovider.ZoneIDFilter{
 				ZoneIDs: []string{zone.ID},
 			},
@@ -124,7 +129,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 		}
 
 		// check for txt record to exist
-		groupRecordName := TXTRecordPrefix + domain
+		groupRecordName := TXTRecordPrefix + zone.DNSName
 		var groupTXTRecord *externaldnsendpoint.Endpoint
 
 		for _, ep := range endpoints {
@@ -134,7 +139,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 			}
 		}
 		if groupTXTRecord != nil && strings.Contains(groupTXTRecord.Targets[0], groupName) {
-			log.Info("Found existing TXT record for domain that already contains group name.", "domain", domain, "record", groupName)
+			log.Info("Found existing TXT record for domain that already contains group name.", "zone DNS Name", zone.DNSName, "record", groupName)
 			log.Info("Nothing to do")
 			log.V(1).Info(fmt.Sprintf("existing record name: %s, targets: %s", groupRecordName, groupTXTRecord.Targets))
 			continue
@@ -147,7 +152,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 		changes := &plan.Changes{}
 
 		if groupTXTRecord == nil {
-			changes.Create = append(changes.Create, GenerateGroupTXTRecord(domain, groupName))
+			changes.Create = append(changes.Create, GenerateGroupTXTRecord(zone.DNSName, groupName))
 		} else {
 			changes.UpdateOld = append(changes.UpdateOld, groupTXTRecord.DeepCopy())
 			changes.UpdateNew = append(changes.UpdateNew, EnsureGroupTXTRecord(groupName, groupTXTRecord))
@@ -160,7 +165,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 			continue
 		}
 
-		log.Info(fmt.Sprintf("added group \"%s\" to active groups of \"%s\" domain", args[0], domain))
+		log.Info(fmt.Sprintf("added group \"%s\" to active groups of \"%s\" zone", args[0], zone.DNSName))
 	}
 	return nil
 }

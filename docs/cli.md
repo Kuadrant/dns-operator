@@ -31,7 +31,8 @@ The DNS Group commands are intended to be run with a secret that has list permis
 and write permissions in the relevant zones.
 
 ### add-active-group 
-Will fetch a list of zones that match a domain filter (the `--domain` flag). 
+Will fetch a list of zones that are an exact match of a domain (the `--domain` flag).
+You can specify `*.<domain>` to match all zones that end with `<domain>`.
 If more than one zone is found it will prompt asking which of the zones to select, 
 unless `-y` is provided in which case it will apply the change to all relevant zones..
 When adding a group to the set of active groups in the selected zone the command will first ensure the group is not already present.
