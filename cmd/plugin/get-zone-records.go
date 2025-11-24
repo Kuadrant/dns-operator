@@ -158,7 +158,7 @@ func hostWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Client,
 		return err
 	}
 
-	endpoints, err := getEndpoints(ctx, p)
+	endpoints, err := getEndpoints(ctx, p, name)
 	if err != nil {
 		log.Error(err, "unable to get endpoints from provider")
 		return err
@@ -191,7 +191,7 @@ func dnsRecordWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Cl
 		return err
 	}
 
-	endpoints, err := getEndpoints(ctx, p)
+	endpoints, err := getEndpoints(ctx, p, dnsRecord.GetRootHost())
 	if err != nil {
 		log.Error(err, "unable to get endpoints from provider")
 		return err
@@ -230,8 +230,8 @@ func getProviderFromSecret(ctx context.Context, log logr.Logger, k8sClient clien
 
 }
 
-func getEndpoints(ctx context.Context, p provider.Provider) ([]*externaldns.Endpoint, error) {
-	log.V(1).Info("found provider", "provider.name", p.Name())
+func getEndpoints(ctx context.Context, p provider.Provider, rootHost string) ([]*externaldns.Endpoint, error) {
+	log.V(1).Info("get records from provider", "provider.name", p.Name(), "roothost", rootHost)
 
 	endpoints, err := p.Records(ctx)
 	if err != nil {
@@ -244,7 +244,7 @@ func getEndpoints(ctx context.Context, p provider.Provider) ([]*externaldns.Endp
 			return false
 		}
 
-		if strings.HasSuffix(e.DNSName, name) {
+		if strings.HasSuffix(e.DNSName, rootHost) {
 			return true
 		}
 		return false
