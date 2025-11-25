@@ -148,7 +148,6 @@ func removeUnhealthyEndpoints(specEndpoints []*endpoint.Endpoint, dnsRecord *v1a
 			Name: probe.Spec.Address,
 		})
 		unhealthyAddresses = append(unhealthyAddresses, probe.Spec.Address)
-
 	}
 
 	// if at least one of the leaf probes was healthy return healthy probes
@@ -218,7 +217,6 @@ func newHealthCheckAdapter(accessor DNSRecordAccessor, probes *v1alpha1.DNSHealt
 		DNSRecordAccessor: accessor,
 		probes:            probes,
 	}
-	hca.removeUnhealthyEndpoints()
 	return hca
 }
 
