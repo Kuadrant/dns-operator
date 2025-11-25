@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - args:
-          - --leader-elect
+        - --leader-elect
         - --metrics-bind-address=:8080
         - --provider=aws,google,inmemory,azure
         - --log-level=debug

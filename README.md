@@ -141,8 +141,15 @@ Logs are following the general guidelines:
 - `logger.Error()` describe only those errors that are not returned in the result of the reconciliation. If error is occurred there should be only one error message. 
 - `logger.V(1).Info()` debug level logs to give information about every change or event caused by the resource as well as every update of the resource.
 
-The `--log-mode=development` argument will enable debug level logs for the output. Otherwise, all `V()` logs are
-ignored.
+There are two flags to control logging output 
+- `--log-mode=[development|<any-other-value>]` will enable debug level logs for the output. 
+    The debug mode is the most verbose.
+- `--log-level` controls the level of displayed logs. Defaults to the most verbose in the `development` mode. 
+    In any other modes it can take numerical values form `-1` (Debug level) to `4` (Nothing). 
+    It is possible to specify other values, but hey will have no effect (e.g. `4` will do the same as `128`) 
+
+You can find more [here](https://pkg.go.dev/github.com/go-logr/zapr#section-readme).
+
 
 ### Common metadata 
 Not exhaustive list of metadata for DNSRecord controller:

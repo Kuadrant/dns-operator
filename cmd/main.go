@@ -111,6 +111,7 @@ const (
 	DefaultClusterSecretLabel     = "kuadrant.io/multicluster-kubeconfig"
 
 	DefaultLogLevel = zapcore.InfoLevel
+	DefaultLogMode  = "debug"
 )
 
 func init() {
@@ -145,8 +146,8 @@ func main() {
 	flag.StringVar(&clusterSecretNamespace, clusterSecretNamespaceKey.Flag(), DefaultClusterSecretNamespace, "The Namespace to look for cluster secrets.")
 	flag.StringVar(&clusterSecretLabel, clusterSecretLabelKey.Flag(), DefaultClusterSecretLabel, "The label that identifies a Secret resource as a cluster secret.")
 	flag.StringVar(&watchNamespaces, watchNamespacesKey.Flag(), "", "Comma separated list of default namespaces.")
-	flag.StringVar(&logLevel, logLevelKey.Flag(), "", "Log level")
-	flag.StringVar(&logMode, logModeKey.Flag(), "", "Log mode")
+	flag.StringVar(&logLevel, logLevelKey.Flag(), DefaultLogLevel.String(), "Log level")
+	flag.StringVar(&logMode, logModeKey.Flag(), DefaultLogMode, "Log mode")
 
 	flag.Var(newDelegationRoleValue(controller.DelegationRolePrimary, &delegationRole), delegationRoleKey.Flag(), "The delegation role for this controller. Must be one of 'primary'(default), or 'secondary'")
 
@@ -385,6 +386,12 @@ func overrideControllerFlags() {
 				os.Exit(1)
 			}
 			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", groupKey.Flag(), v))
+		case logModeKey.Envar():
+			logMode = v
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", groupKey.Flag(), v))
+		case logLevelKey.Envar():
+			logLevel = v
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", groupKey.Flag(), v))
 		}
 	}
 }
@@ -443,11 +450,6 @@ func newDelegationRoleValue(val string, p *string) *delegationRoleValue {
 }
 
 func withLogLevel(logLevel string) func(*zap.Options) {
-	logLevelEnvRaw, ok := os.LookupEnv(logLevelKey.Envar())
-	if ok {
-		logLevel = logLevelEnvRaw
-	}
-
 	lvl, err := zapcore.ParseLevel(logLevel)
 	if err != nil {
 		// If unable to parse the log level, set default
@@ -460,14 +462,7 @@ func withLogLevel(logLevel string) func(*zap.Options) {
 }
 
 func withLogMode(logMode string) func(*zap.Options) {
-	logModeEnvRaw, ok := os.LookupEnv(logModeKey.Envar())
-	if ok {
-		logMode = logModeEnvRaw
-	}
-
-	devel := logMode == "development"
-
 	return func(options *zap.Options) {
-		options.Development = devel
+		options.Development = logMode == "development"
 	}
 }
