@@ -18,9 +18,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
+	externaldnsregistry "sigs.k8s.io/external-dns/registry"
 
 	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
-	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
+	dnsopexternaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/types"
 )
@@ -120,11 +121,17 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
 	var excludeDNSRecordTypes []string
 
-	registry, err := externaldnsregistry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
+	var registry externaldnsregistry.Registry
+	registry, err := dnsopexternaldnsregistry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
 		dnsRecord.GetOwnerID(), txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
 		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
 	if err != nil {
 		return false, err
+	}
+
+	registry = dnsopexternaldnsregistry.GroupRegistry{
+		Registry: registry,
+		Group:    r.Group,
 	}
 
 	policyID := "sync"

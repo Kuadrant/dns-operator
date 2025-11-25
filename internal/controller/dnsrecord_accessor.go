@@ -59,20 +59,6 @@ type DNSRecord struct {
 }
 
 func (s *DNSRecord) GetEndpoints() []*externaldns.Endpoint {
-	//Modify endpoints to include records current group if set or ensure it is removed if unset
-	recordGroup := s.GetGroup()
-	for _, ep := range s.GetSpec().Endpoints {
-		if recordGroup.IsSet() {
-			if ep.Labels == nil {
-				ep.Labels = externaldns.NewLabels()
-			}
-			ep.Labels[types.GroupLabelKey] = recordGroup.String()
-			ep.Labels[types.TargetsLabelKey] = ep.Targets.String()
-		} else {
-			delete(ep.Labels, types.GroupLabelKey)
-			delete(ep.Labels, types.TargetsLabelKey)
-		}
-	}
 	return s.GetSpec().Endpoints
 }
 
