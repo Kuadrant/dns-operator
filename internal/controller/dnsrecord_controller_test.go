@@ -496,6 +496,33 @@ var _ = Describe("DNSRecordReconciler", func() {
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 	})
 
+	It("handles records with wildcard root hosts that match zone dns name", func() {
+		wildcardHostname := strings.Join([]string{"*", testZoneDomainName}, ".")
+		dnsRecord.Spec.RootHost = wildcardHostname
+		dnsRecord.Spec.Endpoints = getTestEndpoints(wildcardHostname, []string{"127.0.0.1"})
+		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
+		Eventually(func(g Gomega) {
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status":             Equal(metav1.ConditionTrue),
+					"Reason":             Equal("ProviderSuccess"),
+					"Message":            Equal("Provider ensured the dns record"),
+					"ObservedGeneration": Equal(dnsRecord.Generation),
+				})),
+			)
+			g.Expect(dnsRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
+			g.Expect(dnsRecord.Finalizers).To(ContainElement(DNSRecordFinalizer))
+			g.Expect(dnsRecord.Status.WriteCounter).To(BeZero())
+			g.Expect(dnsRecord.Status.ZoneID).To(Equal(testZoneID))
+			g.Expect(dnsRecord.Status.ZoneDomainName).To(Equal(testZoneDomainName))
+			g.Expect(dnsRecord.Status.Endpoints).To(Not(BeEmpty()))
+			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash()))
+		}, TestTimeoutMedium, time.Second).Should(Succeed())
+	})
+
 	It("should use dnsrecord UID for ownerID if none set in spec and not allow it to be updated after", func() {
 		//Create default test dnsrecord (foo.xyz.example.com)
 		Expect(primaryK8sClient.Create(ctx, dnsRecord)).To(Succeed())
