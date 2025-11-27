@@ -19,3 +19,21 @@ This requires `GO` configured on your machine
 
 ## From repository 
 You can download a binary for your architecture from the [release](https://github.com/Kuadrant/dns-operator/releases) page of the DNS-operator. A new version of the cli is built on each release after v0.14.0
+
+# Commands
+For most cases running a command with `--help` should answer your questions. Here you will find less of a technical details
+but of a more reasoning and intent behind commands. 
+
+## DNS Groups 
+The DNS Group commands will allow the manipulation of the `kuadrant-active-groups.<domain>` TXT record.
+This record is responsible for informing controllers which DNS Groups are currently active.
+The DNS Group commands are intended to be run with a secret that has list permissions across all zones 
+and write permissions in the relevant zones.
+
+### add-active-group 
+Will fetch a list of zones that are an exact match of a domain (the `--domain` flag).
+You can specify `*.<domain>` to match all zones that end with `<domain>`.
+If more than one zone is found it will prompt asking which of the zones to select, 
+unless `-y` is provided in which case it will apply the change to all relevant zones..
+When adding a group to the set of active groups in the selected zone the command will first ensure the group is not already present.
+If the group is not present, it will either update the existing `kuadrant-active-groups.<domain>` TXT record, or create it. 
