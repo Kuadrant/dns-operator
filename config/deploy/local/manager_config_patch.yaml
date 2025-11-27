@@ -13,4 +13,4 @@ spec:
             - --metrics-bind-address=:8080
             - --leader-elect
             - --provider=aws,google,inmemory,azure,coredns,endpoint
-            - --zap-log-level=debug
+            - --log-level=debug
