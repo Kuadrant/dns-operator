@@ -26,7 +26,7 @@ kubeconfig-secret-create-kind-internal: kubectl-dns ## Create a kubeconfig secre
 		-v $(shell pwd):/tmp/dns-operator:z \
 		--network kind \
 		-e KUBECONFIG=/tmp/dns-operator/tmp/kubeconfigs/kuadrant-local-all.internal.kubeconfig alpine/k8s:1.30.13 \
-		/tmp/dns-operator/bin/kubectl_kuadrant-dns add-cluster-secret --context $(REMOTE_CONTEXT) --service-account $(SERVICE_ACCOUNT) --namespace $(NAMESPACE) --name $(NAME)
+		/tmp/dns-operator/bin/kubectl-kuadrant_dns add-cluster-secret --context $(REMOTE_CONTEXT) --service-account $(SERVICE_ACCOUNT) --namespace $(NAMESPACE) --name $(NAME)
 
 .PHONY: kubeconfig-secret-delete
 kubeconfig-secret-delete: NAMESPACE=dns-operator-system
