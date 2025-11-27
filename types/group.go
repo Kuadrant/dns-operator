@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+const (
+	GroupLabelKey   = "group"
+	TargetsLabelKey = "targets"
+)
+
 // Group string type used for DNS Failover
 type Group string
 
@@ -37,4 +42,8 @@ func (g *Group) IsSet() bool {
 		return true
 	}
 	return false
+}
+
+func (g *Group) Labels() map[string]string {
+	return map[string]string{GroupLabelKey: g.String()}
 }
