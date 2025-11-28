@@ -12,9 +12,11 @@ import (
 )
 
 const (
-	ipAddressOne = "127.0.0.1"
-	ipAddressTwo = "127.0.0.2"
-	testHostname = "pat.the.cat"
+	ipAddressOne         = "127.0.0.1"
+	ipAddressTwo         = "127.0.0.2"
+	testHostname         = "pat.the.cat"
+	testTTL              = 123
+	testLoadBalancingTTL = 234
 )
 
 var (
@@ -68,6 +70,19 @@ var _ = Describe("DnsrecordEndpoints", func() {
 					},
 				}
 			})
+			It("Should set default TTL", func() {
+				testHost = HostOne(domain)
+				endpoints, err := NewEndpointsBuilder(testTarget, testHost).
+					SetDefaultTTL(testTTL).
+					Build()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(endpoints).To(ConsistOf(
+					PointTo(MatchFields(IgnoreExtras, Fields{
+						"DNSName":   Equal(HostOne(domain)),
+						"RecordTTL": Equal(endpoint.TTL(testTTL)),
+					})),
+				))
+			})
 			It("Should generate endpoint", func() {
 				testHost = HostOne(domain)
 				endpoints, err := NewEndpointsBuilder(testTarget, testHost).Build()
@@ -78,7 +93,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 						"Targets":       ContainElements(ipAddressOne, ipAddressTwo),
 						"RecordType":    Equal("A"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(endpoint.TTL(60)),
+						"RecordTTL":     Equal(endpoint.TTL(DefaultTTL)),
 					})),
 				))
 			})
@@ -92,7 +107,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 						"Targets":       ContainElements(ipAddressOne, ipAddressTwo),
 						"RecordType":    Equal("A"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(endpoint.TTL(60)),
+						"RecordTTL":     Equal(endpoint.TTL(DefaultTTL)),
 					})),
 				))
 			})
@@ -107,7 +122,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 						"Targets":       ContainElement(testHostname),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(endpoint.TTL(60)),
+						"RecordTTL":     Equal(endpoint.TTL(DefaultTTL)),
 					})),
 				))
 
@@ -134,6 +149,41 @@ var _ = Describe("DnsrecordEndpoints", func() {
 			})
 
 			Context("With default geo", func() {
+				It("Should set default TTl and loadbalancing TTL", func() {
+					testHost = HostOne(domain)
+					endpoints, err := NewEndpointsBuilder(testTarget, testHost).
+						WithLoadBalancing(testLoadbalancing).
+						SetDefaultTTL(testTTL).
+						SetDefaultLoadBalancedTTL(testLoadBalancingTTL).
+						Build()
+					Expect(err).NotTo(HaveOccurred())
+					Expect(EndpointsTraversable(endpoints, HostOne(domain), []string{ipAddressOne, ipAddressTwo})).To(BeTrue())
+					Expect(endpoints).To(ConsistOf(
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":   Equal(idHash + "-" + targetHash + "." + "klb.test." + domain),
+							"RecordTTL": Equal(endpoint.TTL(testTTL)),
+						})),
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":   Equal("ie.klb.test." + domain),
+							"RecordTTL": Equal(endpoint.TTL(testTTL)),
+						})),
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":   Equal("klb.test." + domain),
+							"Targets":   ConsistOf("ie.klb.test." + domain),
+							"RecordTTL": Equal(endpoint.TTL(testLoadBalancingTTL)),
+						})),
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":       Equal("klb.test." + domain),
+							"Targets":       ConsistOf("ie.klb.test." + domain),
+							"SetIdentifier": Equal("default"),
+							"RecordTTL":     Equal(endpoint.TTL(testLoadBalancingTTL)),
+						})),
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":   Equal(HostOne(domain)),
+							"RecordTTL": Equal(endpoint.TTL(testLoadBalancingTTL)),
+						})),
+					))
+				})
 				It("Should generate endpoints", func() {
 					testHost = HostOne(domain)
 					endpoints, err := NewEndpointsBuilder(testTarget, testHost).
@@ -147,14 +197,14 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":       ConsistOf(ipAddressOne, ipAddressTwo),
 							"RecordType":    Equal("A"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(endpoint.TTL(60)),
+							"RecordTTL":     Equal(endpoint.TTL(DefaultTTL)),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":          Equal("ie.klb.test." + domain),
 							"Targets":          ConsistOf(idHash + "-" + targetHash + "." + "klb.test." + domain),
 							"RecordType":       Equal("CNAME"),
 							"SetIdentifier":    Equal(idHash + "-" + targetHash + "." + "klb.test." + domain),
-							"RecordTTL":        Equal(endpoint.TTL(60)),
+							"RecordTTL":        Equal(endpoint.TTL(DefaultTTL)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "weight", Value: "120"}}),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
@@ -162,7 +212,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":          ConsistOf("ie.klb.test." + domain),
 							"RecordType":       Equal("CNAME"),
 							"SetIdentifier":    Equal(geo),
-							"RecordTTL":        Equal(endpoint.TTL(300)),
+							"RecordTTL":        Equal(endpoint.TTL(DefaultLoadBalancedTTL)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: geo}}),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
@@ -170,7 +220,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":          ConsistOf("ie.klb.test." + domain),
 							"RecordType":       Equal("CNAME"),
 							"SetIdentifier":    Equal("default"),
-							"RecordTTL":        Equal(endpoint.TTL(300)),
+							"RecordTTL":        Equal(endpoint.TTL(DefaultLoadBalancedTTL)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: "*"}}),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
@@ -178,7 +228,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":       ConsistOf("klb.test." + domain),
 							"RecordType":    Equal("CNAME"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(endpoint.TTL(300)),
+							"RecordTTL":     Equal(endpoint.TTL(DefaultLoadBalancedTTL)),
 						})),
 					))
 
@@ -196,14 +246,14 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":       ConsistOf(ipAddressOne, ipAddressTwo),
 							"RecordType":    Equal("A"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(endpoint.TTL(60)),
+							"RecordTTL":     Equal(endpoint.TTL(DefaultTTL)),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":          Equal("ie.klb." + domain),
 							"Targets":          ConsistOf(idHash + "-" + targetHash + "." + "klb." + domain),
 							"RecordType":       Equal("CNAME"),
 							"SetIdentifier":    Equal(idHash + "-" + targetHash + "." + "klb." + domain),
-							"RecordTTL":        Equal(endpoint.TTL(60)),
+							"RecordTTL":        Equal(endpoint.TTL(DefaultTTL)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "weight", Value: "120"}}),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
@@ -211,7 +261,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":          ConsistOf("ie.klb." + domain),
 							"RecordType":       Equal("CNAME"),
 							"SetIdentifier":    Equal("default"),
-							"RecordTTL":        Equal(endpoint.TTL(300)),
+							"RecordTTL":        Equal(endpoint.TTL(DefaultLoadBalancedTTL)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: "*"}}),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
@@ -219,7 +269,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":          ConsistOf("ie.klb." + domain),
 							"RecordType":       Equal("CNAME"),
 							"SetIdentifier":    Equal(geo),
-							"RecordTTL":        Equal(endpoint.TTL(300)),
+							"RecordTTL":        Equal(endpoint.TTL(DefaultLoadBalancedTTL)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: geo}}),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
@@ -227,7 +277,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":       ConsistOf("klb." + domain),
 							"RecordType":    Equal("CNAME"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(endpoint.TTL(300)),
+							"RecordTTL":     Equal(endpoint.TTL(DefaultLoadBalancedTTL)),
 						})),
 					))
 				})
@@ -251,14 +301,14 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":       ConsistOf(ipAddressOne, ipAddressTwo),
 							"RecordType":    Equal("A"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(endpoint.TTL(60)),
+							"RecordTTL":     Equal(endpoint.TTL(DefaultTTL)),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":          Equal("cad.klb.test." + domain),
 							"Targets":          ConsistOf(idHash + "-" + targetHash + "." + "klb.test." + domain),
 							"RecordType":       Equal("CNAME"),
 							"SetIdentifier":    Equal(idHash + "-" + targetHash + "." + "klb.test." + domain),
-							"RecordTTL":        Equal(endpoint.TTL(60)),
+							"RecordTTL":        Equal(endpoint.TTL(DefaultTTL)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "weight", Value: "120"}}),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
@@ -266,7 +316,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":          ConsistOf("cad.klb.test." + domain),
 							"RecordType":       Equal("CNAME"),
 							"SetIdentifier":    Equal("CAD"),
-							"RecordTTL":        Equal(endpoint.TTL(300)),
+							"RecordTTL":        Equal(endpoint.TTL(DefaultLoadBalancedTTL)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: "CAD"}}),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
@@ -274,7 +324,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":       ConsistOf("klb.test." + domain),
 							"RecordType":    Equal("CNAME"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(endpoint.TTL(300)),
+							"RecordTTL":     Equal(endpoint.TTL(DefaultLoadBalancedTTL)),
 						})),
 					))
 
@@ -292,14 +342,14 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":       ConsistOf(ipAddressOne, ipAddressTwo),
 							"RecordType":    Equal("A"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(endpoint.TTL(60)),
+							"RecordTTL":     Equal(endpoint.TTL(DefaultTTL)),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
 							"DNSName":          Equal("cad.klb." + domain),
 							"Targets":          ConsistOf(idHash + "-" + targetHash + "." + "klb." + domain),
 							"RecordType":       Equal("CNAME"),
 							"SetIdentifier":    Equal(idHash + "-" + targetHash + "." + "klb." + domain),
-							"RecordTTL":        Equal(endpoint.TTL(60)),
+							"RecordTTL":        Equal(endpoint.TTL(DefaultTTL)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "weight", Value: "120"}}),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
@@ -307,7 +357,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":          ConsistOf("cad.klb." + domain),
 							"RecordType":       Equal("CNAME"),
 							"SetIdentifier":    Equal("CAD"),
-							"RecordTTL":        Equal(endpoint.TTL(300)),
+							"RecordTTL":        Equal(endpoint.TTL(DefaultLoadBalancedTTL)),
 							"ProviderSpecific": Equal(endpoint.ProviderSpecific{{Name: "geo-code", Value: "CAD"}}),
 						})),
 						PointTo(MatchFields(IgnoreExtras, Fields{
@@ -315,7 +365,7 @@ var _ = Describe("DnsrecordEndpoints", func() {
 							"Targets":       ConsistOf("klb." + domain),
 							"RecordType":    Equal("CNAME"),
 							"SetIdentifier": Equal(""),
-							"RecordTTL":     Equal(endpoint.TTL(300)),
+							"RecordTTL":     Equal(endpoint.TTL(DefaultLoadBalancedTTL)),
 						})),
 					))
 				})

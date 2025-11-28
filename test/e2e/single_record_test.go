@@ -24,6 +24,7 @@ import (
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/hash"
 	"github.com/kuadrant/dns-operator/internal/provider"
+	builder "github.com/kuadrant/dns-operator/pkg/builder"
 	. "github.com/kuadrant/dns-operator/test/e2e/helpers"
 )
 
@@ -176,7 +177,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 							testTargetIP,
 						},
 						RecordType: "A",
-						RecordTTL:  60,
+						RecordTTL:  builder.DefaultTTL,
 					},
 					{
 						DNSName: testHostname2,
@@ -184,7 +185,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 							testTargetIP2,
 						},
 						RecordType: "A",
-						RecordTTL:  60,
+						RecordTTL:  builder.DefaultTTL,
 					},
 				},
 				HealthCheck: nil,
@@ -230,14 +231,14 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 				"Targets":       ConsistOf(testTargetIP),
 				"RecordType":    Equal("A"),
 				"SetIdentifier": Equal(""),
-				"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+				"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 			})),
 			PointTo(MatchFields(IgnoreExtras, Fields{
 				"DNSName":       Equal(testHostname2),
 				"Targets":       ConsistOf(testTargetIP2),
 				"RecordType":    Equal("A"),
 				"SetIdentifier": Equal(""),
-				"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+				"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 			})),
 		}
 		expectedDomainOwnersMatcher := BeEmpty()
@@ -285,7 +286,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 								testTargetIP,
 							},
 							RecordType: "A",
-							RecordTTL:  60,
+							RecordTTL:  builder.DefaultTTL,
 						},
 					},
 					HealthCheck: nil,
@@ -331,7 +332,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 					"Targets":       ConsistOf(testTargetIP),
 					"RecordType":    Equal("A"),
 					"SetIdentifier": Equal(""),
-					"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+					"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 				})),
 			}
 			expectedDomainOwnersMatcher := BeEmpty()
@@ -429,7 +430,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 								testTargetIP,
 							},
 							RecordType: "A",
-							RecordTTL:  60,
+							RecordTTL:  builder.DefaultTTL,
 						},
 						{
 							DNSName: testHostname,
@@ -437,7 +438,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 								klbHostName,
 							},
 							RecordType: "CNAME",
-							RecordTTL:  300,
+							RecordTTL:  builder.DefaultLoadBalancedTTL,
 						},
 						{
 							DNSName: geo1KlbHostName,
@@ -445,7 +446,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 								cluster1KlbHostName,
 							},
 							RecordType:    "CNAME",
-							RecordTTL:     60,
+							RecordTTL:     builder.DefaultTTL,
 							SetIdentifier: cluster1KlbHostName,
 							ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 								{
@@ -460,7 +461,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 								geo1KlbHostName,
 							},
 							RecordType:    "CNAME",
-							RecordTTL:     300,
+							RecordTTL:     builder.DefaultLoadBalancedTTL,
 							SetIdentifier: geoCode,
 							ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 								{
@@ -475,7 +476,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 								geo1KlbHostName,
 							},
 							RecordType:    "CNAME",
-							RecordTTL:     300,
+							RecordTTL:     builder.DefaultLoadBalancedTTL,
 							SetIdentifier: "default",
 							ProviderSpecific: externaldnsendpoint.ProviderSpecific{
 								{
@@ -529,21 +530,21 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf(testTargetIP),
 						"RecordType":    Equal("A"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(testHostname),
 						"Targets":       ConsistOf(klbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(geo1KlbHostName),
 						"Targets":       ConsistOf(cluster1KlbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "routingpolicy", Value: "weighted"},
 							{Name: cluster1KlbHostName, Value: "200"},
@@ -554,7 +555,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf(geo1KlbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "routingpolicy", Value: "geo"},
 							{Name: geo1KlbHostName, Value: geoCode},
@@ -594,7 +595,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf(testTargetIP),
 						"RecordType":    Equal("A"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -602,7 +603,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf(klbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 					}))))
 				Expect(zoneEndpoints).To(ContainElement(
 					PointTo(MatchFields(IgnoreExtras, Fields{
@@ -610,7 +611,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf(cluster1KlbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "routingpolicy", Value: "Weighted"},
 							{Name: cluster1KlbHostName, Value: "200"},
@@ -622,7 +623,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf(geo1KlbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "routingpolicy", Value: "Geographic"},
 							{Name: geo1KlbHostName, Value: "WORLD"},
@@ -665,21 +666,21 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf(testTargetIP),
 						"RecordType":    Equal("A"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(testHostname),
 						"Targets":       ConsistOf(klbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(geo1KlbHostName),
 						"Targets":       ConsistOf(cluster1KlbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(cluster1KlbHostName),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "alias", Value: "false"},
 							{Name: "aws/weight", Value: "200"},
@@ -690,7 +691,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf(geo1KlbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(geoCode),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "alias", Value: "false"},
 							{Name: "aws/geolocation-country-code", Value: "US"},
@@ -701,7 +702,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf(geo1KlbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal("default"),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "alias", Value: "false"},
 							{Name: "aws/geolocation-country-code", Value: "*"},
@@ -755,20 +756,20 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"Targets":       ConsistOf(testTargetIP),
 						"RecordType":    Equal("A"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(60)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":       Equal(testHostname),
 						"Targets":       ConsistOf(klbHostName),
 						"RecordType":    Equal("CNAME"),
 						"SetIdentifier": Equal(""),
-						"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+						"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 					})),
 					PointTo(MatchFields(IgnoreExtras, Fields{
 						"DNSName":    Equal(geo1KlbHostName),
 						"Targets":    ConsistOf(cluster1KlbHostName),
 						"RecordType": Equal("CNAME"),
-						"RecordTTL":  Equal(externaldnsendpoint.TTL(60)),
+						"RecordTTL":  Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "weight", Value: "200"},
 						}),
@@ -777,7 +778,7 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 						"DNSName":    Equal(klbHostName),
 						"Targets":    ConsistOf(geo1KlbHostName),
 						"RecordType": Equal("CNAME"),
-						"RecordTTL":  Equal(externaldnsendpoint.TTL(300)),
+						"RecordTTL":  Equal(externaldnsendpoint.TTL(builder.DefaultLoadBalancedTTL)),
 						"ProviderSpecific": Equal(externaldnsendpoint.ProviderSpecific{
 							{Name: "geo-code", Value: "US"},
 						}),
