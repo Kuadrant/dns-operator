@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
 
-	"github.com/kuadrant/dns-operator/internal/common/slice"
 	kuadrantPlan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
 	"github.com/kuadrant/dns-operator/types"
 )
@@ -377,10 +376,6 @@ func (im *TXTRegistry) generateTXTRecord(r *endpoint.Endpoint) []*endpoint.Endpo
 // ApplyChanges updates dns provider with the changes
 // for each created/deleted record it will also take into account TXT records for creation/deletion
 func (im *TXTRegistry) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
-	logger, err := logr.FromContext(ctx)
-	if err != nil {
-		return err
-	}
 	filteredChanges := &plan.Changes{
 		Create: changes.Create,
 		//ToDo Ideally we would still be able to ensure ownership on update
@@ -425,7 +420,6 @@ func (im *TXTRegistry) ApplyChanges(ctx context.Context, changes *plan.Changes) 
 	for _, updateOldRecord := range filteredChanges.UpdateOld {
 		for _, updateNewRecord := range filteredChanges.UpdateNew {
 			if updateOldRecord.Key() == updateNewRecord.Key() {
-				logger.Info("updating registry", "host", updateOldRecord.DNSName, "old labels", updateOldRecord.Labels, "new labels", updateNewRecord.Labels)
 				// There are 3 reasons for an update:
 				// Adding owner - we need to create a new TXT record
 				// Removing owner - we need to delete TXT record
@@ -554,7 +548,7 @@ func (h *RegistryHost) GetUngroupedTargets() []string {
 	targets := []string{}
 	for _, o := range h.UngroupedOwners {
 		for _, t := range strings.Split(o.Labels["targets"], ",") {
-			if !slice.ContainsString(targets, t) {
+			if !slices.Contains(targets, t) {
 				targets = append(targets, t)
 			}
 		}
@@ -569,7 +563,7 @@ func (h *RegistryHost) GetGroupsTargets(groups types.Groups) []string {
 			continue
 		} else {
 			for _, t := range group.GetTargets() {
-				if !slice.ContainsString(targets, t) {
+				if !slices.Contains(targets, t) {
 					targets = append(targets, t)
 				}
 			}
@@ -586,7 +580,7 @@ func (g *RegistryGroup) GetTargets() []string {
 	targets := []string{}
 	for _, o := range g.Owners {
 		for _, t := range strings.Split(o.Labels["targets"], ";") {
-			if !slice.ContainsString(targets, t) {
+			if !slices.Contains(targets, t) {
 				targets = append(targets, t)
 			}
 		}

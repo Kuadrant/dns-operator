@@ -1780,11 +1780,11 @@ func TestTxtRecordsToRegistryMap(t *testing.T) {
 			name: "TXT records with groups",
 			endpoints: []*endpoint.Endpoint{
 				endpoint.NewEndpoint("txt.2tqs20a7-cname-foo.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=owner1,external-dns/version=1,external-dns/groupID=group1\""),
+					"\"heritage=external-dns,external-dns/owner=owner1,external-dns/version=1,external-dns/"+GroupLabelKey+"=group1\""),
 				endpoint.NewEndpoint("txt.b1e3677c-cname-foo.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=owner2,external-dns/version=1,external-dns/groupID=group1\""),
+					"\"heritage=external-dns,external-dns/owner=owner2,external-dns/version=1,external-dns/"+GroupLabelKey+"=group1\""),
 				endpoint.NewEndpoint("txt.c2f4788d-cname-bar.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=owner3,external-dns/version=1,external-dns/groupID=group2\""),
+					"\"heritage=external-dns,external-dns/owner=owner3,external-dns/version=1,external-dns/"+GroupLabelKey+"=group2\""),
 			},
 			validate: func(t *testing.T, result *RegistryMap) {
 				assert.NotNil(t, result)
@@ -1804,7 +1804,6 @@ func TestTxtRecordsToRegistryMap(t *testing.T) {
 				// Check second host with different group
 				host2 := result.Hosts["bar.example.org"]
 				assert.Len(t, host2.Groups, 1)
-				assert.Contains(t, host2.Groups, "group2")
 
 				group2 := host2.Groups["group2"]
 				assert.Len(t, group2.Owners, 1)
@@ -1816,9 +1815,9 @@ func TestTxtRecordsToRegistryMap(t *testing.T) {
 			endpoints: []*endpoint.Endpoint{
 				// Grouped records
 				endpoint.NewEndpoint("txt.2tqs20a7-cname-foo.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=owner1,external-dns/version=1,external-dns/groupID=group1\""),
+					"\"heritage=external-dns,external-dns/owner=owner1,external-dns/version=1,external-dns/"+GroupLabelKey+"=group1\""),
 				endpoint.NewEndpoint("txt.b1e3677c-cname-foo.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=owner2,external-dns/version=1,external-dns/groupID=group1\""),
+					"\"heritage=external-dns,external-dns/owner=owner2,external-dns/version=1,external-dns/"+GroupLabelKey+"=group1\""),
 				// Ungrouped record
 				endpoint.NewEndpoint("txt.c2f4788d-cname-bar.example.org", endpoint.RecordTypeTXT,
 					"\"heritage=external-dns,external-dns/owner=owner3,external-dns/version=1\""),
@@ -1847,9 +1846,9 @@ func TestTxtRecordsToRegistryMap(t *testing.T) {
 			name: "TXT records with additional labels",
 			endpoints: []*endpoint.Endpoint{
 				endpoint.NewEndpoint("txt.2tqs20a7-cname-foo.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=owner1,external-dns/version=1,external-dns/groupID=group1,external-dns/target=us-east-1,external-dns/weight=100\""),
+					"\"heritage=external-dns,external-dns/owner=owner1,external-dns/version=1,external-dns/"+GroupLabelKey+"=group1,external-dns/target=us-east-1,external-dns/weight=100\""),
 				endpoint.NewEndpoint("txt.b1e3677c-cname-foo.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=owner2,external-dns/version=1,external-dns/groupID=group1,external-dns/target=us-west-2,external-dns/weight=200\""),
+					"\"heritage=external-dns,external-dns/owner=owner2,external-dns/version=1,external-dns/"+GroupLabelKey+"=group1,external-dns/target=us-west-2,external-dns/weight=200\""),
 				endpoint.NewEndpoint("txt.c2f4788d-cname-bar.example.org", endpoint.RecordTypeTXT,
 					"\"heritage=external-dns,external-dns/owner=owner3,external-dns/version=1,external-dns/target=eu-west-1,external-dns/priority=high\""),
 			},
@@ -1888,7 +1887,7 @@ func TestTxtRecordsToRegistryMap(t *testing.T) {
 					"\"some-random-text\""),
 				// Another valid record
 				endpoint.NewEndpoint("txt.b1e3677c-cname-bar.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=owner2,external-dns/version=1,external-dns/groupID=group1\""),
+					"\"heritage=external-dns,external-dns/owner=owner2,external-dns/version=1,external-dns/"+GroupLabelKey+"=group1\""),
 			},
 			validate: func(t *testing.T, result *RegistryMap) {
 				assert.NotNil(t, result)
@@ -1903,19 +1902,19 @@ func TestTxtRecordsToRegistryMap(t *testing.T) {
 			endpoints: []*endpoint.Endpoint{
 				// Group 1 (geo-us) with two owners (cluster1 and cluster2) for shared-host.example.org
 				endpoint.NewEndpoint("txt.2tqs20a7-cname-shared-host.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=cluster1,external-dns/version=1,external-dns/groupID=geo-us,external-dns/target=us-east-1,external-dns/geo-code=NA\""),
+					"\"heritage=external-dns,external-dns/owner=cluster1,external-dns/version=1,external-dns/"+GroupLabelKey+"=geo-us,external-dns/target=us-east-1,external-dns/geo-code=NA\""),
 				endpoint.NewEndpoint("txt.b1e3677c-cname-shared-host.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=cluster2,external-dns/version=1,external-dns/groupID=geo-us,external-dns/target=us-west-2,external-dns/geo-code=NA\""),
+					"\"heritage=external-dns,external-dns/owner=cluster2,external-dns/version=1,external-dns/"+GroupLabelKey+"=geo-us,external-dns/target=us-west-2,external-dns/geo-code=NA\""),
 
 				// Group 2 (geo-eu) with two different owners (cluster3 and cluster4) for the same shared-host.example.org
 				endpoint.NewEndpoint("txt.c2f4788d-cname-shared-host.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=cluster3,external-dns/version=1,external-dns/groupID=geo-eu,external-dns/target=eu-west-1,external-dns/geo-code=EU\""),
+					"\"heritage=external-dns,external-dns/owner=cluster3,external-dns/version=1,external-dns/"+GroupLabelKey+"=geo-eu,external-dns/target=eu-west-1,external-dns/geo-code=EU\""),
 				endpoint.NewEndpoint("txt.d3g5899e-cname-shared-host.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=cluster4,external-dns/version=1,external-dns/groupID=geo-eu,external-dns/target=eu-central-1,external-dns/geo-code=EU\""),
+					"\"heritage=external-dns,external-dns/owner=cluster4,external-dns/version=1,external-dns/"+GroupLabelKey+"=geo-eu,external-dns/target=eu-central-1,external-dns/geo-code=EU\""),
 
 				// Group 3 (geo-asia) with a single owner (cluster5) for the same shared-host.example.org
 				endpoint.NewEndpoint("txt.e4h6900f-cname-shared-host.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=cluster5,external-dns/version=1,external-dns/groupID=geo-asia,external-dns/target=ap-southeast-1,external-dns/geo-code=AS\""),
+					"\"heritage=external-dns,external-dns/owner=cluster5,external-dns/version=1,external-dns/"+GroupLabelKey+"=geo-asia,external-dns/target=ap-southeast-1,external-dns/geo-code=AS\""),
 
 				// An ungrouped owner (cluster6) for the same shared-host.example.org
 				endpoint.NewEndpoint("txt.f5i7011g-cname-shared-host.example.org", endpoint.RecordTypeTXT,
@@ -1923,7 +1922,7 @@ func TestTxtRecordsToRegistryMap(t *testing.T) {
 
 				// Different host to ensure proper separation
 				endpoint.NewEndpoint("txt.g6j8122h-cname-other-host.example.org", endpoint.RecordTypeTXT,
-					"\"heritage=external-dns,external-dns/owner=cluster7,external-dns/version=1,external-dns/groupID=geo-us\""),
+					"\"heritage=external-dns,external-dns/owner=cluster7,external-dns/version=1,external-dns/"+GroupLabelKey+"=geo-us\""),
 			},
 			validate: func(t *testing.T, result *RegistryMap) {
 				// Verify we have exactly 2 hosts

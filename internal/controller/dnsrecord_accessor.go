@@ -17,8 +17,6 @@ limitations under the License.
 package controller
 
 import (
-	"strings"
-
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
@@ -44,6 +42,7 @@ type DNSRecordAccessor interface {
 	SetStatusConditions(hadChanges bool)
 	SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string)
 	ClearStatusCondition(conditionType string)
+	GetStatusCondition(conditionType string) *metav1.Condition
 	SetStatusOwnerID(id string)
 	SetStatusZoneID(id string)
 	SetStatusZoneDomainName(domainName string)
@@ -79,14 +78,6 @@ func (s *DNSRecord) GetGroup() types.Group {
 	return s.GetStatus().Group
 }
 
-func (s *DNSRecord) getActiveGroups() types.Groups {
-	activeGroups := types.Groups{}
-	for _, group := range strings.Split(s.GetStatus().ActiveGroups, ",") {
-		activeGroups = append(activeGroups, types.Group(group))
-	}
-	return activeGroups
-}
-
 func (s *DNSRecord) GetZoneDomainName() string {
 	return s.GetStatus().ZoneDomainName
 }
@@ -107,10 +98,12 @@ func (s *DNSRecord) SetStatusConditions(_ bool) {
 	//We do nothing here at the moment!!
 }
 
+func (s *DNSRecord) GetStatusCondition(conditionType string) *metav1.Condition {
+	return meta.FindStatusCondition(s.GetStatus().Conditions, conditionType)
+}
+
 func (s *DNSRecord) ClearStatusCondition(conditionType string) {
-	conditions := s.GetStatus().Conditions
-	meta.RemoveStatusCondition(&conditions, conditionType)
-	s.GetStatus().Conditions = conditions
+	meta.RemoveStatusCondition(&s.GetStatus().Conditions, conditionType)
 }
 
 func (s *DNSRecord) SetStatusCondition(conditionType string, status metav1.ConditionStatus, reason, message string) {
@@ -204,6 +197,10 @@ func (s *RemoteDNSRecord) GetStatus() *v1alpha1.DNSRecordStatus {
 
 func (s *RemoteDNSRecord) SetStatusConditions(_ bool) {
 	//We do nothing here at the moment!!
+}
+
+func (s *RemoteDNSRecord) GetStatusCondition(conditionType string) *metav1.Condition {
+	return meta.FindStatusCondition(s.Status.Conditions, conditionType)
 }
 
 func (s *RemoteDNSRecord) ClearStatusCondition(conditionType string) {

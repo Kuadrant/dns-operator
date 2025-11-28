@@ -36,6 +36,7 @@ type BaseDNSRecordReconciler struct {
 	ProviderFactory provider.Factory
 	DelegationRole  string
 	Group           types.Group
+	TXTResolver     TXTResolver
 }
 
 func (r *BaseDNSRecordReconciler) IsPrimary() bool {
@@ -134,9 +135,11 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 		return false, err
 	}
 
-	recordRegistry = registry.GroupRegistry{
-		Registry: recordRegistry,
-		Group:    r.Group,
+	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() {
+		recordRegistry = registry.GroupRegistry{
+			Registry: recordRegistry,
+			Group:    dnsRecord.GetGroup(),
+		}
 	}
 
 	policyID := "sync"
