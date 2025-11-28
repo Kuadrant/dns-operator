@@ -163,14 +163,6 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		return ctrl.Result{}, nil
 	}
 
-	// This needs to be called after the group is set/updated on the record (at least in memory)
-	dnsRecord = newGroupAdapter(dnsRecord, r.getActiveGroups(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord))
-
-	if !dnsRecord.IsActive() {
-		_, err := r.updateStatus(ctx, r.mgr.GetLocalManager().GetClient(), previous, dnsRecord, nil)
-		return reconcile.Result{RequeueAfter: InactiveGroupRequeueTime}, err
-	}
-
 	// Ensure a DNS Zone has been assigned to the record (ZoneID and ZoneDomainName are set in the status)
 	if !dnsRecord.HasDNSZoneAssigned() {
 		logger.Info(fmt.Sprintf("provider zone not assigned for root host %s, finding suitable zone", dnsRecord.GetRootHost()))
@@ -206,8 +198,22 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 	}
 
+	activeGroups := r.getActiveGroups(ctx, dnsRecord)
+
+	dnsRecord.SetStatusGroup(r.Group)
+	dnsRecord.SetStatusActiveGroups(activeGroups)
+
+	dnsRecord = newGroupAdapter(dnsRecord, activeGroups)
+
+	if !dnsRecord.IsActive() {
+		logger.V(1).Info("remote record is from an inactive group, exiting reconcile")
+		_, err := r.updateStatus(ctx, r.mgr.GetLocalManager().GetClient(), previous, dnsRecord, nil)
+		return reconcile.Result{RequeueAfter: InactiveGroupRequeueTime}, err
+	}
+
 	// Publish the record
-	_, err = r.publishRecord(ctx, dnsRecord, dnsProvider)
+	hadChanges := false
+	hadChanges, err = r.publishRecord(ctx, dnsRecord, dnsProvider)
 	if err != nil {
 		logger.Error(err, "Failed to publish record")
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
@@ -218,12 +224,14 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
 	dnsRecord.SetStatusObservedGeneration(dnsRecord.GetDNSRecord().GetGeneration())
 
-	err = r.unpublishInactiveGroups(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord, dnsProvider)
-	if err != nil {
-		logger.Error(err, "Failed to unpublish inactive groups")
-		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-			"ProviderError", fmt.Sprintf("The DNS provider failed to unpublish inactive groups: %v", provider.SanitizeError(err)))
-
+	// process unpublish of inactive groups once active cluster has no changes to publish
+	if !hadChanges {
+		err = r.unpublishInactiveGroups(ctx, dnsRecord, dnsProvider)
+		if err != nil {
+			logger.Error(err, "Failed to unpublish inactive groups")
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+				"ProviderError", fmt.Sprintf("The DNS provider failed to unpublish inactive groups: %v", provider.SanitizeError(err)))
+		}
 	}
 
 	return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)

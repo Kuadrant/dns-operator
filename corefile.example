@@ -1,0 +1,9 @@
+    kuadrant-active-groups.k.example.com {
+        debug
+        errors
+        log
+        rewrite stop {
+            name kuadrant-active-groups.k.example.com kuadrant-active-groups.pb.hcpapps.net
+        }
+        forward . /etc/resolv.conf
+    }

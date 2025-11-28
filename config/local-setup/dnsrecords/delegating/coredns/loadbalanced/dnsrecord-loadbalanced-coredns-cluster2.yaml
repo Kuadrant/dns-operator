@@ -3,14 +3,14 @@ kind: DNSRecord
 metadata:
   name: dnsrecord-loadbalanced-coredns-cluster2
 spec:
-  rootHost: loadbalanced.k.example.com
+  rootHost: pb.hcpapps.net
   endpoints:
-    - dnsName: loadbalanced.k.example.com
+    - dnsName: loadbalanced.pb.hcpapps.net
       recordTTL: 300
       recordType: CNAME
       targets:
-        - klb.loadbalanced.k.example.com
-    - dnsName: klb.loadbalanced.k.example.com
+        - klb.loadbalanced.pb.hcpapps.net
+    - dnsName: klb.loadbalanced.pb.hcpapps.net
       providerSpecific:
         - name: geo-code
           value: IE
@@ -18,8 +18,8 @@ spec:
       recordType: CNAME
       setIdentifier: IE
       targets:
-        - ie.klb.loadbalanced.k.example.com
-    - dnsName: klb.loadbalanced.k.example.com
+        - ie.klb.loadbalanced.pb.hcpapps.net
+    - dnsName: klb.loadbalanced.pb.hcpapps.net
       providerSpecific:
         - name: geo-code
           value: '*'
@@ -27,17 +27,17 @@ spec:
       recordType: CNAME
       setIdentifier: default
       targets:
-        - ie.klb.loadbalanced.k.example.com
-    - dnsName: ie.klb.loadbalanced.k.example.com
+        - ie.klb.loadbalanced.pb.hcpapps.net
+    - dnsName: ie.klb.loadbalanced.pb.hcpapps.net
       providerSpecific:
         - name: weight
-          value: "100"
+          value: "200"
       recordTTL: 60
       recordType: CNAME
-      setIdentifier: cluster2-gw1-ns1.klb.loadbalanced.k.example.com
+      setIdentifier: cluster2-gw1-ns1.klb.loadbalanced.pb.hcpapps.net
       targets:
-        - cluster2-gw1-ns1.klb.loadbalanced.k.example.com
-    - dnsName: cluster2-gw1-ns1.klb.loadbalanced.k.example.com
+        - cluster2-gw1-ns1.klb.loadbalanced.pb.hcpapps.net
+    - dnsName: cluster2-gw1-ns1.klb.loadbalanced.pb.hcpapps.net
       recordTTL: 60
       recordType: A
       targets:

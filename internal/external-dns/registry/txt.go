@@ -377,10 +377,6 @@ func (im *TXTRegistry) generateTXTRecord(r *endpoint.Endpoint) []*endpoint.Endpo
 // ApplyChanges updates dns provider with the changes
 // for each created/deleted record it will also take into account TXT records for creation/deletion
 func (im *TXTRegistry) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
-	logger, err := logr.FromContext(ctx)
-	if err != nil {
-		return err
-	}
 	filteredChanges := &plan.Changes{
 		Create: changes.Create,
 		//ToDo Ideally we would still be able to ensure ownership on update
@@ -425,7 +421,6 @@ func (im *TXTRegistry) ApplyChanges(ctx context.Context, changes *plan.Changes) 
 	for _, updateOldRecord := range filteredChanges.UpdateOld {
 		for _, updateNewRecord := range filteredChanges.UpdateNew {
 			if updateOldRecord.Key() == updateNewRecord.Key() {
-				logger.Info("updating registry", "host", updateOldRecord.DNSName, "old labels", updateOldRecord.Labels, "new labels", updateNewRecord.Labels)
 				// There are 3 reasons for an update:
 				// Adding owner - we need to create a new TXT record
 				// Removing owner - we need to delete TXT record

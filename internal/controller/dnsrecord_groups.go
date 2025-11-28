@@ -5,7 +5,6 @@ import (
 	"errors"
 	"maps"
 	"net"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -17,9 +16,7 @@ import (
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/types"
 
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/external-dns/endpoint"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
@@ -29,6 +26,18 @@ import (
 const (
 	InactiveGroupRequeueTime = time.Second * 15
 )
+
+// TXTResolver is an interface for resolving TXT DNS records
+type TXTResolver interface {
+	LookupTXT(host string) ([]string, error)
+}
+
+// DefaultTXTResolver is the default implementation that uses net.LookupTXT
+type DefaultTXTResolver struct{}
+
+func (d *DefaultTXTResolver) LookupTXT(host string) ([]string, error) {
+	return net.LookupTXT(host)
+}
 
 type GroupAdapter struct {
 	DNSRecordAccessor
@@ -45,20 +54,16 @@ func newGroupAdapter(accessor DNSRecordAccessor, activeGroups types.Groups) *Gro
 }
 
 func (s *GroupAdapter) IsActive() bool {
-	return len(s.activeGroups) == 0 || s.activeGroups.HasGroup(s.GetGroup())
-}
-
-func (s *GroupAdapter) GetEndpoints() []*endpoint.Endpoint {
-	if s.IsActive() {
-		return s.DNSRecordAccessor.GetEndpoints()
-	}
-	return []*endpoint.Endpoint{}
+	//no active groups specified or
+	return len(s.activeGroups) == 0 ||
+		//this controllers group is active or
+		s.activeGroups.HasGroup(s.GetGroup()) ||
+		//this controller is ungrouped
+		s.GetGroup() == ""
 }
 
 func (s *GroupAdapter) SetStatusConditions(hadChanges bool) {
 	s.DNSRecordAccessor.SetStatusConditions(hadChanges)
-
-	s.SetStatusActiveGroups(s.activeGroups)
 
 	if s.GetGroup() != "" {
 		if !s.IsActive() {
@@ -74,87 +79,50 @@ func (s *GroupAdapter) SetStatusConditions(hadChanges bool) {
 }
 
 // Adding some group related functionality to the base reconciler below
-func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, k8sClient client.Client, dnsRecord DNSRecordAccessor) types.Groups {
+func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, dnsRecord DNSRecordAccessor) types.Groups {
 	logger := log.FromContext(ctx).WithName("active-groups")
 	activeGroups := types.Groups{}
-	values := []string{}
-	nss := []string{}
 	activeGroupsHost := activeGroupsTXTRecordName + "." + dnsRecord.GetZoneDomainName()
 
-	// Look for custom NAMESERVERS value in provider secret
-	secret := &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      dnsRecord.GetProviderRef().Name,
-			Namespace: dnsRecord.GetNamespace(),
-		},
+	values, err := r.TXTResolver.LookupTXT(activeGroupsHost)
+	if err != nil {
+		logger.Error(err, "error looking up active groups")
+		return activeGroups
 	}
-	if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(secret), secret); err == nil {
-		if string(secret.Data["NAMESERVERS"]) != "" {
-			nss := strings.Split(strings.TrimSpace(string(secret.Data["NAMESERVERS"])), ",")
-			logger.V(1).Info("got custom nameservers", "nameservers", nss)
-		}
-	}
-	for _, ns := range nss {
-		// bad NS passed in? Skip it
-		if parsed, err := url.Parse(ns); err != nil || ns != parsed.Host {
-			logger.Info("bad nameserver supplied", "nameserver", ns)
-			continue
-		} else if parsed.Port() == "" {
-			// valid host, but no port specified: add default port
-			logger.V(1).Info("nameserver specified with no port, adding default ':53'", "nameserver", ns)
-			ns = ns + ":53"
-		}
-
-		resolver := &net.Resolver{
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{
-					Timeout: time.Millisecond * time.Duration(10000),
-				}
-				return d.DialContext(ctx, network, ns)
-			},
-		}
-		values, _ = resolver.LookupTXT(ctx, activeGroupsHost)
-
-		// found an answer
-		if len(values) != 0 {
-			logger.Info("got active groups TXT record", "nameserver", ns, "values", values)
-			break
-		}
-
-		logger.Info("custom nameserver could not answer active groups request", "nameserver", ns)
-	}
-
-	// either no custom nameservers defined or none had an answer, so try the internet
-	if len(values) == 0 {
-		values, _ = net.LookupTXT(activeGroupsHost)
-		logger.Info("internet resolution attempted", "values", values)
-	}
-
 	// found an answer, format it and return
 	if len(values) > 0 {
 		activeGroupsStr := strings.Join(values, "")
-		activeGroupsStr = strings.ReplaceAll(activeGroupsStr, `\`, ``)
-		activeGroupsStr = strings.ReplaceAll(activeGroupsStr, `"`, ``)
-		for _, g := range strings.Split(activeGroupsStr, ";") {
-			group := types.Group(g)
-			if len(g) > 0 && !activeGroups.HasGroup(group) {
-				activeGroups = append(activeGroups, group)
+		pairs := strings.Split(activeGroupsStr, ";")
+		for _, pairStr := range pairs {
+			sections := strings.Split(pairStr, "=")
+			if sections[0] == "groups" {
+				for g := range strings.SplitSeq(sections[1], "&&") {
+					group := types.Group(g)
+					if len(g) > 0 && !activeGroups.HasGroup(group) {
+						activeGroups = append(activeGroups, group)
+					}
+				}
 			}
-		}
 
-		logger.Info("got active groups", "active groups", activeGroups)
-		return activeGroups
+		}
 	}
 
+	logger.V(1).Info("got active groups", "groups", activeGroups)
 	// no answers, return empty
-	logger.Info("No DNS resolution for active groups record", "hostname", activeGroupsHost)
 	return activeGroups
 }
 
 // unpublishInactiveGroups: handle unpublishing inactive groups records from the zone
-func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, k8sClient client.Client, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) error {
-	logger := log.FromContext(ctx).WithName("active-groups")
+func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) error {
+	logger := log.FromContext(ctx).WithName("active-groups").WithName("unpublish")
 	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
+
+	activeGroups := r.getActiveGroups(ctx, dnsRecord)
+
+	// only process unpublish when there are active groups and we are reconciling a record from an active group
+	if len(activeGroups) == 0 || dnsRecord.GetGroup() == "" || !dnsRecord.IsActive() {
+		return nil
+	}
 
 	if prematurely, _ := recordReceivedPrematurely(dnsRecord); prematurely {
 		logger.V(1).Info("Skipping DNSRecord - is still valid")
@@ -166,14 +134,6 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, k
 	if err != nil {
 		return err
 	}
-
-	activeGroups := r.getActiveGroups(ctx, k8sClient, dnsRecord)
-
-	// only publish from controllers in active groups or ungrouped to avoid empty zones
-	if len(activeGroups) == 0 || !activeGroups.HasGroup(r.Group) {
-		return nil
-	}
-
 	registryMap := externaldnsregistry.TxtRecordsToRegistryMap(allZoneEndpoints, txtRegistryPrefix, txtRegistrySuffix, txtRegistryWildcardReplacement, []byte(txtRegistryEncryptAESKey))
 	changes := &plan.Changes{}
 
@@ -183,13 +143,12 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, k
 		if !slice.ContainsString(managedDNSRecordTypes, e.RecordType) {
 			continue
 		}
+
 		//no registry entries for this host at all, skip it
 		if registryHost, ok := registryMap.Hosts[e.DNSName]; !ok {
-			logger.V(1).Info("no registry entries exist for host, skipping", "host", e.DNSName)
 			continue
 		} else {
 			if !registryHost.HasAnyGroup(activeGroups) && len(registryHost.UngroupedOwners) == 0 {
-				logger.V(1).Info("host is only owned by inactive groups, queued for deletion", "host", e.DNSName)
 				// This host doesn't have owners in active groups nor any ungrouped owners, delete it
 				changes.Delete = append(changes.Delete, e)
 				continue
@@ -208,7 +167,6 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, k
 
 			if len(newTargets) > 0 {
 				if !slices.Equal(newTargets, e.Targets) {
-					logger.V(1).Info("host is owned by active (or ungrouped) and inactive groups, modifying targets", "host", e.DNSName, "old targets", e.Targets, "new targets", activeTargets)
 					// some targets were only owned from inactive groups, modify the endpoint
 					changes.UpdateOld = append(changes.UpdateOld, e.DeepCopy())
 					e.Targets = newTargets
@@ -216,7 +174,6 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, k
 				}
 			} else {
 				// no targets left for this host, delete it
-				logger.V(1).Info("host has no targets left, deleting", "host", e.DNSName, "old targets", e.Targets, "new targets", activeTargets)
 				changes.Delete = append(changes.Delete, e)
 			}
 		}
@@ -252,10 +209,8 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, k
 		}
 		// no group, or active group, do not delete
 		if v, ok := labels[externaldnsregistry.GroupLabelKey]; !ok || activeGroups.HasGroup(types.Group(v)) {
-			logger.V(1).Info("registry is for active group", "host", e.DNSName, "group", labels[externaldnsregistry.GroupLabelKey], "active groups", activeGroups)
 			continue
 		}
-		logger.V(1).Info("deleting registry for inactive group", "host", e.DNSName, "group", labels[externaldnsregistry.GroupLabelKey], "active groups", activeGroups)
 		changes.Delete = append(changes.Delete, e)
 	}
 
