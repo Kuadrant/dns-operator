@@ -5,30 +5,23 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes/scheme"
-	controllerruntime "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 
-	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/cmd/plugin/common"
 	"github.com/kuadrant/dns-operator/internal/common/slice"
 	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	_ "github.com/kuadrant/dns-operator/internal/provider/aws"
 	_ "github.com/kuadrant/dns-operator/internal/provider/azure"
 	_ "github.com/kuadrant/dns-operator/internal/provider/coredns"
-	"github.com/kuadrant/dns-operator/internal/provider/endpoint"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 )
 
@@ -61,68 +54,36 @@ func init() {
 func deleteOldTXT(_ *cobra.Command, args []string) error {
 	log = logf.Log.WithName("prune-legacy-txt")
 
+	if cleanupOldTXTCMDFlags.domain == "" {
+		return fmt.Errorf("domain is required")
+	}
+
+	// create regexp to filter zones
+	// example.com will become ^example.com$ for an exact match
+	// *.example.com will become ^.*example.com$ to search using wildcard domain
+	domainRegexp, err := regexp.Compile(fmt.Sprintf("^%s$", strings.Replace(cleanupOldTXTCMDFlags.domain, "*.", ".*", 1)))
+	if err != nil {
+		return err
+	}
+
 	d := time.Now().Add(time.Minute * 5)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
 	defer cancel()
 
-	// setup client
-	runtime.Must(v1alpha1.AddToScheme(scheme.Scheme))
-
-	config := controllerruntime.GetConfigOrDie()
-	k8sClient, err := client.New(config, client.Options{Scheme: scheme.Scheme})
-	if err != nil {
-		log.Error(err, "failed to create client")
-		return err
+	var secretName string
+	if len(args) == 1 {
+		secretName = args[0]
 	}
 
-	secretList := &v1.SecretList{}
-	secret := &v1.Secret{}
-
-	// looking for a default secret
-	log.Info("obtaining provider secret")
-	if len(args) == 0 {
-		log.V(1).Info("looking for a default provider secret", "secretNamespace", cleanupOldTXTCMDFlags.ns)
-		err = k8sClient.List(ctx, secretList, &client.ListOptions{
-			LabelSelector: labels.SelectorFromSet(map[string]string{
-				v1alpha1.DefaultProviderSecretLabel: "true",
-			}),
-			Namespace: cleanupOldTXTCMDFlags.ns,
-		})
-		if err != nil {
-			log.Error(err, "failed to list secrets")
-			return err
-		}
-
-		if len(secretList.Items) != 1 {
-			log.Info(fmt.Sprintf("unexpected number of secrets: %d; expected 1 default secret\n", len(secretList.Items)))
-			return nil
-		}
-		secret = &secretList.Items[0]
-
-	} else {
-		log.V(1).Info("looking for a specific provider secret", "secretName", args[0], "secretNamespace", cleanupOldTXTCMDFlags.ns)
-		err = k8sClient.Get(ctx, client.ObjectKey{Name: args[0], Namespace: cleanupOldTXTCMDFlags.ns}, secret)
-		if err != nil {
-			log.Error(err, "failed to get secret")
-			return err
-		}
-	}
-	// factory to get a list of all endpoints
-	dynClient, err := dynamic.NewForConfig(config)
-	if err != nil {
-		log.Error(err, "failed to create dynamic client")
-		return err
+	secretRef := &common.ResourceRef{
+		Namespace: cleanupOldTXTCMDFlags.ns,
+		Name:      secretName,
 	}
 
-	providerFactory, err := provider.NewFactory(k8sClient, dynClient, provider.RegisteredDefaultProviders(), endpoint.NewAuthoritativeDNSRecordProvider)
-	if err != nil {
-		log.Error(err, "failed to create provider factory")
-		return err
-	}
-
-	// empty config to list all records
 	log.Info("obtaining list of endpoints from the provider")
-	endpointProvider, err := providerFactory.ProviderForSecret(ctx, secret, provider.Config{})
+	endpointProvider, err := common.GetProviderForConfig(ctx, secretRef, provider.Config{
+		DomainFilter: externaldns.NewRegexDomainFilter(domainRegexp, nil),
+	})
 	if err != nil {
 		log.Error(err, "failed to get provider")
 		return err
