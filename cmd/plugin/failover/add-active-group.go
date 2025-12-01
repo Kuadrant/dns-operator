@@ -3,7 +3,6 @@ package failover
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -43,14 +42,8 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("groupName is required")
 	}
 
-	if domain == "" {
-		return fmt.Errorf("domain is required")
-	}
-
 	// create regexp to filter zones
-	// example.com will become ^example.com$ for an exact match
-	// *.example.com will become ^.*example.com$ to search using wildcard domain
-	domainRegexp, err := regexp.Compile(fmt.Sprintf("^%s$", strings.Replace(domain, "*.", ".*", 1)))
+	domainRegexp, err := GetDomainRegexp(domain)
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -110,4 +111,19 @@ func GetActiveGroupsFromTarget(target string) ([]string, bool) {
 	activeGroups = strings.Split(groups, GroupSeparator)
 
 	return activeGroups, true
+}
+
+// GetDomainRegexp creates regexp to filter zones
+// example.com will become ^example.com$ for an exact match
+// *.example.com will become ^.*example.com$ to search using wildcard domain
+func GetDomainRegexp(domain string) (*regexp.Regexp, error) {
+	if domain == "" {
+		return nil, fmt.Errorf("domain is required")
+	}
+
+	domainRegexp, err := regexp.Compile(fmt.Sprintf("^%s$", strings.Replace(domain, "*.", ".*", 1)))
+	if err != nil {
+		return nil, err
+	}
+	return domainRegexp, nil
 }

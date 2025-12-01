@@ -31,14 +31,17 @@ func init() {
 func getActiveGroups(_ *cobra.Command, _ []string) error {
 	log := logf.Log.WithName("get-active-groups")
 
-	var err error
+	// create regexp to filter zones
+	domainRegexp, err := GetDomainRegexp(domain)
+	if err != nil {
+		return err
+	}
+
 	resourceRef, err = common.ParseProviderRef(providerRef)
 	if err != nil {
 		log.Error(err, "failed to parse provider ref")
 		return err
 	}
-	fmt.Println("test creds")
-	fmt.Println(resourceRef.Name + "/" + resourceRef.Namespace)
 
 	// get provider secret
 	d := time.Now().Add(time.Minute * 5)
@@ -47,9 +50,7 @@ func getActiveGroups(_ *cobra.Command, _ []string) error {
 
 	// get all the zones
 	endpointProvider, err := common.GetProviderForConfig(ctx, resourceRef, provider.Config{
-		DomainFilter: externaldnsendpoint.DomainFilter{
-			Filters: []string{domain},
-		},
+		DomainFilter: externaldnsendpoint.NewRegexDomainFilter(domainRegexp, nil),
 	})
 	if err != nil {
 		log.Error(err, "failed to create provider for secret")
