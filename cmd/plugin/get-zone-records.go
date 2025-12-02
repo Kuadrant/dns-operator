@@ -170,8 +170,16 @@ func dnsRecordWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Cl
 		return err
 	}
 
+	// the zone filter should be zone.com
+	// root host of dns record is always record.zone.com - we need to cut it up a bit
+	_, zoneHost, found := strings.Cut(dnsRecord.GetRootHost(), ".")
+	if !found {
+		err = errors.New("invalid dns record hostname: " + dnsRecord.GetRootHost())
+		log.Error(err, "failed to prepare zone filter regexp")
+	}
+
 	p, err := providerFactory.ProviderFor(ctx, dnsRecord, provider.Config{
-		DomainFilter: externaldns.NewDomainFilter([]string{dnsRecord.GetRootHost()}),
+		DomainFilter: externaldns.NewDomainFilter([]string{zoneHost}),
 	})
 	if err != nil {
 		log.Error(err, "unable to get configure provider")
