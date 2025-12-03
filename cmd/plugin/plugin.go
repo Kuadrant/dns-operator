@@ -45,7 +45,7 @@ func init() {
 	rootCMD.PersistentFlags().BoolVarP(&verbose, "verbose", "v", true, "verbose output")
 
 	rootCMD.AddCommand(versionCMD, cleanupOldTXTCMD, getZoneRecordsCMD, addClusterSecretCMD, removeOwnerCMD)
-	rootCMD.AddCommand(failover.AddActiveGroupCMD, failover.GetActiveGroupsCMD)
+	rootCMD.AddCommand(failover.AddActiveGroupCMD, failover.GetActiveGroupsCMD, failover.RemoveActiveGroupCMD)
 }
 
 func main() {

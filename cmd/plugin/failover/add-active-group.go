@@ -148,7 +148,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 			changes.Create = append(changes.Create, GenerateGroupTXTRecord(zone.DNSName, groupName))
 		} else {
 			changes.UpdateOld = append(changes.UpdateOld, groupTXTRecord.DeepCopy())
-			changes.UpdateNew = append(changes.UpdateNew, EnsureGroupTXTRecord(groupName, groupTXTRecord))
+			changes.UpdateNew = append(changes.UpdateNew, EnsureGroupIsActive(groupName, groupTXTRecord))
 		}
 
 		// apply changes via provider bypassing registry - we don't want ownership TXT records for this
