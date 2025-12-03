@@ -1,7 +1,10 @@
+//go:build unit
+
 package failover
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -137,6 +140,52 @@ func TestEnsureGroupTXTRecord(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := EnsureGroupTXTRecord(tt.groupName, tt.existingRecord); !txtRecordsAreEqual(got, tt.wantRecord) {
 				t.Errorf("EnsureGroupTXTRecord() = %v, want %v", got, tt.wantRecord)
+			}
+		})
+	}
+}
+
+func TestGetActiveGroupsFromTarget(t *testing.T) {
+
+	tests := []struct {
+		name             string
+		target           string
+		want             []string
+		isCurrentVersion bool
+	}{
+		{
+			name:             "gets a single group",
+			target:           fmt.Sprintf("\"version=%s%s%s=group1\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
+			want:             []string{"group1"},
+			isCurrentVersion: true,
+		},
+		{
+			name:             "gets multiple groups",
+			target:           fmt.Sprintf("\"version=%s%s%s=group1%sgroup2%sgroup3\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator, GroupSeparator),
+			want:             []string{"group1", "group2", "group3"},
+			isCurrentVersion: true,
+		},
+		{
+			name:             "gets no groups",
+			target:           fmt.Sprintf("\"version=%s\"", TXTRecordVersion),
+			want:             []string{},
+			isCurrentVersion: true,
+		},
+		{
+			name:             "reports old version",
+			target:           fmt.Sprintf("\"version=%s%s%s=group1\"", "oldVersion", TXTRecordKeysSeparator, TXTRecordGroupKey),
+			want:             []string{},
+			isCurrentVersion: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			activeGroups, isCurrentVersion := GetActiveGroupsFromTarget(tt.target)
+			if !reflect.DeepEqual(activeGroups, tt.want) {
+				t.Errorf("GetActiveGroupsFromTarget() activeGroups = %v, want %v", activeGroups, tt.want)
+			}
+			if isCurrentVersion != tt.isCurrentVersion {
+				t.Errorf("GetActiveGroupsFromTarget() isCurrentVersion = %v, want %v", isCurrentVersion, tt.isCurrentVersion)
 			}
 		})
 	}
