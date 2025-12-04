@@ -388,10 +388,10 @@ func overrideControllerFlags() {
 			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", groupKey.Flag(), v))
 		case logModeKey.Envar():
 			logMode = v
-			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", groupKey.Flag(), v))
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", logModeKey.Flag(), v))
 		case logLevelKey.Envar():
 			logLevel = v
-			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", groupKey.Flag(), v))
+			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", logLevelKey.Flag(), v))
 		}
 	}
 }
