@@ -1,12 +1,17 @@
 package common
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 
 	externaldns "sigs.k8s.io/external-dns/endpoint"
+)
+
+var (
+	Verbose bool
 )
 
 func RenderEndpoints(endpoints []*externaldns.Endpoint) {
@@ -33,4 +38,14 @@ func RenderEndpoints(endpoints []*externaldns.Endpoint) {
 		t.AppendSeparator()
 	}
 	t.Render()
+}
+
+func PrintOutput(text string, debugLevelMessage bool) {
+	if Verbose || !debugLevelMessage {
+		fmt.Println(text)
+	}
+}
+
+func PrintError(err error, wrap string) {
+	fmt.Printf("%s: %s\n", wrap, err)
 }

@@ -23,7 +23,7 @@ const (
 	TXTRecordKeysSeparator = ";"
 	TXTRecordGroupKey      = "groups"
 
-	GroupRecordTTL = 60
+	GroupRecordTTL = 15
 )
 
 var (

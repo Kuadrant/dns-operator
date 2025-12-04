@@ -128,9 +128,9 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	var excludeDNSRecordTypes []string
 
 	var registry externaldnsregistry.Registry
-	registry, err := dnsopexternaldnsregistry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
-		dnsRecord.GetOwnerID(), txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
-		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
+	registry, err := dnsopexternaldnsregistry.NewTXTRegistry(ctx, dnsProvider, TXTRegistryPrefix, TXTRegistrySuffix,
+		dnsRecord.GetOwnerID(), txtRegistryCacheInterval, TXTRegistryWildcardReplacement, managedDNSRecordTypes,
+		excludeDNSRecordTypes, TXTRegistryEncryptEnabled, []byte(TXTRegistryEncryptAESKey))
 	if err != nil {
 		return false, err
 	}

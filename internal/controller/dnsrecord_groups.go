@@ -9,18 +9,18 @@ import (
 	"strings"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/external-dns/endpoint"
+	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/plan"
+
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/slice"
 	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/types"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/external-dns/endpoint"
-	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
-	"sigs.k8s.io/external-dns/plan"
 )
 
 const (
@@ -134,7 +134,7 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, d
 	if err != nil {
 		return err
 	}
-	registryMap := externaldnsregistry.TxtRecordsToRegistryMap(allZoneEndpoints, txtRegistryPrefix, txtRegistrySuffix, txtRegistryWildcardReplacement, []byte(txtRegistryEncryptAESKey))
+	registryMap := externaldnsregistry.TxtRecordsToRegistryMap(allZoneEndpoints, TXTRegistryPrefix, TXTRegistrySuffix, TXTRegistryWildcardReplacement, []byte(TXTRegistryEncryptAESKey))
 	changes := &plan.Changes{}
 
 	// work out required changes to clean out inactive groups managed DNS Records (not including TXT records)
@@ -201,7 +201,7 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, d
 		labels := make(map[string]string)
 		for _, target := range e.Targets {
 			var labelsFromTarget endpoint.Labels
-			_, _, labelsFromTarget, err = registry.NewLabelsFromString(target, []byte(txtRegistryEncryptAESKey))
+			_, _, labelsFromTarget, err = registry.NewLabelsFromString(target, []byte(TXTRegistryEncryptAESKey))
 			if errors.Is(err, endpoint.ErrInvalidHeritage) {
 				continue
 			}

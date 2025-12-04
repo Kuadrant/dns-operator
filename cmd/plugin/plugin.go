@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -10,6 +9,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	"github.com/kuadrant/dns-operator/cmd/plugin/common"
 	"github.com/kuadrant/dns-operator/cmd/plugin/failover"
 )
 
@@ -25,8 +25,8 @@ var rootCMD = &cobra.Command{
 	Short: "DNS Operator command line utility",
 	Long:  "DNS Operator command line utility",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		common.Verbose = verbose
 		logf.SetLogger(zap.New(zap.UseDevMode(verbose), zap.WriteTo(os.Stdout)))
-		cmd.SetContext(context.Background())
 	},
 }
 
@@ -42,7 +42,7 @@ var versionCMD = &cobra.Command{
 
 func init() {
 	rootCMD.SetArgs(os.Args[1:])
-	rootCMD.PersistentFlags().BoolVarP(&verbose, "verbose", "v", true, "verbose output")
+	rootCMD.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 
 	rootCMD.AddCommand(versionCMD, cleanupOldTXTCMD, getZoneRecordsCMD, addClusterSecretCMD, removeOwnerCMD)
 	rootCMD.AddCommand(failover.AddActiveGroupCMD, failover.GetActiveGroupsCMD, failover.RemoveActiveGroupCMD)

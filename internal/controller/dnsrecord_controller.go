@@ -51,11 +51,11 @@ const (
 
 	validationRequeueVariance = 0.5
 
-	txtRegistryPrefix              = "kuadrant-"
-	txtRegistrySuffix              = ""
-	txtRegistryWildcardReplacement = "wildcard"
-	txtRegistryEncryptEnabled      = false
-	txtRegistryEncryptAESKey       = ""
+	TXTRegistryPrefix              = "kuadrant-"
+	TXTRegistrySuffix              = ""
+	TXTRegistryWildcardReplacement = "wildcard"
+	TXTRegistryEncryptEnabled      = false
+	TXTRegistryEncryptAESKey       = ""
 	txtRegistryCacheInterval       = time.Duration(0)
 )
 

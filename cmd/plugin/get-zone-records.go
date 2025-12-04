@@ -105,6 +105,7 @@ func listZoneRecords(_ *cobra.Command, _ []string) error {
 
 	d := time.Now().Add(time.Minute * 5)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
+	ctx = logf.IntoContext(ctx, log)
 	defer cancel()
 
 	log.V(1).Info("Getting zone records", "name", name, "namespace", namespace, "resourceType", resourceType, "providerRef", providerRef)
