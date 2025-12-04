@@ -176,6 +176,7 @@ func dnsRecordWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Cl
 	if !found {
 		err = errors.New("invalid dns record hostname: " + dnsRecord.GetRootHost())
 		log.Error(err, "failed to prepare zone filter regexp")
+		return err
 	}
 
 	p, err := providerFactory.ProviderFor(ctx, dnsRecord, provider.Config{
