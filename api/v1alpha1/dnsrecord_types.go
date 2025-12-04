@@ -27,6 +27,7 @@ import (
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/internal/common/hash"
+	"github.com/kuadrant/dns-operator/types"
 )
 
 type Protocol string
@@ -176,6 +177,12 @@ type DNSRecordStatus struct {
 	// A CRD can't reference a type within itself so the `apiextensionsv1.JSON` type is used.
 	// Use GetRemoteRecordStatuses to get the converted type.
 	RemoteRecordStatuses map[string]apiextensionsv1.JSON `json:"remoteRecordStatuses,omitempty"`
+
+	// Group displays the group which the dns-operator belongs to, if set.
+	Group types.Group `json:"group,omitempty"`
+
+	// ActiveGroups displays the last read list of active groups
+	ActiveGroups string `json:"activeGroups,omitempty"`
 }
 
 // GetRemoteRecordStatuses returns any remote record statuses in the current status.
@@ -334,6 +341,10 @@ func (s *DNSRecord) HasProviderSecretAssigned() bool {
 
 func (s *DNSRecord) IsDeleting() bool {
 	return s.DeletionTimestamp != nil && !s.DeletionTimestamp.IsZero()
+}
+
+func (s *DNSRecord) IsActive() bool {
+	return true
 }
 
 // ProviderAccessor impl

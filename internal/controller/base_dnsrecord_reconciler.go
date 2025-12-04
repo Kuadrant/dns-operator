@@ -18,18 +18,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
+	externaldnsregistry "sigs.k8s.io/external-dns/registry"
 
 	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
-	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
+	dnsopexternaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/types"
+)
+
+const (
+	activeGroupsTXTRecordName = "kuadrant-active-groups"
+	inactiveGroupRequeueTime  = time.Second * 15
 )
 
 type BaseDNSRecordReconciler struct {
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
 	DelegationRole  string
-	Group           *types.Group
+	Group           types.Group
+	TXTResolver     TXTResolver
 }
 
 func (r *BaseDNSRecordReconciler) IsPrimary() bool {
@@ -46,6 +53,7 @@ func (r *BaseDNSRecordReconciler) setLogger(ctx context.Context, logger logr.Log
 	logger = logger.
 		WithValues("rootHost", dnsRecord.GetRootHost()).
 		WithValues("ownerID", dnsRecord.GetOwnerID()).
+		WithValues("group", dnsRecord.GetGroup()).
 		WithValues("zoneID", dnsRecord.GetZoneID()).
 		WithValues("zoneDomainName", dnsRecord.GetZoneDomainName()).
 		WithValues("delegationRole", r.DelegationRole)
@@ -119,11 +127,19 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
 	var excludeDNSRecordTypes []string
 
-	registry, err := externaldnsregistry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
-		dnsRecord.GetOwnerID(), txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
-		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
+	var registry externaldnsregistry.Registry
+	registry, err := dnsopexternaldnsregistry.NewTXTRegistry(ctx, dnsProvider, TXTRegistryPrefix, TXTRegistrySuffix,
+		dnsRecord.GetOwnerID(), txtRegistryCacheInterval, TXTRegistryWildcardReplacement, managedDNSRecordTypes,
+		excludeDNSRecordTypes, TXTRegistryEncryptEnabled, []byte(TXTRegistryEncryptAESKey))
 	if err != nil {
 		return false, err
+	}
+
+	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() {
+		registry = dnsopexternaldnsregistry.GroupRegistry{
+			Registry: registry,
+			Group:    dnsRecord.GetGroup(),
+		}
 	}
 
 	policyID := "sync"

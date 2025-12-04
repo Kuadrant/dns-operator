@@ -29,7 +29,7 @@ func init() {
 }
 
 func getActiveGroups(_ *cobra.Command, _ []string) error {
-	log := logf.Log.WithName("get-active-groups")
+	log := logf.Log.WithName("get-active-groups").WithSink(logf.NullLogSink{})
 
 	// create regexp to filter zones
 	domainRegexp, err := GetDomainRegexp(domain)
@@ -39,13 +39,14 @@ func getActiveGroups(_ *cobra.Command, _ []string) error {
 
 	resourceRef, err = common.ParseProviderRef(providerRef)
 	if err != nil {
-		log.Error(err, "failed to parse provider ref")
+		common.PrintError(err, "failed to parse provider ref")
 		return err
 	}
 
 	// get provider secret
 	d := time.Now().Add(time.Minute * 5)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
+	ctx = logf.IntoContext(ctx, log)
 	defer cancel()
 
 	// get all the zones
@@ -53,18 +54,18 @@ func getActiveGroups(_ *cobra.Command, _ []string) error {
 		DomainFilter: externaldnsendpoint.NewRegexDomainFilter(domainRegexp, nil),
 	})
 	if err != nil {
-		log.Error(err, "failed to create provider for secret")
+		common.PrintError(err, "failed to create provider for secret")
 		return err
 	}
 
 	allZones, err := endpointProvider.DNSZones(ctx)
 	if err != nil {
-		log.Error(err, "failed to get DNS zones")
+		common.PrintError(err, "failed to get DNS zones")
 		return err
 	}
 
 	if len(allZones) == 0 {
-		log.Info(fmt.Sprintf("No DNS zones found for domain %s", domain))
+		common.PrintOutput(fmt.Sprintf("No DNS zones found for domain %s", domain), false)
 		return nil
 	}
 
@@ -87,13 +88,13 @@ func getActiveGroups(_ *cobra.Command, _ []string) error {
 			},
 		})
 		if err != nil {
-			log.Error(err, fmt.Sprintf("failed to create provider for zone %s (ID: %s)", zone.DNSName, zone.ID))
+			common.PrintError(err, fmt.Sprintf("failed to create provider for zone %s (ID: %s)", zone.DNSName, zone.ID))
 			continue
 		}
 
 		endpoints, err := providerForZone.Records(ctx)
 		if err != nil {
-			log.Error(err, "failed tp get endpoints")
+			common.PrintError(err, "failed tp get endpoints")
 			continue
 		}
 
@@ -121,14 +122,14 @@ func getActiveGroups(_ *cobra.Command, _ []string) error {
 	}
 
 	if len(allActiveGroups) == 0 {
-		log.Info(fmt.Sprintf("No active groups found for domain %s", domain))
+		common.PrintOutput(fmt.Sprintf("No active groups found for domain %s", domain), false)
 		return nil
 	}
 
 	for zone, groups := range allActiveGroups {
-		log.Info(fmt.Sprintf("Zone %s (ID %s):", zone.name, zone.id))
+		common.PrintOutput(fmt.Sprintf("Zone %s (ID %s):", zone.name, zone.id), false)
 		for _, group := range groups {
-			log.Info(fmt.Sprintf("\t%s", group))
+			common.PrintOutput(fmt.Sprintf("\t%s", group), false)
 		}
 	}
 

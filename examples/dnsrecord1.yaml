@@ -1,0 +1,46 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dnsrecord-loadbalanced
+spec:
+  rootHost: ${KUADRANT_SUB_DOMAIN}
+  endpoints:
+    - dnsName: ${KUADRANT_SUB_DOMAIN}
+      recordTTL: 300
+      recordType: CNAME
+      targets:
+        - klb.${KUADRANT_SUB_DOMAIN}
+    - dnsName: klb.${KUADRANT_SUB_DOMAIN}
+      providerSpecific:
+        - name: geo-code
+          value: ${TEST_DNS_GEO_EU}
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: ${TEST_DNS_GEO_EU}
+      targets:
+        - ie.klb.${KUADRANT_SUB_DOMAIN}
+    - dnsName: klb.${KUADRANT_SUB_DOMAIN}
+      providerSpecific:
+        - name: geo-code
+          value: '*'
+      recordTTL: 300
+      recordType: CNAME
+      setIdentifier: default
+      targets:
+        - ie.klb.${KUADRANT_SUB_DOMAIN}
+    - dnsName: ie.klb.${KUADRANT_SUB_DOMAIN}
+      providerSpecific:
+        - name: weight
+          value: "200"
+      recordTTL: 60
+      recordType: CNAME
+      setIdentifier: cluster1-gw1-ns1.klb.${KUADRANT_SUB_DOMAIN}
+      targets:
+        - cluster1-gw1-ns1.klb.${KUADRANT_SUB_DOMAIN}
+    - dnsName: cluster1-gw1-ns1.klb.${KUADRANT_SUB_DOMAIN}
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 172.18.200.1
+  providerRef:
+    name: ${KUADRANT_DNS_PROVIDER_REF}

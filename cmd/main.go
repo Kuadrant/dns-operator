@@ -247,7 +247,8 @@ func main() {
 			Scheme:          mgr.GetScheme(),
 			ProviderFactory: providerFactory,
 			DelegationRole:  delegationRole,
-			Group:           &group,
+			Group:           group,
+			TXTResolver:     &controller.DefaultTXTResolver{},
 		},
 		Client: mgr.GetClient(),
 	}
@@ -263,7 +264,8 @@ func main() {
 				Scheme:          mgr.GetScheme(),
 				ProviderFactory: providerFactory,
 				DelegationRole:  delegationRole,
-				Group:           &group,
+				Group:           group,
+				TXTResolver:     &controller.DefaultTXTResolver{},
 			},
 		}
 

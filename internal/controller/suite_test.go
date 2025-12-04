@@ -99,6 +99,14 @@ var (
 	cancel context.CancelFunc
 )
 
+type MockTXTResolver struct {
+	response []string
+}
+
+func (m *MockTXTResolver) LookupTXT(host string) ([]string, error) {
+	return m.response, nil
+}
+
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -300,6 +308,7 @@ func setupEnv(delegationRole string, count int) (*envtest.Environment, ctrl.Mana
 			Scheme:          mgr.GetScheme(),
 			ProviderFactory: providerFactory,
 			DelegationRole:  delegationRole,
+			TXTResolver:     &MockTXTResolver{},
 		},
 	}
 
@@ -314,6 +323,7 @@ func setupEnv(delegationRole string, count int) (*envtest.Environment, ctrl.Mana
 				Scheme:          mgr.GetScheme(),
 				ProviderFactory: providerFactory,
 				DelegationRole:  delegationRole,
+				TXTResolver:     &MockTXTResolver{},
 			},
 		}
 

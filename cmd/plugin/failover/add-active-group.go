@@ -34,7 +34,7 @@ func init() {
 }
 
 func addActiveGroup(_ *cobra.Command, args []string) error {
-	log := logf.Log.WithName("add-active-group")
+	log := logf.Log.WithName("add-active-group").WithSink(logf.NullLogSink{})
 
 	groupName := args[0]
 
@@ -57,6 +57,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 	// setup context
 	d := time.Now().Add(time.Minute * 5)
 	ctx, cancel := context.WithDeadline(context.Background(), d)
+	ctx = logf.IntoContext(ctx, log)
 	defer cancel()
 
 	// get all the zones
@@ -64,35 +65,35 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 		DomainFilter: externaldnsendpoint.NewRegexDomainFilter(domainRegexp, nil),
 	})
 	if err != nil {
-		log.Error(err, "failed to create provider for secret")
+		common.PrintError(err, "failed to create provider for secret")
 		return err
 	}
 
 	// note down zones we want to work with
 	allZones, err := endpointProvider.DNSZones(ctx)
 	if err != nil {
-		log.Error(err, "failed to get DNS zones")
+		common.PrintError(err, "failed to get DNS zones")
 		return err
 	}
 
 	var selectedZones []provider.DNSZone
 
 	if len(allZones) == 0 {
-		log.Info(fmt.Sprintf("No DNS zones found for domain %s", domain))
-		log.V(1).Info(fmt.Sprintf("Regexp string: %s", domainRegexp.String()))
+		common.PrintOutput(fmt.Sprintf("No DNS zones found for domain %s", domain), false)
+		common.PrintOutput(fmt.Sprintf("Regexp string: %s", domainRegexp.String()), true)
 		return nil
 	} else if len(allZones) == 1 {
 		selectedZones = allZones
 	} else {
-		log.Info(fmt.Sprintf("Multiple DNS zones (%d) found for domain %s", len(allZones), domain))
+		common.PrintOutput(fmt.Sprintf("Multiple DNS zones (%d) found for domain %s", len(allZones), domain), false)
 		for _, zone := range allZones {
 			if !assumeYes {
-				log.Info(fmt.Sprintf("Add group to zone %s (ID: %s)? [Y/N]", zone.DNSName, zone.ID))
+				common.PrintOutput(fmt.Sprintf("Add group to zone %s (ID: %s)? [Y/N]", zone.DNSName, zone.ID), false)
 			}
 
 			if assumeYes || inputYes(log) {
 				if assumeYes {
-					log.V(1).Info(fmt.Sprintf("Selected zone %s (ID: %s)", domain, zone.ID))
+					common.PrintOutput(fmt.Sprintf("Selected zone %s (ID: %s)", domain, zone.ID), true)
 				}
 				selectedZones = append(selectedZones, zone)
 			}
@@ -111,13 +112,13 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 			},
 		})
 		if err != nil {
-			log.Error(err, fmt.Sprintf("failed to create provider for zone %s (ID: %s)", zone.DNSName, zone.ID))
+			common.PrintError(err, fmt.Sprintf("failed to create provider for zone %s (ID: %s)", zone.DNSName, zone.ID))
 			continue
 		}
 
 		endpoints, err = providerForZone.Records(ctx)
 		if err != nil {
-			log.Error(err, "failed tp get endpoints")
+			common.PrintError(err, "failed tp get endpoints")
 			continue
 		}
 
@@ -132,14 +133,14 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 			}
 		}
 		if groupTXTRecord != nil && strings.Contains(groupTXTRecord.Targets[0], groupName) {
-			log.Info("Found existing TXT record for domain that already contains group name.", "zone DNS Name", zone.DNSName, "record", groupName)
-			log.Info("Nothing to do")
-			log.V(1).Info(fmt.Sprintf("existing record name: %s, targets: %s", groupRecordName, groupTXTRecord.Targets))
+			common.PrintOutput(fmt.Sprintf("Found existing TXT record for domain that already contains group name. Zone DNS Name: %s. Record: %s", zone.DNSName, groupName), false)
+			common.PrintOutput("Nothing to do", false)
+			common.PrintOutput(fmt.Sprintf("existing record name: %s, targets: %s", groupRecordName, groupTXTRecord.Targets), true)
 			continue
 
 		}
 
-		log.Info(fmt.Sprintf("Setting group %s as active group", groupName))
+		common.PrintOutput(fmt.Sprintf("Setting group %s as active group", groupName), false)
 
 		// write txt record
 		changes := &plan.Changes{}
@@ -154,11 +155,11 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 		// apply changes via provider bypassing registry - we don't want ownership TXT records for this
 		err = providerForZone.ApplyChanges(ctx, changes)
 		if err != nil {
-			log.Error(err, "failed to apply changes")
+			common.PrintError(err, "failed to apply changes")
 			continue
 		}
 
-		log.Info(fmt.Sprintf("added group \"%s\" to active groups of \"%s\" zone", args[0], zone.DNSName))
+		common.PrintOutput(fmt.Sprintf("added group \"%s\" to active groups of \"%s\" zone", args[0], zone.DNSName), false)
 	}
 	return nil
 }
