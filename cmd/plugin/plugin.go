@@ -8,13 +8,13 @@ import (
 	"github.com/spf13/cobra"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	"github.com/kuadrant/dns-operator/cmd/plugin/common"
 	"github.com/kuadrant/dns-operator/cmd/plugin/failover"
 )
 
 var (
-	verbose bool
+	verbose int
 	gitSHA  string // value injected in compilation-time with go linker
 	version string // value injected in compilation-time with go linker
 	log     = logf.Log
@@ -25,7 +25,7 @@ var rootCMD = &cobra.Command{
 	Short: "DNS Operator command line utility",
 	Long:  "DNS Operator command line utility",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		logf.SetLogger(zap.New(zap.UseDevMode(verbose), zap.WriteTo(os.Stdout)))
+		logf.SetLogger(common.NewLogger(verbose))
 		cmd.SetContext(context.Background())
 	},
 }
@@ -42,8 +42,7 @@ var versionCMD = &cobra.Command{
 
 func init() {
 	rootCMD.SetArgs(os.Args[1:])
-	rootCMD.PersistentFlags().BoolVarP(&verbose, "verbose", "v", true, "verbose output")
-
+	rootCMD.PersistentFlags().IntVarP(&verbose, "verbose", "v", 0, "verbosity level: 0 (errors only), 1 (+ info), 2 (+ debug)")
 	rootCMD.AddCommand(versionCMD, cleanupOldTXTCMD, getZoneRecordsCMD, addClusterSecretCMD, removeOwnerCMD)
 	rootCMD.AddCommand(failover.AddActiveGroupCMD, failover.GetActiveGroupsCMD, failover.RemoveActiveGroupCMD)
 }
