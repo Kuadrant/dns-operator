@@ -46,20 +46,6 @@ var (
 	allowedResourceTypes = []string{host, DNSRecord}
 )
 
-type resourceRef struct {
-	Name      string
-	Namespace string
-}
-
-func (p resourceRef) parse(providerRef string) (*resourceRef, error) {
-	parts := strings.Split(providerRef, "/")
-	if providerRef != "" && len(parts) != 2 {
-		return nil, errors.New("providerRef most be in the format of '<namespace>/<name>'")
-	}
-
-	return &resourceRef{Namespace: parts[0], Name: parts[1]}, nil
-}
-
 func flagValidate(_ *cobra.Command, _ []string) error {
 	if !slices.Contains(allowedResourceTypes, strings.ToLower(resourceType)) {
 		return fmt.Errorf("Invalid type given. Acceptable types are: %s", strings.Join(allowedResourceTypes, ", "))
@@ -135,7 +121,7 @@ func listZoneRecords(_ *cobra.Command, _ []string) error {
 
 func hostWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Client, dynClient *dynamic.DynamicClient) error {
 	log.V(1).Info("Get secret from cluster based on the providerRef.")
-	secretRef, err := resourceRef{}.parse(providerRef)
+	secretRef, err := common.ParseProviderRef(providerRef)
 	if err != nil {
 		return err
 	}
@@ -151,7 +137,7 @@ func hostWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Client,
 
 	log.V(1).Info("found secret", "secret", secret)
 
-	p, err := getProviderFromSecret(ctx, log, k8sClient, dynClient, secret)
+	p, err := getProviderFromSecret(ctx, log, k8sClient, dynClient, secret, name)
 	if err != nil {
 		log.Error(err, "unable to get configure provider")
 		return err
@@ -184,7 +170,18 @@ func dnsRecordWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Cl
 		return err
 	}
 
-	p, err := providerFactory.ProviderFor(ctx, dnsRecord, provider.Config{})
+	// the zone filter should be zone.com
+	// root host of dns record is always record.zone.com - we need to cut it up a bit
+	_, zoneHost, found := strings.Cut(dnsRecord.GetRootHost(), ".")
+	if !found {
+		err = errors.New("invalid dns record hostname: " + dnsRecord.GetRootHost())
+		log.Error(err, "failed to prepare zone filter regexp")
+		return err
+	}
+
+	p, err := providerFactory.ProviderFor(ctx, dnsRecord, provider.Config{
+		DomainFilter: externaldns.NewDomainFilter([]string{zoneHost}),
+	})
 	if err != nil {
 		log.Error(err, "unable to get configure provider")
 		return err
@@ -201,7 +198,7 @@ func dnsRecordWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Cl
 	return err
 }
 
-func getProviderFromSecret(ctx context.Context, log logr.Logger, k8sClient client.Client, dynClient *dynamic.DynamicClient, secret *corev1.Secret) (provider.Provider, error) {
+func getProviderFromSecret(ctx context.Context, log logr.Logger, k8sClient client.Client, dynClient *dynamic.DynamicClient, secret *corev1.Secret, host string) (provider.Provider, error) {
 	if secret == nil {
 		err := errors.New("secret can not be nil")
 
@@ -219,7 +216,9 @@ func getProviderFromSecret(ctx context.Context, log logr.Logger, k8sClient clien
 
 	// empty config to list all records
 	log.V(1).Info("obtaining list of endpoints from the provider")
-	endpointProvider, err := providerFactory.ProviderForSecret(ctx, secret, provider.Config{})
+	endpointProvider, err := providerFactory.ProviderForSecret(ctx, secret, provider.Config{
+		DomainFilter: externaldns.NewDomainFilter([]string{host}),
+	})
 	if err != nil {
 		log.Error(err, "failed to get provider")
 		return nil, err
