@@ -27,6 +27,7 @@ import (
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/internal/common/hash"
+	"github.com/kuadrant/dns-operator/types"
 )
 
 type Protocol string
@@ -176,6 +177,9 @@ type DNSRecordStatus struct {
 	// A CRD can't reference a type within itself so the `apiextensionsv1.JSON` type is used.
 	// Use GetRemoteRecordStatuses to get the converted type.
 	RemoteRecordStatuses map[string]apiextensionsv1.JSON `json:"remoteRecordStatuses,omitempty"`
+
+	// Group displays the group which the dns-operator belongs to, if set.
+	Group types.Group `json:"group,omitempty"`
 }
 
 // GetRemoteRecordStatuses returns any remote record statuses in the current status.

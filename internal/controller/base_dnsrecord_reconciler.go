@@ -18,9 +18,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
+	externaldnsregistry "sigs.k8s.io/external-dns/registry"
 
-	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
-	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
+	"github.com/kuadrant/dns-operator/internal/external-dns/plan"
+	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/types"
 )
@@ -29,7 +30,7 @@ type BaseDNSRecordReconciler struct {
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
 	DelegationRole  string
-	Group           *types.Group
+	Group           types.Group
 }
 
 func (r *BaseDNSRecordReconciler) IsPrimary() bool {
@@ -46,6 +47,7 @@ func (r *BaseDNSRecordReconciler) setLogger(ctx context.Context, logger logr.Log
 	logger = logger.
 		WithValues("rootHost", dnsRecord.GetRootHost()).
 		WithValues("ownerID", dnsRecord.GetOwnerID()).
+		WithValues("group", dnsRecord.GetGroup()).
 		WithValues("zoneID", dnsRecord.GetZoneID()).
 		WithValues("zoneDomainName", dnsRecord.GetZoneDomainName()).
 		WithValues("delegationRole", r.DelegationRole)
@@ -119,15 +121,21 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
 	var excludeDNSRecordTypes []string
 
-	registry, err := externaldnsregistry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
+	var recordRegistry externaldnsregistry.Registry
+	recordRegistry, err := registry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
 		dnsRecord.GetOwnerID(), txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
 		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
 	if err != nil {
 		return false, err
 	}
 
+	recordRegistry = registry.GroupRegistry{
+		Registry: recordRegistry,
+		Group:    r.Group,
+	}
+
 	policyID := "sync"
-	policy, exists := externaldnsplan.Policies[policyID]
+	policy, exists := plan.Policies[policyID]
 	if !exists {
 		return false, fmt.Errorf("unknown policy: %s", policyID)
 	}
@@ -140,19 +148,19 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	}
 
 	//zoneEndpoints = Records in the current dns provider zone
-	zoneEndpoints, err := registry.Records(ctx)
+	zoneEndpoints, err := recordRegistry.Records(ctx)
 	if err != nil {
 		return false, err
 	}
 
 	//specEndpoints = Records that this DNSRecord expects to exist
-	specEndpoints, err = registry.AdjustEndpoints(specEndpoints)
+	specEndpoints, err = recordRegistry.AdjustEndpoints(specEndpoints)
 	if err != nil {
 		return false, fmt.Errorf("adjusting specEndpoints: %w", err)
 	}
 
 	//statusEndpoints = Records that were created/updated by this DNSRecord last
-	statusEndpoints, err := registry.AdjustEndpoints(dnsRecord.GetStatus().Endpoints)
+	statusEndpoints, err := recordRegistry.AdjustEndpoints(dnsRecord.GetStatus().Endpoints)
 	if err != nil {
 		return false, fmt.Errorf("adjusting statusEndpoints: %w", err)
 	}
@@ -161,23 +169,23 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	logger.V(1).Info("applyChanges", "zoneEndpoints", zoneEndpoints,
 		"specEndpoints", specEndpoints, "statusEndpoints", statusEndpoints)
 
-	plan := externaldnsplan.NewPlan(ctx, zoneEndpoints, statusEndpoints, specEndpoints, []externaldnsplan.Policy{policy},
+	recordPlan := plan.NewPlan(ctx, zoneEndpoints, statusEndpoints, specEndpoints, []plan.Policy{policy},
 		externaldnsendpoint.MatchAllDomainFilters{&zoneDomainFilter}, managedDNSRecordTypes, excludeDNSRecordTypes,
-		registry.OwnerID(), &rootDomainName,
+		recordRegistry.OwnerID(), &rootDomainName,
 	)
 
-	plan = plan.Calculate()
-	if err = plan.Error(); err != nil {
+	recordPlan = recordPlan.Calculate()
+	if err = recordPlan.Error(); err != nil {
 		return false, err
 	}
-	dnsRecord.SetStatusDomainOwners(plan.Owners)
+	dnsRecord.SetStatusDomainOwners(recordPlan.Owners)
 	dnsRecord.SetStatusEndpoints(specEndpoints)
-	if plan.Changes.HasChanges() {
+	if recordPlan.Changes.HasChanges() {
 		//ToDo (mnairn) CoreDNS will always think it has changes as long as provider.Records() returns an empty slice
 		// Figure out a better way of doing this that avoids the check for a specific provider here
 		hasChanges := dnsProvider.Name() != provider.DNSProviderCoreDNS
 		logger.Info("Applying changes")
-		err = registry.ApplyChanges(ctx, plan.Changes)
+		err = recordRegistry.ApplyChanges(ctx, recordPlan.Changes)
 		return hasChanges, err
 	}
 	return false, nil

@@ -22,6 +22,7 @@ import (
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/types"
 )
 
 var _ DNSRecordAccessor = &DNSRecord{}
@@ -31,6 +32,7 @@ type DNSRecordAccessor interface {
 	v1alpha1.ProviderAccessor
 	GetDNSRecord() *v1alpha1.DNSRecord
 	GetOwnerID() string
+	GetGroup() types.Group
 	GetRootHost() string
 	GetZoneDomainName() string
 	GetZoneID() string
@@ -45,6 +47,7 @@ type DNSRecordAccessor interface {
 	SetStatusDomainOwners(owners []string)
 	SetStatusEndpoints(endpoints []*externaldns.Endpoint)
 	SetStatusObservedGeneration(observedGeneration int64)
+	SetStatusGroup(types.Group)
 	HasOwnerIDAssigned() bool
 	HasDNSZoneAssigned() bool
 	HasProviderSecretAssigned() bool
@@ -65,6 +68,10 @@ func (s *DNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {
 
 func (s *DNSRecord) GetOwnerID() string {
 	return s.GetStatus().OwnerID
+}
+
+func (s *DNSRecord) GetGroup() types.Group {
+	return s.GetStatus().Group
 }
 
 func (s *DNSRecord) GetZoneDomainName() string {
@@ -125,6 +132,10 @@ func (s *DNSRecord) SetStatusObservedGeneration(observedGeneration int64) {
 	s.GetStatus().ObservedGeneration = observedGeneration
 }
 
+func (s *DNSRecord) SetStatusGroup(group types.Group) {
+	s.GetStatus().Group = group
+}
+
 type RemoteDNSRecord struct {
 	*v1alpha1.DNSRecord
 	ClusterID string
@@ -141,6 +152,10 @@ func (s *RemoteDNSRecord) GetDNSRecord() *v1alpha1.DNSRecord {
 
 func (s *RemoteDNSRecord) GetOwnerID() string {
 	return s.DNSRecord.Status.OwnerID
+}
+
+func (s *RemoteDNSRecord) GetGroup() types.Group {
+	return s.DNSRecord.Status.Group
 }
 
 func (s *RemoteDNSRecord) GetZoneDomainName() string {
@@ -210,6 +225,10 @@ func (s *RemoteDNSRecord) SetStatusEndpoints(endpoints []*externaldns.Endpoint) 
 func (s *RemoteDNSRecord) SetStatusObservedGeneration(observedGeneration int64) {
 	s.GetStatus().ObservedGeneration = observedGeneration
 	s.setStatus()
+}
+
+func (s *RemoteDNSRecord) SetStatusGroup(_ types.Group) {
+	panic("cannot set Group on remote record")
 }
 
 func (s *RemoteDNSRecord) setStatus() {
