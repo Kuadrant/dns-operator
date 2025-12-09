@@ -18,16 +18,6 @@ func RemoveString(slice []string, s string) []string {
 	return newSlice
 }
 
-// ContainsString checks if a given slice of strings contains the provided string.
-func ContainsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
-}
-
 func Contains[T any](slice []T, predicate func(T) bool) bool {
 	_, ok := Find(slice, predicate)
 	return ok
