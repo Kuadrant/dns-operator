@@ -7,15 +7,8 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
   - namespaces
+  - secrets
   verbs:
   - get
   - list
@@ -24,31 +17,6 @@ rules:
   - kuadrant.io
   resources:
   - dnshealthcheckprobes
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kuadrant.io
-  resources:
-  - dnshealthcheckprobes/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - kuadrant.io
-  resources:
-  - dnshealthcheckprobes/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kuadrant.io
-  resources:
   - dnsrecords
   verbs:
   - create
@@ -61,12 +29,14 @@ rules:
 - apiGroups:
   - kuadrant.io
   resources:
+  - dnshealthcheckprobes/finalizers
   - dnsrecords/finalizers
   verbs:
   - update
 - apiGroups:
   - kuadrant.io
   resources:
+  - dnshealthcheckprobes/status
   - dnsrecords/status
   verbs:
   - get
