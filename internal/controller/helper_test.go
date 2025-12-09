@@ -38,18 +38,38 @@ func getTypeMeta() metav1.TypeMeta {
 	}
 }
 
-func getTestEndpoints(dnsName string, ip []string) []*externaldnsendpoint.Endpoint {
-	return []*externaldnsendpoint.Endpoint{
-		{
-			DNSName:          dnsName,
-			Targets:          ip,
-			RecordType:       "A",
-			SetIdentifier:    "foo",
-			RecordTTL:        60,
-			Labels:           nil,
-			ProviderSpecific: nil,
+type TestEndpoints struct {
+	endpoints []*externaldnsendpoint.Endpoint
+}
+
+func NewTestEndpoints(dnsName string) *TestEndpoints {
+	return &TestEndpoints{
+		endpoints: []*externaldnsendpoint.Endpoint{
+			{
+				DNSName:          dnsName,
+				Targets:          []string{"127.0.0.1"},
+				RecordType:       "A",
+				SetIdentifier:    "foo",
+				RecordTTL:        60,
+				Labels:           nil,
+				ProviderSpecific: nil,
+			},
 		},
 	}
+}
+
+func (te *TestEndpoints) WithTargets(targets []string) *TestEndpoints {
+	te.endpoints[0].Targets = targets
+	return te
+}
+
+func (te *TestEndpoints) WithTTL(ttl externaldnsendpoint.TTL) *TestEndpoints {
+	te.endpoints[0].RecordTTL = ttl
+	return te
+}
+
+func (te *TestEndpoints) Endpoints() []*externaldnsendpoint.Endpoint {
+	return te.endpoints
 }
 
 func getTestHealthCheckSpec() *v1alpha1.HealthCheckSpec {
