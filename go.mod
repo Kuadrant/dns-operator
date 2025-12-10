@@ -1,6 +1,6 @@
 module github.com/kuadrant/dns-operator
 
-go 1.24.6
+go 1.25.3
 
 require (
 	cloud.google.com/go/compute/metadata v0.5.0
