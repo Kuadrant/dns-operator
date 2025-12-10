@@ -42,7 +42,7 @@ jobs:
           cache: false
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.1.6
+          version: v2.7.2
           only-new-issues: true
           args: --timeout=5m
   verify-code:
