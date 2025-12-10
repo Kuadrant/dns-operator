@@ -199,7 +199,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	}
 
 	if dnsRecord.GetGroup() != "" {
-		activeGroups := r.getActiveGroups(ctx, dnsRecord)
+		activeGroups := r.getActiveGroups(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord)
 		dnsRecord.SetStatusActiveGroups(activeGroups)
 		dnsRecord = newGroupAdapter(dnsRecord, activeGroups)
 	}
@@ -225,7 +225,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 	// process unpublish of inactive groups once active cluster has no changes to publish
 	if !hadChanges && dnsRecord.GetGroup() != "" {
-		err = r.unpublishInactiveGroups(ctx, dnsRecord, dnsProvider)
+		err = r.unpublishInactiveGroups(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord, dnsProvider)
 		if err != nil {
 			logger.Error(err, "Failed to unpublish inactive groups")
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,

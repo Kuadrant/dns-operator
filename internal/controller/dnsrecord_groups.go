@@ -9,7 +9,10 @@ import (
 	"strings"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/external-dns/endpoint"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
@@ -28,13 +31,38 @@ const (
 
 // TXTResolver is an interface for resolving TXT DNS records
 type TXTResolver interface {
-	LookupTXT(host string) ([]string, error)
+	LookupTXT(host string, nameservers []string) ([]string, error)
 }
 
 // DefaultTXTResolver is the default implementation that uses net.LookupTXT
 type DefaultTXTResolver struct{}
 
-func (d *DefaultTXTResolver) LookupTXT(host string) ([]string, error) {
+func (d *DefaultTXTResolver) LookupTXT(host string, nameservers []string) ([]string, error) {
+	// If nameservers are provided, try each one until we get an answer
+	if len(nameservers) > 0 {
+		for _, ns := range nameservers {
+			resolver := &net.Resolver{
+				PreferGo: true,
+				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					dialer := net.Dialer{
+						Timeout: time.Second * 1,
+					}
+					// Use the nameserver with port 53
+					return dialer.DialContext(ctx, "udp", net.JoinHostPort(ns, "53"))
+				},
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
+			records, err := resolver.LookupTXT(ctx, host)
+			cancel()
+
+			if err == nil && len(records) > 0 {
+				return records, nil
+			}
+		}
+	}
+
+	// Fall back to default net.LookupTXT if no custom nameservers resolved.
 	return net.LookupTXT(host)
 }
 
@@ -78,12 +106,13 @@ func (s *GroupAdapter) SetStatusConditions(hadChanges bool) {
 }
 
 // Adding some group related functionality to the base reconciler below
-func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, dnsRecord DNSRecordAccessor) types.Groups {
+func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) types.Groups {
 	logger := log.FromContext(ctx).WithName("active-groups")
 	activeGroups := types.Groups{}
 	activeGroupsHost := activeGroupsTXTRecordName + "." + dnsRecord.GetZoneDomainName()
 
-	values, err := r.TXTResolver.LookupTXT(activeGroupsHost)
+	nameservers := r.getNameserversFromProvider(ctx, c, dnsRecord)
+	values, err := r.TXTResolver.LookupTXT(activeGroupsHost, nameservers)
 	if err != nil {
 		logger.Error(err, "error looking up active groups")
 		return activeGroups
@@ -111,8 +140,55 @@ func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, dnsRecord
 	return activeGroups
 }
 
+// getNameserversFromProvider extracts nameservers from the provider secret
+func (r *BaseDNSRecordReconciler) getNameserversFromProvider(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) []string {
+	var nameservers []string
+	var providerSecret v1.Secret
+	providerRef := dnsRecord.GetProviderRef()
+
+	if providerRef.Name != "" {
+		secretKey := client.ObjectKey{
+			Name:      providerRef.Name,
+			Namespace: dnsRecord.GetNamespace(),
+		}
+
+		if err := c.Get(ctx, secretKey, &providerSecret); err == nil {
+			nameservers = r.extractNameserversFromSecret(&providerSecret)
+		}
+	} else {
+		secretList := &v1.SecretList{}
+		err := c.List(ctx, secretList, &client.ListOptions{
+			LabelSelector: labels.SelectorFromSet(map[string]string{
+				v1alpha1.DefaultProviderSecretLabel: "true",
+			}),
+			Namespace: dnsRecord.GetNamespace(),
+		})
+
+		if err == nil && len(secretList.Items) == 1 {
+			nameservers = r.extractNameserversFromSecret(&secretList.Items[0])
+		}
+	}
+	return nameservers
+}
+
+// extractNameserversFromSecret extracts and parses the NAMESERVERS field from a secret
+func (r *BaseDNSRecordReconciler) extractNameserversFromSecret(secret *v1.Secret) []string {
+	var nameservers []string
+	if nameserversData, ok := secret.Data["NAMESERVERS"]; ok && len(nameserversData) > 0 {
+		nameserversStr := string(nameserversData)
+		for ns := range strings.SplitSeq(nameserversStr, ",") {
+			ns = strings.TrimSpace(ns)
+			if ns != "" {
+				nameservers = append(nameservers, ns)
+			}
+		}
+	}
+
+	return nameservers
+}
+
 // unpublishInactiveGroups: handle unpublishing inactive groups records from the zone
-func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) error {
+func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) error {
 	logger := log.FromContext(ctx).WithName("active-groups").WithName("unpublish")
 	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
 
@@ -121,7 +197,7 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, d
 		return nil
 	}
 
-	activeGroups := r.getActiveGroups(ctx, dnsRecord)
+	activeGroups := r.getActiveGroups(ctx, c, dnsRecord)
 
 	// only process unpublish when there are active groups and we are reconciling a record from an active group
 	if len(activeGroups) == 0 || !dnsRecord.IsActive() {

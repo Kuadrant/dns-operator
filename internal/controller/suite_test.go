@@ -103,7 +103,7 @@ type MockTXTResolver struct {
 	response []string
 }
 
-func (m *MockTXTResolver) LookupTXT(host string) ([]string, error) {
+func (m *MockTXTResolver) LookupTXT(host string, nameservers []string) ([]string, error) {
 	return m.response, nil
 }
 

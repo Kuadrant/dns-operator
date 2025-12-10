@@ -237,15 +237,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 	}
 
-	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() && r.Group != "" {
-		var activeGroups types.Groups
-		activeGroups = r.getActiveGroups(ctx, dnsRecord)
-
-		dnsRecord.SetStatusGroup(r.Group)
-		dnsRecord.SetStatusActiveGroups(activeGroups)
-
-		dnsRecord = newGroupAdapter(dnsRecord, activeGroups)
-	}
+	dnsRecord.SetStatusGroup(r.Group)
 
 	if dnsRecord.IsDelegating() {
 		// ReadyForDelegation can be set to true once:
@@ -253,6 +245,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// - ownerID is set
 		// - record is validated
 		// - health probes created
+		// - group is added to status
 		if !meta.IsStatusConditionPresentAndEqual(dnsRecord.GetStatus().Conditions, string(v1alpha1.ConditionTypeReadyForDelegation), metav1.ConditionTrue) {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReadyForDelegation), metav1.ConditionTrue, string(v1alpha1.ConditionReasonFinalizersSet), "")
 			return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, randomizedValidationRequeue)
@@ -264,6 +257,16 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
 			return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, 0)
 		}
+	}
+
+	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() && r.Group != "" {
+		var activeGroups types.Groups
+		activeGroups = r.getActiveGroups(ctx, r.Client, dnsRecord)
+
+		dnsRecord.SetStatusGroup(r.Group)
+		dnsRecord.SetStatusActiveGroups(activeGroups)
+
+		dnsRecord = newGroupAdapter(dnsRecord, activeGroups)
 	}
 
 	if !dnsRecord.IsActive() {
@@ -370,7 +373,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// process unpublish of inactive groups once active cluster has no changes to publish
 	if !hadChanges && dnsRecord.GetGroup() != "" {
-		err = r.unpublishInactiveGroups(ctx, dnsRecord, dnsProvider)
+		err = r.unpublishInactiveGroups(ctx, r.Client, dnsRecord, dnsProvider)
 		if err != nil {
 			logger.Error(err, "Failed to unpublish inactive groups")
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
