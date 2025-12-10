@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"github.com/kuadrant/dns-operator/cmd/plugin/output"
 )
 
 var removeOwnerCMD = &cobra.Command{
@@ -12,8 +12,6 @@ var removeOwnerCMD = &cobra.Command{
 }
 
 func removeOwner(_ *cobra.Command, _ []string) error {
-	log = logf.Log.WithName("remove-owner")
-
-	log.Info("Deleting owner: TODO")
+	output.Formatter.Info("Deleting owner: TODO")
 	return nil
 }

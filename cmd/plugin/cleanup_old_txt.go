@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/external-dns/plan"
 
 	"github.com/kuadrant/dns-operator/cmd/plugin/common"
+	"github.com/kuadrant/dns-operator/cmd/plugin/output"
 	"github.com/kuadrant/dns-operator/internal/common/slice"
 	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
@@ -52,7 +53,6 @@ func init() {
 }
 
 func deleteOldTXT(_ *cobra.Command, args []string) error {
-	log = logf.Log.WithName("prune-legacy-txt")
 
 	if cleanupOldTXTCMDFlags.domain == "" {
 		return fmt.Errorf("domain is required")
@@ -80,18 +80,18 @@ func deleteOldTXT(_ *cobra.Command, args []string) error {
 		Name:      secretName,
 	}
 
-	log.Info("obtaining list of endpoints from the provider")
+	output.Formatter.Info("obtaining list of endpoints from the provider")
 	endpointProvider, err := common.GetProviderForConfig(ctx, secretRef, provider.Config{
 		DomainFilter: externaldns.NewRegexDomainFilter(domainRegexp, nil),
 	})
 	if err != nil {
-		log.Error(err, "failed to get provider")
+		output.Formatter.Error(err, "failed to get provider")
 		return err
 	}
 
 	endpoints, err := endpointProvider.Records(ctx)
 	if err != nil {
-		log.Error(err, "failed to get endpoints")
+		output.Formatter.Error(err, "failed to get endpoints")
 		return err
 	}
 
@@ -111,7 +111,7 @@ func deleteOldTXT(_ *cobra.Command, args []string) error {
 			// owner and version in targets
 			owner, epVersion, epLabels, err := registry.NewLabelsFromString(e.Targets[0], []byte{})
 			if err != nil {
-				log.Info(fmt.Sprintf("failed to extract owner labels: %v\n ep name: %s, targets: %s", err, e.DNSName, e.Targets))
+				output.Formatter.Info(fmt.Sprintf("failed to extract owner labels: %v\n ep name: %s, targets: %s", err, e.DNSName, e.Targets))
 				return false
 			}
 
@@ -137,16 +137,16 @@ func deleteOldTXT(_ *cobra.Command, args []string) error {
 	})
 
 	if len(endpoints) == 0 {
-		log.Info("no endpoints to be deleted found")
+		output.Formatter.Info("no endpoints to be deleted found")
 		return nil
 	}
 
 	// display what is about to be deleted
-	log.Info(fmt.Sprintf("TXT records (%d) to be deleted:", len(endpoints)))
+	output.Formatter.Info(fmt.Sprintf("TXT records (%d) to be deleted:", len(endpoints)))
 	for _, txtRecord := range endpoints {
 		logf.Log.Info(fmt.Sprintf("%s\t IN\t %s\t %s", txtRecord.DNSName, txtRecord.RecordType, txtRecord.Targets))
 	}
-	log.Info(fmt.Sprintf("Do you want to proceed? [Y/N]"))
+	output.Formatter.Info(fmt.Sprintf("Do you want to proceed? [Y/N]"))
 	reader := bufio.NewReader(os.Stdin)
 
 	var answer string
@@ -154,27 +154,27 @@ func deleteOldTXT(_ *cobra.Command, args []string) error {
 	if !cleanupOldTXTCMDFlags.assumeyes {
 		answer, err = reader.ReadString('\n')
 		if err != nil {
-			log.Error(err, "failed to read answer", "answer", answer)
+			output.Formatter.Error(err, fmt.Sprintf("failed to read answer: %s", answer))
 		}
 		answer = strings.TrimSpace(strings.ToLower(answer))
 	}
 
 	if answer == "y" || cleanupOldTXTCMDFlags.assumeyes {
 		//delete
-		log.Info("deleting old TXT records...")
+		output.Formatter.Info("deleting old TXT records...")
 		err = endpointProvider.ApplyChanges(ctx, &plan.Changes{
 			Delete: endpoints,
 		})
 		if err != nil {
-			log.Error(err, "failed to delete old TXT records")
+			output.Formatter.Error(err, "failed to delete old TXT records")
 			return err
 		}
-		log.Info("records are deleted")
+		output.Formatter.Info("records are deleted")
 		return nil
 	}
 
 	// do nothing
-	log.Info("canceling")
+	output.Formatter.Info("canceling")
 	return nil
 
 }

@@ -8,11 +8,10 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/go-logr/logr"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"github.com/kuadrant/dns-operator/cmd/plugin/output"
 )
 
 const kubectl = "kubectl"
@@ -105,93 +104,91 @@ func init() {
 }
 
 func addClusterSecret(_ *cobra.Command, _ []string) error {
-	log = logf.Log.WithName("add-cluster-secret")
-
 	dirtyStr := os.Getenv("KUBECTL_DNS_DIRTY")
 	if strings.Compare(strings.ToLower(dirtyStr), "true") == 0 {
-		log.V(1).Info("kubectl-kuadrant_dns running in dirty mode")
+		output.Formatter.Debug("kubectl-kuadrant_dns running in dirty mode")
 		generateSecretFlags.dirty = true
 	}
 
-	log.V(1).Info("Set the secret name to context name if not set", "context", generateSecretFlags.contextName, "name", generateSecretFlags.name)
+	output.Formatter.Debug(fmt.Sprintf("Set the secret name to context name if not set; context: %s; name: %s", generateSecretFlags.contextName, generateSecretFlags.name))
 	if len(generateSecretFlags.name) == 0 {
 		generateSecretFlags.name = generateSecretFlags.contextName
 	}
 
-	err := checkKubectl(log)
+	err := checkKubectl()
 	if err != nil {
 		return err
 	}
 
-	clusterCA, err := getClusterCA(log)
+	clusterCA, err := getClusterCA()
 	if err != nil {
 		return err
 	}
 
-	clusterServer, err := getClusterServer(log)
+	clusterServer, err := getClusterServer()
 	if err != nil {
 		return err
 	}
 
-	serviceAccountToken, err := generateServiceAccountToken(log)
+	serviceAccountToken, err := generateServiceAccountToken()
 	if err != nil {
 		return err
 	}
 
-	log.V(1).Info("creation directory to store temporary files")
+	output.Formatter.Debug("creation directory to store temporary files")
 	tmpDir, err := os.MkdirTemp("", "kudectl-dev")
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if err := tidyFiles(log, tmpDir); err != nil {
-			log.Error(err, "deferred call failed")
+		if err := tidyFiles(tmpDir); err != nil {
+			output.Formatter.Error(err, "deferred call failed")
 		}
 	}()
 
-	kubeConfig := defineKubeConfig(log, clusterServer, clusterCA, serviceAccountToken)
-	kubeConfigFile, err := saveKubeConfig(log, kubeConfig, tmpDir)
+	kubeConfig := defineKubeConfig(clusterServer, clusterCA, serviceAccountToken)
+	kubeConfigFile, err := saveKubeConfig(kubeConfig, tmpDir)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if err := tidyFiles(log, kubeConfigFile.Name()); err != nil {
-			log.Error(err, "deferred call failed")
+		if err := tidyFiles(kubeConfigFile.Name()); err != nil {
+			output.Formatter.Error(err, "deferred call failed")
 		}
 	}()
 
-	err = verifyKubeConfigConnection(log, kubeConfigFile.Name())
+	err = verifyKubeConfigConnection(kubeConfigFile.Name())
 	if err != nil {
 		return err
 	}
 
-	secret, err := generateSecret(log, kubeConfig)
+	secret, err := generateSecret(kubeConfig)
 	if err != nil {
 		return err
 	}
 
-	secretFile, err := saveSecret(log, *secret, tmpDir)
+	secretFile, err := saveSecret(*secret, tmpDir)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if err := tidyFiles(log, secretFile.Name()); err != nil {
-			log.Error(err, "deferred call failed")
+		if err := tidyFiles(secretFile.Name()); err != nil {
+			output.Formatter.Error(err, "deferred call failed")
 		}
 	}()
 
-	err = applySecretToCluser(log, secretFile.Name())
+	err = applySecretToCluser(secretFile.Name())
 	if err != nil {
 		return err
 	}
 
-	log.Info("The operator should now be able to discover, and connect to this cluster")
+	output.Formatter.Info("The operator should now be able to discover, and connect to this cluster")
 
 	return nil
 }
 
-func getClusterCA(log logr.Logger) (string, error) {
-	log.V(1).Info("Get the cluster CA certificate from the remote cluster")
+func getClusterCA() (string, error) {
+	output.Formatter.Debug("Get the cluster CA certificate from the remote cluster")
 	args := []string{
 		fmt.Sprintf("--context=%v", generateSecretFlags.contextName),
 		"config",
@@ -208,9 +205,7 @@ func getClusterCA(log logr.Logger) (string, error) {
 
 	clusterCARaw, err := cmd.Output()
 	if err != nil {
-		if log.V(1).Enabled() {
-			log.V(1).Error(err, "unable to get certificate authority from kubeconfig", "context", generateSecretFlags.contextName, "stdErr", stderr.String(), "stdOut", cmd.Stdout)
-		}
+		output.Formatter.Error(err, fmt.Sprintf("unable to get certificate authority from kubeconfig; context: %s; stdErr: %s; stdOut: %s", generateSecretFlags.contextName, stderr.String(), cmd.Stdout))
 		return "", fmt.Errorf("unable to get certificate for %v from kubeconfig", generateSecretFlags.contextName)
 	}
 	clusterCA := string(clusterCARaw)
@@ -219,8 +214,8 @@ func getClusterCA(log logr.Logger) (string, error) {
 
 }
 
-func getClusterServer(log logr.Logger) (string, error) {
-	log.V(1).Info("Get the cluster server URL from the remote cluster")
+func getClusterServer() (string, error) {
+	output.Formatter.Debug("Get the cluster server URL from the remote cluster")
 	args := []string{
 		fmt.Sprintf("--context=%v", generateSecretFlags.contextName),
 		"config",
@@ -238,9 +233,7 @@ func getClusterServer(log logr.Logger) (string, error) {
 
 	clusterServerRaw, err := cmd.Output()
 	if err != nil {
-		if log.V(1).Enabled() {
-			log.V(1).Error(err, "unable to get server url from kubeconfig", "context", generateSecretFlags.contextName, "stdErr", stderr.String(), "stdOut", cmd.Stdout)
-		}
+		output.Formatter.Error(err, fmt.Sprintf("unable to get server url from kubeconfig; context: %s; stdErr: %s; stdOut: %s", generateSecretFlags.contextName, stderr.String(), cmd.Stdout))
 		return "", fmt.Errorf("unable to get server url for %v from kubeconfig", generateSecretFlags.contextName)
 	}
 	clusterServer := string(clusterServerRaw)
@@ -250,8 +243,8 @@ func getClusterServer(log logr.Logger) (string, error) {
 
 // generateServiceAccountToken returns the value of a token, or an error.
 // Token is created on the cluster for the service account.
-func generateServiceAccountToken(log logr.Logger) (string, error) {
-	log.V(1).Info("Get the service account token from the remote cluster")
+func generateServiceAccountToken() (string, error) {
+	output.Formatter.Debug("Get the service account token from the remote cluster")
 	args := []string{
 		fmt.Sprintf("--context=%v", generateSecretFlags.contextName),
 		"--namespace",
@@ -267,9 +260,7 @@ func generateServiceAccountToken(log logr.Logger) (string, error) {
 
 	serviceAccountToken, err := cmd.Output()
 	if err != nil {
-		if log.V(1).Enabled() {
-			log.V(1).Error(err, "unable to generate service account token from kubeconfig", "context", generateSecretFlags.contextName, "stdErr", stderr.String(), "stdOut", cmd.Stdout)
-		}
+		output.Formatter.Error(err, fmt.Sprintf("unable to generate service account token from kubeconfig; context: %s; stdErr: %s; stdOut: %s", generateSecretFlags.contextName, stderr.String(), cmd.Stdout))
 		return "", fmt.Errorf("unable to generate service account token for %v from kubeconfig", generateSecretFlags.contextName)
 
 	}
@@ -277,8 +268,8 @@ func generateServiceAccountToken(log logr.Logger) (string, error) {
 	return string(serviceAccountToken), nil
 }
 
-func defineKubeConfig(log logr.Logger, clusterServer, clusterCA, serviceAccountToken string) Config {
-	log.V(1).Info("Generate a new kubeconfig using the service account token")
+func defineKubeConfig(clusterServer, clusterCA, serviceAccountToken string) Config {
+	output.Formatter.Debug("Generate a new kubeconfig using the service account token")
 	return Config{
 		APIVersion: "v1",
 		Kind:       "Config",
@@ -312,46 +303,44 @@ func defineKubeConfig(log logr.Logger, clusterServer, clusterCA, serviceAccountT
 	}
 }
 
-func checkKubectl(log logr.Logger) error {
-	log.V(1).Info("Check that kubectl is in the users path")
+func checkKubectl() error {
+	output.Formatter.Debug("Check that kubectl is in the users path")
 	if _, err := exec.LookPath(kubectl); err != nil {
-		if log.V(1).Enabled() {
-			log.V(1).Error(err, "kubectl not found in user path")
-		}
+		output.Formatter.Error(err, "kubectl not found in user path")
 		return errors.New("kubectl not found in user $PATH")
 	}
 	return nil
 }
 
-func saveKubeConfig(log logr.Logger, kubeConfig Config, dirPath string) (*os.File, error) {
-	log.V(1).Info("Save kubeconfig temporarily for testing")
+func saveKubeConfig(kubeConfig Config, dirPath string) (*os.File, error) {
+	output.Formatter.Debug("Save kubeconfig temporarily for testing")
 	f, err := os.CreateTemp(dirPath, "kubeconfig")
 	if err != nil {
-		log.Error(err, "Unable to create temporary file for sercet")
+		output.Formatter.Error(err, "Unable to create temporary file for sercet")
 		return nil, errors.New("temporary file creation failure.")
 	}
 
 	data, err := yaml.Marshal(kubeConfig)
 	if err != nil {
 		_err := errors.New("Internal error marshaling yaml")
-		err_ := tidyFiles(log, f.Name())
+		err_ := tidyFiles(f.Name())
 		if err_ != nil {
-			log.Error(err, "failed to remove temporary kubeconfig")
+			output.Formatter.Error(err, "failed to remove temporary kubeconfig")
 			_err = fmt.Errorf(err_.Error(), err)
 		}
-		log.Error(err, "marshaling yaml of kubeConfig file")
+		output.Formatter.Error(err, "marshaling yaml of kubeConfig file")
 		return nil, _err
 	}
 
 	_, err = f.Write(data)
 	if err != nil {
 		_err := errors.New("Internal error writing file to disc")
-		err_ := tidyFiles(log, f.Name())
+		err_ := tidyFiles(f.Name())
 		if err_ != nil {
-			log.Error(err, "failed to remove temporary kubeconfig")
+			output.Formatter.Error(err, "failed to remove temporary kubeconfig")
 			_err = fmt.Errorf(err_.Error(), err)
 		}
-		log.Error(err, "error writing of kubeConfig file", "filename", f.Name())
+		output.Formatter.Error(err, fmt.Sprintf("error writing of kubeConfig file: %s", f.Name()))
 		return nil, _err
 	}
 
@@ -359,8 +348,8 @@ func saveKubeConfig(log logr.Logger, kubeConfig Config, dirPath string) (*os.Fil
 
 }
 
-func verifyKubeConfigConnection(log logr.Logger, kubeConfigPath string) error {
-	log.V(1).Info("Verify the kubeconfig works")
+func verifyKubeConfigConnection(kubeConfigPath string) error {
+	output.Formatter.Debug("Verify the kubeconfig works")
 	args := []string{
 		fmt.Sprintf("--kubeconfig=%v", kubeConfigPath),
 		"version",
@@ -371,20 +360,19 @@ func verifyKubeConfigConnection(log logr.Logger, kubeConfigPath string) error {
 
 	_, err := cmd.Output()
 	if err != nil {
-		log.V(0).Info("unable to connect to cluster")
-		log.V(1).Info("command", "cmd", strings.Join(cmd.Args, " "), "stderr", stderr.String(), "stdout", cmd.Stdout)
-
+		output.Formatter.Info("unable to connect to cluster")
+		output.Formatter.Debug(fmt.Sprintf("command: %s; stdErr: %s; stdOut: %s", strings.Join(cmd.Args, " "), stderr.String(), cmd.Stdout))
 		return errors.New("Failed to verify kubeconfig - unable to connect to cluster")
 	}
 
 	return nil
 }
 
-func generateSecret(log logr.Logger, kubeConfig Config) (*Secret, error) {
-	log.V(1).Info("Generate secret with kubeConfig as data")
+func generateSecret(kubeConfig Config) (*Secret, error) {
+	output.Formatter.Debug("Generate secret with kubeConfig as data")
 	data, err := yaml.Marshal(kubeConfig)
 	if err != nil {
-		log.Error(err, "marshaling yaml of kubeConfig file")
+		output.Formatter.Error(err, "marshaling yaml of kubeConfig file")
 		return nil, errors.New("Internal error marshaling yaml")
 	}
 
@@ -404,42 +392,42 @@ func generateSecret(log logr.Logger, kubeConfig Config) (*Secret, error) {
 	}, nil
 }
 
-func saveSecret(log logr.Logger, secret Secret, dirPath string) (*os.File, error) {
+func saveSecret(secret Secret, dirPath string) (*os.File, error) {
 	f, err := os.CreateTemp(dirPath, "secret")
 	if err != nil {
-		log.Error(err, "Unable to create temporary file for sercet")
+		output.Formatter.Error(err, "Unable to create temporary file for sercet")
 		return nil, errors.New("temporary file creation failure.")
 	}
 
 	data, err := yaml.Marshal(secret)
 	if err != nil {
 		_err := errors.New("Internal error marshaling yaml")
-		err_ := tidyFiles(log, f.Name())
+		err_ := tidyFiles(f.Name())
 		if err_ != nil {
-			log.Error(err, "failed to remove temporary secret")
+			output.Formatter.Error(err, "failed to remove temporary secret")
 			_err = fmt.Errorf(err_.Error(), err)
 		}
-		log.Error(err, "error writing secret file", "filename", f.Name())
+		output.Formatter.Error(err, fmt.Sprintf("error writing secret file: %s", f.Name()))
 		return nil, _err
 	}
 
 	_, err = f.Write(data)
 	if err != nil {
 		_err := errors.New("Internal error writing file to disc")
-		err_ := tidyFiles(log, f.Name())
+		err_ := tidyFiles(f.Name())
 		if err_ != nil {
-			log.Error(err, "failed to remove temporary secret")
+			output.Formatter.Error(err, "failed to remove temporary secret")
 			_err = fmt.Errorf(err_.Error(), err)
 		}
-		log.Error(err, "error writing secret file", "filename", f.Name())
+		output.Formatter.Error(err, fmt.Sprintf("error writing secret file: %s", f.Name()))
 		return nil, _err
 	}
 
 	return f, nil
 }
 
-func applySecretToCluser(log logr.Logger, secretFile string) error {
-	log.V(1).Info("Write secert to main cluster")
+func applySecretToCluser(secretFile string) error {
+	output.Formatter.Debug("Write secert to main cluster")
 	args := []string{
 		"apply",
 		"--filename",
@@ -452,23 +440,20 @@ func applySecretToCluser(log logr.Logger, secretFile string) error {
 	_, err := cmd.Output()
 
 	if err != nil {
-		log.V(1).Info("command", "cmd", strings.Join(cmd.Args, " "), "stderr", stderr.String(), "stdout", cmd.Stdout)
-		if log.V(1).Enabled() {
-			log.V(1).Error(err, "unable to write secret to cluster")
-		}
-		log.Info("unable to write secret to cluster")
+		output.Formatter.Debug(fmt.Sprintf("command: %s; stdErr: %s; stdOut: %s", strings.Join(cmd.Args, " "), stderr.String(), cmd.Stdout))
+		output.Formatter.Error(err, "unable to write secret to cluster")
 		return errors.New("unable to write secret to cluster")
 	}
 
-	log.Info(fmt.Sprintf("Secert %s created in namespace %s", generateSecretFlags.name, generateSecretFlags.namespace))
+	output.Formatter.Info(fmt.Sprintf("Secret %s created in namespace %s", generateSecretFlags.name, generateSecretFlags.namespace))
 
 	return nil
 }
 
-func tidyFiles(log logr.Logger, path string) error {
-	log.V(1).Info("Removing file/directory", "path", path)
-	if generateSecretFlags.dirty && log.V(1).Enabled() {
-		log.V(1).Info("Running in a dirty mode not removing the file/directory.")
+func tidyFiles(path string) error {
+	output.Formatter.Debug(fmt.Sprintf("Removing file/directory: %s", path))
+	if generateSecretFlags.dirty {
+		output.Formatter.Debug("Running in a dirty mode not removing the file/directory.")
 		return nil
 	}
 	return os.Remove(path)
