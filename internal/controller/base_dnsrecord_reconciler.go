@@ -26,11 +26,17 @@ import (
 	"github.com/kuadrant/dns-operator/types"
 )
 
+const (
+	activeGroupsTXTRecordName = "kuadrant-active-groups"
+	inactiveGroupRequeueTime  = time.Second * 15
+)
+
 type BaseDNSRecordReconciler struct {
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
 	DelegationRole  string
 	Group           types.Group
+	TXTResolver     TXTResolver
 }
 
 func (r *BaseDNSRecordReconciler) IsPrimary() bool {
@@ -129,9 +135,11 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 		return false, err
 	}
 
-	recordRegistry = registry.GroupRegistry{
-		Registry: recordRegistry,
-		Group:    r.Group,
+	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() {
+		recordRegistry = registry.GroupRegistry{
+			Registry: recordRegistry,
+			Group:    dnsRecord.GetGroup(),
+		}
 	}
 
 	policyID := "sync"

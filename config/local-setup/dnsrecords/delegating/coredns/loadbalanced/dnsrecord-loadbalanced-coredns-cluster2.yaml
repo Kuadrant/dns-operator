@@ -3,7 +3,7 @@ kind: DNSRecord
 metadata:
   name: dnsrecord-loadbalanced-coredns-cluster2
 spec:
-  rootHost: loadbalanced.k.example.com
+  rootHost: k.example.com
   endpoints:
     - dnsName: loadbalanced.k.example.com
       recordTTL: 300

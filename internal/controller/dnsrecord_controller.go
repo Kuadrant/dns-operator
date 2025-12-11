@@ -40,6 +40,7 @@ import (
 	"github.com/kuadrant/dns-operator/internal/common"
 	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
+	"github.com/kuadrant/dns-operator/types"
 )
 
 const (
@@ -225,8 +226,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, false, err)
 	}
 
-	dnsRecord.SetStatusGroup(r.Group)
-
 	//Ensure an Owner ID has been assigned to the record (OwnerID set in the status)
 	if !dnsRecord.HasOwnerIDAssigned() {
 		if dnsRecord.GetSpec().OwnerID != "" {
@@ -238,12 +237,17 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 	}
 
+	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() {
+		dnsRecord.SetStatusGroup(r.Group)
+	}
+
 	if dnsRecord.IsDelegating() {
 		// ReadyForDelegation can be set to true once:
 		// - finalizer is added
 		// - ownerID is set
 		// - record is validated
 		// - health probes created
+		// - group is added to status
 		if !meta.IsStatusConditionPresentAndEqual(dnsRecord.GetStatus().Conditions, string(v1alpha1.ConditionTypeReadyForDelegation), metav1.ConditionTrue) {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReadyForDelegation), metav1.ConditionTrue, string(v1alpha1.ConditionReasonFinalizersSet), "")
 			return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, randomizedValidationRequeue)
@@ -255,6 +259,21 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
 			return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, 0)
 		}
+	}
+
+	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() && r.Group != "" {
+		var activeGroups types.Groups
+		activeGroups = r.getActiveGroups(ctx, r.Client, dnsRecord)
+		dnsRecord.SetStatusActiveGroups(activeGroups)
+		dnsRecord = newGroupAdapter(dnsRecord, activeGroups)
+	}
+
+	if !dnsRecord.IsActive() {
+		res, err := r.updateStatus(ctx, previous, dnsRecord, false, nil)
+		if err != nil {
+			return res, err
+		}
+		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
 	}
 
 	// Ensure we have provider secret
@@ -349,6 +368,16 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			"ProviderError", fmt.Sprintf("The DNS provider failed to ensure the record: %v", provider.SanitizeError(err)))
 		return r.updateStatus(ctx, previous, dnsRecord, hadChanges, err)
+	}
+
+	// process unpublish of inactive groups once active cluster has no changes to publish
+	if !hadChanges && dnsRecord.GetGroup() != "" {
+		err = r.unpublishInactiveGroups(ctx, r.Client, dnsRecord, dnsProvider)
+		if err != nil {
+			logger.Error(err, "Failed to unpublish inactive groups")
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+				"ProviderError", fmt.Sprintf("The DNS provider failed to unpublish inactive groups: %v", provider.SanitizeError(err)))
+		}
 	}
 
 	return r.updateStatus(ctx, previous, dnsRecord, hadChanges, nil)
@@ -542,10 +571,16 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, val
 func recordReceivedPrematurely(record DNSRecordAccessor) (bool, time.Duration) {
 	var prematurely bool
 
+	// do not consider active records premature, as they may have some unpublishing to do
+	if record.IsActive() && record.GetGroup() != "" {
+		return false, defaultRequeueTime
+	}
+
 	requeueIn := validFor
 	if record.GetStatus().ValidFor != "" {
 		requeueIn, _ = time.ParseDuration(record.GetStatus().ValidFor)
 	}
+
 	expiryTime := metav1.NewTime(record.GetStatus().QueuedAt.Add(requeueIn))
 	prematurely = !generationChanged(record.GetDNSRecord()) && reconcileStart.Before(&expiryTime)
 
@@ -600,6 +635,7 @@ func exponentialRequeueTime(lastRequeueTime string) time.Duration {
 // setStatusConditions sets healthy and ready condition on given DNSRecord
 func setStatusConditions(record DNSRecordAccessor, hadChanges bool) {
 	// we get here only when spec err is nil - can trust hadChanges bool
+	record.SetStatusConditions(hadChanges)
 
 	readyCond := meta.FindStatusCondition(record.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady))
 	if readyCond != nil && (readyCond.Reason == string(v1alpha1.ConditionReasonProviderEndpointsRemoved) || readyCond.Reason == string(v1alpha1.ConditionReasonProviderEndpointsDeletion)) {
@@ -620,11 +656,8 @@ func setStatusConditions(record DNSRecordAccessor, hadChanges bool) {
 		meta.RemoveStatusCondition(&record.GetStatus().Conditions, string(v1alpha1.ConditionTypeHealthy))
 		return
 	}
-
 	// if we haven't published because of the health failure, we won't have changes but the spec endpoints will be empty
 	if len(record.GetStatus().Endpoints) == 0 {
 		record.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), "Not publishing unhealthy records")
 	}
-
-	record.SetStatusConditions(hadChanges)
 }

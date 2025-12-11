@@ -104,6 +104,11 @@ func (i *InMemoryDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels
 	return provider.ProviderSpecificLabels{}
 }
 
+// GetInMemoryClient returns the global inmemory client for testing purposes
+func GetInMemoryClient() *inmemory.InMemoryClient {
+	return client
+}
+
 // Register this Provider with the provider factory
 func init() {
 	client = inmemory.NewInMemoryClient()
