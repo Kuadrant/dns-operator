@@ -237,7 +237,9 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 	}
 
-	dnsRecord.SetStatusGroup(r.Group)
+	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() {
+		dnsRecord.SetStatusGroup(r.Group)
+	}
 
 	if dnsRecord.IsDelegating() {
 		// ReadyForDelegation can be set to true once:
@@ -262,14 +264,12 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() && r.Group != "" {
 		var activeGroups types.Groups
 		activeGroups = r.getActiveGroups(ctx, r.Client, dnsRecord)
-
-		dnsRecord.SetStatusGroup(r.Group)
 		dnsRecord.SetStatusActiveGroups(activeGroups)
-
 		dnsRecord = newGroupAdapter(dnsRecord, activeGroups)
 	}
 
 	if !dnsRecord.IsActive() {
+		logger.V(1).Info("record is from an inactive group, exiting reconcile")
 		res, err := r.updateStatus(ctx, previous, dnsRecord, false, nil)
 		if err != nil {
 			return res, err

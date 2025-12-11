@@ -5,6 +5,7 @@ generatorOptions:
   labels:
     app.kubernetes.io/part-of: dns-operator
     app.kubernetes.io/managed-by: kustomize
+    kuadrant.io/default-provider: "true"
 
 secretGenerator:
   - name: dns-provider-credentials
