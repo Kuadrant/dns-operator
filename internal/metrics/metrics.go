@@ -3,10 +3,11 @@ package metrics
 import (
 	"context"
 	"strconv"
+	"sync"
 
-	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
@@ -30,42 +31,47 @@ const (
 )
 
 var (
-	WriteCounter = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "dns_provider_write_counter",
-			Help: "Counts DNS provider write operations for a current generation of the DNS record",
-		},
-		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel})
-	ProbeCounter = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "dns_health_probe_counter",
-			Help: "Count of active probes",
-		},
-		[]string{dnsHealthCheckNameLabel, dnsHealthCheckNamespaceLabel, dnsHealthCheckHostLabel})
+	writeCounter = prometheus.NewDesc(
+		"dns_provider_write_counter",
+		"Counts DNS provider write operations for a current generation of the DNS record",
+		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel},
+		nil,
+	)
+
+	probeCounter = prometheus.NewDesc(
+		"dns_health_probe_counter",
+		"Count of active probes",
+		[]string{dnsHealthCheckNameLabel, dnsHealthCheckNamespaceLabel, dnsHealthCheckHostLabel},
+		nil,
+	)
+	// TODO: Move to collector pattern
 	SecretMissing = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "dns_provider_secret_absent",
 			Help: "Emits one when provider secret is found to be absent, or zero when expected secrets exist",
 		},
 		[]string{mzRecordNameLabel, mzRecordNamespaceLabel, mzSecretNameLabel})
-	RecordReady = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "dns_provider_record_ready",
-			Help: "Reports the ready state of the dns record. 0 - not ready or deleted, 1 - ready. It also provides some metadata of the record in question",
-		},
-		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordRootHost, dnsRecordDelegating})
-	remoteRecords = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "dns_provider_remote_records",
-			Help: "Reports the delegated dns records on a remote cluster",
-		},
-		[]string{"cluster"})
-	remoteRecordReconcile = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "dns_provider_remote_record_reconcile_count",
-			Help: "Reports the reconcile count for a remote DNSRecord",
-		},
-		[]string{"cluster", dnsRecordNameLabel, dnsRecordNamespaceLabel})
+
+	recordReady = prometheus.NewDesc(
+		"dns_provider_record_ready",
+		"Reports the ready state of the dns record. 0 - not ready, 1 - ready. It also provides some metadata of the record in question",
+		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordRootHost, dnsRecordDelegating},
+		nil,
+	)
+
+	remoteRecords = prometheus.NewDesc(
+		"dns_provider_remote_records",
+		"Reports the delegated dns records on a remote cluster",
+		[]string{"cluster"},
+		nil,
+	)
+
+	remoteRecordReconcile = prometheus.NewDesc(
+		"dns_provider_remote_record_reconcile_count",
+		"Reports the reconcile count for a remote DNSRecord (collector pattern)",
+		[]string{"cluster", dnsRecordNameLabel, dnsRecordNamespaceLabel},
+		nil,
+	)
 
 	authoritativeRecordSpecInfo = prometheus.NewDesc(
 		"dns_provider_authoritative_record_spec_info",
@@ -81,38 +87,59 @@ var (
 	)
 )
 
-func NewRecordReadyMetric(record *v1alpha1.DNSRecord, ready bool) recordReadyMetric {
-	return recordReadyMetric{
-		name:       record.GetName(),
-		namespace:  record.GetNamespace(),
-		rootHost:   record.GetRootHost(),
-		delegating: record.IsDelegating(),
-		ready:      ready,
-	}
+func writeCounterMetric(ch chan<- prometheus.Metric, record v1alpha1.DNSRecord) {
+	ch <- prometheus.MustNewConstMetric(
+		writeCounter,
+		prometheus.GaugeValue,
+		float64(record.Status.WriteCounter),
+		record.Name,
+		record.Namespace,
+	)
 }
 
-type recordReadyMetric struct {
-	name       string
-	namespace  string
-	rootHost   string
-	delegating bool
-	ready      bool
-}
-
-func (m *recordReadyMetric) Publish() {
+func recordReadyMetric(ch chan<- prometheus.Metric, record v1alpha1.DNSRecord) {
+	ready := meta.IsStatusConditionTrue(record.Status.Conditions, string(v1alpha1.ConditionTypeReady))
 	var gauge float64
-	if m.ready {
+	if ready {
 		gauge = 1
 	}
-	RecordReady.WithLabelValues(m.name, m.namespace, m.rootHost, strconv.FormatBool(m.delegating)).Set(gauge)
+	ch <- prometheus.MustNewConstMetric(
+		recordReady,
+		prometheus.GaugeValue,
+		gauge,
+		record.Name,
+		record.Namespace,
+		record.GetRootHost(),
+		strconv.FormatBool(record.IsDelegating()),
+	)
 }
 
 type RemoteClusterCollector struct {
-	Provider *kubeconfigprovider.Provider
+	Provider                *kubeconfigprovider.Provider
+	mutex                   sync.Mutex
+	remoteReconcileCounters map[string]*remoteRecordCounter // key format: "cluster:namespace:name"
+	remoteRecordsCounts     map[string]float64              // key format: "cluster"
+}
+
+type remoteRecordCounter struct {
+	cluster   string
+	namespace string
+	name      string
+	count     int64
+}
+
+func NewRemoteClusterCollector(provider *kubeconfigprovider.Provider) *RemoteClusterCollector {
+	return &RemoteClusterCollector{
+		Provider:                provider,
+		remoteReconcileCounters: make(map[string]*remoteRecordCounter),
+		remoteRecordsCounts:     make(map[string]float64),
+	}
 }
 
 func (c *RemoteClusterCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- multiClusterCount
+	ch <- remoteRecords
+	ch <- remoteRecordReconcile
 }
 
 func (c *RemoteClusterCollector) Collect(ch chan<- prometheus.Metric) {
@@ -121,6 +148,135 @@ func (c *RemoteClusterCollector) Collect(ch chan<- prometheus.Metric) {
 		prometheus.GaugeValue,
 		float64(len(c.Provider.ListClusters())),
 	)
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	for cluster, count := range c.remoteRecordsCounts {
+		ch <- prometheus.MustNewConstMetric(
+			remoteRecords,
+			prometheus.GaugeValue,
+			count,
+			cluster,
+		)
+	}
+
+	for _, counter := range c.remoteReconcileCounters {
+		ch <- prometheus.MustNewConstMetric(
+			remoteRecordReconcile,
+			prometheus.CounterValue,
+			float64(counter.count),
+			counter.cluster,
+			counter.name,
+			counter.namespace,
+		)
+	}
+}
+
+// IncRemoteRecordReconcile increments the counter for a specific cluster/namespace/name combination
+func (c *RemoteClusterCollector) IncRemoteRecordReconcile(cluster, namespace, name string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	key := cluster + ":" + namespace + ":" + name
+	if counter, exists := c.remoteReconcileCounters[key]; exists {
+		counter.count++
+	} else {
+		c.remoteReconcileCounters[key] = &remoteRecordCounter{
+			cluster:   cluster,
+			namespace: namespace,
+			name:      name,
+			count:     1,
+		}
+	}
+}
+
+// RemoveRemoteRecordReconcile removes the counter for a specific cluster/namespace/name combination
+func (c *RemoteClusterCollector) RemoveRemoteRecordReconcile(cluster, namespace, name string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	key := cluster + ":" + namespace + ":" + name
+	delete(c.remoteReconcileCounters, key)
+}
+
+// SetRemoteRecordsCount sets the count of delegated remote records for a specific cluster
+func (c *RemoteClusterCollector) SetRemoteRecordsCount(cluster string, count float64) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	c.remoteRecordsCounts[cluster] = count
+}
+
+type ProbeCollector struct {
+	mutex         sync.Mutex
+	probeCounters map[string]*probeCounterEntry // key format: "name:namespace:hostname"
+}
+
+type probeCounterEntry struct {
+	name      string
+	namespace string
+	hostname  string
+	count     int64
+}
+
+func NewProbeCollector() *ProbeCollector {
+	return &ProbeCollector{
+		probeCounters: make(map[string]*probeCounterEntry),
+	}
+}
+
+func (c *ProbeCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- probeCounter
+}
+
+func (c *ProbeCollector) Collect(ch chan<- prometheus.Metric) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	for _, counter := range c.probeCounters {
+		ch <- prometheus.MustNewConstMetric(
+			probeCounter,
+			prometheus.GaugeValue,
+			float64(counter.count),
+			counter.name,
+			counter.namespace,
+			counter.hostname,
+		)
+	}
+}
+
+// IncProbeCounter increments the counter for a specific probe
+func (c *ProbeCollector) IncProbeCounter(name, namespace, hostname string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	key := name + ":" + namespace + ":" + hostname
+	if counter, exists := c.probeCounters[key]; exists {
+		counter.count++
+	} else {
+		c.probeCounters[key] = &probeCounterEntry{
+			name:      name,
+			namespace: namespace,
+			hostname:  hostname,
+			count:     1,
+		}
+	}
+}
+
+// DecProbeCounter decrements the counter for a specific probe
+func (c *ProbeCollector) DecProbeCounter(name, namespace, hostname string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	key := name + ":" + namespace + ":" + hostname
+	if counter, exists := c.probeCounters[key]; exists {
+		counter.count--
+		// Remove the entry if count reaches 0
+		if counter.count <= 0 {
+			delete(c.probeCounters, key)
+		}
+	}
 }
 
 type LocalCollector struct {
@@ -130,6 +286,7 @@ type LocalCollector struct {
 
 func (c *LocalCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- authoritativeRecordSpecInfo
+	ch <- recordReady
 }
 
 func (c *LocalCollector) Collect(ch chan<- prometheus.Metric) {
@@ -146,6 +303,8 @@ func (c *LocalCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for _, record := range dnsRecordList.Items {
+		recordReadyMetric(ch, record)
+		writeCounterMetric(ch, record)
 		if record.IsAuthoritativeRecord() {
 			specString, err := hash.GetCanonicalString(record.Spec)
 			if err != nil {
@@ -166,66 +325,6 @@ func (c *LocalCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-func NewRemoteRecordReconcileMetric(name, namespace, cluster string) remoteRecordReconcileMetric {
-	return remoteRecordReconcileMetric{
-		name:      name,
-		namespace: namespace,
-		cluster:   cluster,
-	}
-}
-
-type remoteRecordReconcileMetric struct {
-	name      string
-	namespace string
-	cluster   string
-}
-
-func (m *remoteRecordReconcileMetric) Publish() {
-	remoteRecordReconcile.WithLabelValues(m.cluster, m.name, m.namespace).Inc()
-}
-
-func NewRemoteRecordsMetric(ctx context.Context, cl client.Client, logger logr.Logger, cluster string) remoteRecordsMetric {
-	return remoteRecordsMetric{
-		ctx:     ctx,
-		client:  cl,
-		logger:  logger,
-		cluster: cluster,
-	}
-}
-
-type remoteRecordsMetric struct {
-	ctx     context.Context
-	client  client.Client
-	logger  logr.Logger
-	cluster string
-}
-
-func (m *remoteRecordsMetric) Publish() {
-
-	listOptions := &client.ListOptions{}
-	dnsRecordList := &v1alpha1.DNSRecordList{}
-
-	err := m.client.List(m.ctx, dnsRecordList, listOptions)
-	if err != nil {
-		m.logger.Error(err, "unable to get list of dnsRecords on secondary cluster, metric can not be published")
-		return
-	}
-
-	count := float64(0)
-	for _, record := range dnsRecordList.Items {
-		if record.IsDelegating() {
-			count += 1
-		}
-	}
-
-	remoteRecords.WithLabelValues(m.cluster).Set(count)
-}
-
 func init() {
-	metrics.Registry.MustRegister(WriteCounter)
 	metrics.Registry.MustRegister(SecretMissing)
-	metrics.Registry.MustRegister(ProbeCounter)
-	metrics.Registry.MustRegister(RecordReady)
-	metrics.Registry.MustRegister(remoteRecords)
-	metrics.Registry.MustRegister(remoteRecordReconcile)
 }

@@ -22,7 +22,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
@@ -45,17 +44,24 @@ import (
 type RemoteDNSRecordReconciler struct {
 	BaseDNSRecordReconciler
 
-	clusterUID string
-	mgr        mcmanager.Manager
-	gvk        schema.GroupVersionKind
+	clusterUID             string
+	mgr                    mcmanager.Manager
+	gvk                    schema.GroupVersionKind
+	RemoteClusterCollector *metrics.RemoteClusterCollector
 }
 
 var _ reconcile.TypedReconciler[mcreconcile.Request] = &RemoteDNSRecordReconciler{}
 
-func (r *RemoteDNSRecordReconciler) postReconcile(ctx context.Context, name, ns, cluster string) {
+func (r *RemoteDNSRecordReconciler) postReconcile(ctx context.Context, name, ns, cluster string, deleting bool) {
 	log.FromContext(ctx).Info(fmt.Sprintf("Reconciled Remote DNSRecord %s from namespace %s on cluster %s", name, ns, cluster))
-	remoteRecordsReconcileMetric := metrics.NewRemoteRecordReconcileMetric(name, ns, cluster)
-	remoteRecordsReconcileMetric.Publish()
+
+	if r.RemoteClusterCollector != nil {
+		if deleting {
+			r.RemoteClusterCollector.RemoveRemoteRecordReconcile(cluster, ns, name)
+		} else {
+			r.RemoteClusterCollector.IncRemoteRecordReconcile(cluster, ns, name)
+		}
+	}
 }
 
 //+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch
@@ -79,15 +85,29 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 	logger.Info("Remote Reconcile", "req", req.String())
 
-	defer r.postReconcile(ctx, req.Name, req.Namespace, req.ClusterName)
-
 	cl, err := r.mgr.GetCluster(ctx, req.ClusterName)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	remoteRecordsMetric := metrics.NewRemoteRecordsMetric(ctx, cl.GetClient(), logger, req.ClusterName)
-	remoteRecordsMetric.Publish()
+	// Update remote records count metric
+	if r.RemoteClusterCollector != nil {
+		listOptions := &client.ListOptions{}
+		dnsRecordList := &v1alpha1.DNSRecordList{}
+
+		err := cl.GetClient().List(ctx, dnsRecordList, listOptions)
+		if err != nil {
+			logger.Error(err, "unable to get list of dnsRecords on remote cluster, metric cannot be updated")
+		} else {
+			count := float64(0)
+			for _, record := range dnsRecordList.Items {
+				if record.IsDelegating() {
+					count++
+				}
+			}
+			r.RemoteClusterCollector.SetRemoteRecordsCount(req.ClusterName, count)
+		}
+	}
 
 	rec := &v1alpha1.DNSRecord{}
 	err = cl.GetClient().Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, rec)
@@ -108,7 +128,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		ClusterID: clusterID,
 	}
 
-	defer postReconcileMetrics(dnsRecord.GetDNSRecord(), meta.IsStatusConditionTrue(dnsRecord.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady)))
+	defer r.postReconcile(ctx, req.Name, req.Namespace, req.ClusterName, dnsRecord.IsDeleting())
 
 	// Update the logger with appropriate record/zone metadata from the dnsRecord
 	ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)

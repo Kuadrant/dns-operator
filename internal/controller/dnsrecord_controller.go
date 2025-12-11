@@ -38,7 +38,6 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common"
-	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
@@ -82,13 +81,6 @@ func postReconcile(ctx context.Context, name, ns string) {
 	log.FromContext(ctx).Info(fmt.Sprintf("Reconciled DNSRecord %s from namespace %s in %s", name, ns, time.Since(reconcileStart.Time)))
 }
 
-// postReconcileMetrics emits a metric after the reconciliation.
-// separate from the postReconcile as it should be deferred only if we have the record (vs called all the time)
-func postReconcileMetrics(record *v1alpha1.DNSRecord, ready bool) {
-	metric := metrics.NewRecordReadyMetric(record, ready)
-	metric.Publish()
-}
-
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords/finalizers,verbs=update
@@ -125,8 +117,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	dnsRecord = &DNSRecord{
 		DNSRecord: rec.DeepCopy(),
 	}
-
-	defer postReconcileMetrics(dnsRecord.GetDNSRecord(), meta.IsStatusConditionTrue(dnsRecord.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady)))
 
 	// Update the logger with appropriate record/zone metadata from the dnsRecord
 	ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
@@ -391,9 +381,9 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 		// generation has not changed but there are changes.
 		// implies that they were overridden - bump write counter
 		requeueTime = randomizedValidationRequeue
+		// BUG: https://github.com/Kuadrant/dns-operator/issues/664 The premature checks stops this from running.
 		if !generationChanged(current.GetDNSRecord()) {
 			current.GetStatus().WriteCounter++
-			metrics.WriteCounter.WithLabelValues(current.GetDNSRecord().GetName(), current.GetDNSRecord().GetNamespace()).Inc()
 			logger.V(1).Info("Changes needed on the same generation of record")
 
 			// we weren't ready before - back off
@@ -434,7 +424,6 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 	// reset the counter on the gen change regardless of having changes in the plan
 	if generationChanged(current.GetDNSRecord()) {
 		current.GetStatus().WriteCounter = 0
-		metrics.WriteCounter.WithLabelValues(current.GetDNSRecord().GetName(), current.GetNamespace()).Set(0)
 		logger.V(1).Info("Resetting write counter on the generation change")
 	}
 
