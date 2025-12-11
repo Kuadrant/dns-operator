@@ -1,3 +1,12 @@
+kuadrant-active-groups.k.example.com {
+    debug
+    errors
+    log
+    rewrite stop {
+      name kuadrant-active-groups.k.example.com kuadrant-active-groups-coredns.pb.hcpapps.net
+    }
+    forward . /etc/resolv.conf
+}
 k.example.com {
     debug
     errors

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,34 +33,47 @@ const (
 
 // TXTResolver is an interface for resolving TXT DNS records
 type TXTResolver interface {
-	LookupTXT(host string, nameservers []string) ([]string, error)
+	LookupTXT(ctx context.Context, host string, nameservers []string) ([]string, error)
 }
 
 // DefaultTXTResolver is the default implementation that uses net.LookupTXT
 type DefaultTXTResolver struct{}
 
-func (d *DefaultTXTResolver) LookupTXT(host string, nameservers []string) ([]string, error) {
+func (d *DefaultTXTResolver) LookupTXT(ctx context.Context, host string, nameservers []string) ([]string, error) {
+	logger, err := logr.FromContext(ctx)
+	if err != nil {
+		return []string{}, nil
+	}
+	logger.Info("looking up txt record", "host", host, "nameservers", nameservers)
 	// If nameservers are provided, try each one until we get an answer
 	if len(nameservers) > 0 {
 		for _, ns := range nameservers {
+			// Parse the nameserver to handle cases where port is already specified
+			nsAddr := ns
+			if _, _, err := net.SplitHostPort(ns); err != nil {
+				// No port specified, add default port 53
+				nsAddr = net.JoinHostPort(ns, "53")
+			}
+			logger.V(1).Info("using nameserver", "nameserver", ns, "resolved", nsAddr)
+
 			resolver := &net.Resolver{
 				PreferGo: true,
 				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 					dialer := net.Dialer{
-						Timeout: time.Second * 1,
+						Timeout: time.Second * 3,
 					}
-					// Use the nameserver with port 53
-					return dialer.DialContext(ctx, "udp", net.JoinHostPort(ns, "53"))
+					// Always use our specified nameserver, ignoring the address parameter
+					return dialer.DialContext(ctx, network, nsAddr)
 				},
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
 			records, err := resolver.LookupTXT(ctx, host)
-			cancel()
 
 			if err == nil && len(records) > 0 {
+				logger.V(1).Info("successfully resolved txt record", "nameserver", nsAddr, "records", records)
 				return records, nil
 			}
+			logger.V(1).Info("failed to resolve txt record", "nameserver", nsAddr, "error", err)
 		}
 	}
 
@@ -112,7 +127,7 @@ func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, c client.
 	activeGroupsHost := activeGroupsTXTRecordName + "." + dnsRecord.GetZoneDomainName()
 
 	nameservers := r.getNameserversFromProvider(ctx, c, dnsRecord)
-	values, err := r.TXTResolver.LookupTXT(activeGroupsHost, nameservers)
+	values, err := r.TXTResolver.LookupTXT(ctx, activeGroupsHost, nameservers)
 	if err != nil {
 		logger.Error(err, "error looking up active groups")
 		return activeGroups
@@ -120,8 +135,8 @@ func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, c client.
 	// found an answer, format it and return
 	if len(values) > 0 {
 		activeGroupsStr := strings.Join(values, "")
-		pairs := strings.Split(activeGroupsStr, ";")
-		for _, pairStr := range pairs {
+		pairs := strings.SplitSeq(activeGroupsStr, ";")
+		for pairStr := range pairs {
 			sections := strings.Split(pairStr, "=")
 			if sections[0] == "groups" {
 				for g := range strings.SplitSeq(sections[1], "&&") {
