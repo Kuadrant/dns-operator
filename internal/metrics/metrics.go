@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -25,9 +24,6 @@ const (
 	dnsHealthCheckNameLabel      = "dns_health_check_name"
 	dnsHealthCheckNamespaceLabel = "dns_health_check_namespace"
 	dnsHealthCheckHostLabel      = "dns_health_check_host"
-	mzRecordNameLabel            = "managed_zone_name"
-	mzRecordNamespaceLabel       = "managed_zone_namespace"
-	mzSecretNameLabel            = "managed_zone_secret_name"
 )
 
 var (
@@ -44,13 +40,6 @@ var (
 		[]string{dnsHealthCheckNameLabel, dnsHealthCheckNamespaceLabel, dnsHealthCheckHostLabel},
 		nil,
 	)
-	// TODO: Move to collector pattern
-	SecretMissing = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "dns_provider_secret_absent",
-			Help: "Emits one when provider secret is found to be absent, or zero when expected secrets exist",
-		},
-		[]string{mzRecordNameLabel, mzRecordNamespaceLabel, mzSecretNameLabel})
 
 	recordReady = prometheus.NewDesc(
 		"dns_provider_record_ready",
@@ -323,8 +312,4 @@ func (c *LocalCollector) Collect(ch chan<- prometheus.Metric) {
 			)
 		}
 	}
-}
-
-func init() {
-	metrics.Registry.MustRegister(SecretMissing)
 }
