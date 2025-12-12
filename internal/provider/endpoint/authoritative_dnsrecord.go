@@ -62,9 +62,14 @@ func (p AuthoritativeDNSRecordProvider) DNSZoneForHost(ctx context.Context, _ st
 		return nil, err
 	}
 
+	zoneDomainName := aRecord.Status.ZoneDomainName
+	if zoneDomainName == "" {
+		return nil, fmt.Errorf("Authoritative zone does not yet have a zone domain name set")
+	}
+
 	zone := &provider.DNSZone{
 		ID:      aRecord.GetName(),
-		DNSName: aRecord.GetRootHost(),
+		DNSName: zoneDomainName,
 	}
 
 	return zone, nil
