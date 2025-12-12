@@ -213,12 +213,14 @@ func TransportWithDNSResponse(overrides map[string]string, allowInsecureCertific
 }
 
 type ProbeManager struct {
-	probes map[string]context.CancelFunc
+	probes         map[string]context.CancelFunc
+	probeCollector *metrics.ProbeCollector
 }
 
-func NewProbeManager() *ProbeManager {
+func NewProbeManager(collector *metrics.ProbeCollector) *ProbeManager {
 	return &ProbeManager{
-		probes: map[string]context.CancelFunc{},
+		probes:         map[string]context.CancelFunc{},
+		probeCollector: collector,
 	}
 }
 
@@ -234,7 +236,7 @@ func (m *ProbeManager) StopProbeWorker(ctx context.Context, probeCR *v1alpha1.DN
 
 // Start a worker in a separate gouroutine. Returns a cancel func to kill the worker.
 // If a worker is nil, no routines will start and cancel could be ignored (still returning it to prevent panic)
-func (w *Probe) Start(clientctx context.Context, k8sClient client.Client, probe *v1alpha1.DNSHealthCheckProbe) context.CancelFunc {
+func (w *Probe) Start(clientctx context.Context, k8sClient client.Client, probe *v1alpha1.DNSHealthCheckProbe, collector *metrics.ProbeCollector) context.CancelFunc {
 
 	ctx, cancel := context.WithCancel(clientctx)
 	logger := log.FromContext(ctx).WithValues("probe", keyForProbe(probe))
@@ -244,7 +246,17 @@ func (w *Probe) Start(clientctx context.Context, k8sClient client.Client, probe 
 		// jitter probe execution so we aren't starting at the same time
 		time.Sleep(common.RandomizeDuration(ProbeDelayVariance, ProbeDelay))
 
-		metrics.ProbeCounter.WithLabelValues(probe.Name, probe.Namespace, probe.Spec.Hostname).Inc()
+		if collector != nil {
+			collector.IncProbeCounter(probe.Name, probe.Namespace, probe.Spec.Hostname)
+		}
+		// Ensure counter is decremented when goroutine exits, regardless of how it exits
+		defer func() {
+			if collector != nil {
+				logger.V(1).Info("health: stopped executing probe", "probe", keyForProbe(probe))
+				collector.DecProbeCounter(probe.Name, probe.Namespace, probe.Spec.Hostname)
+			}
+		}()
+
 		//each time the probe executes it will send a result on the channel returned by ExecuteProbe until the probe is cancelled. The probe can be cancelled by a new spec being created for the healthcheck or on shutdown
 		for probeResult := range w.ExecuteProbe(ctx, probe) {
 			freshProbe := &v1alpha1.DNSHealthCheckProbe{}
@@ -275,9 +287,6 @@ func (w *Probe) Start(clientctx context.Context, k8sClient client.Client, probe 
 				logger.Error(err, "health: probe finished. error updating probe status")
 			}
 		}
-
-		logger.V(1).Info("health: stopped executing probe", "probe", keyForProbe(probe))
-		metrics.ProbeCounter.WithLabelValues(probe.Name, probe.Namespace, probe.Spec.Hostname).Dec()
 	}()
 	return cancel
 }
@@ -302,7 +311,7 @@ func (m *ProbeManager) EnsureProbeWorker(ctx context.Context, k8sClient client.C
 	// Either worker does not exist, or gen changed and old worker got killed. Creating a new one.
 	logger.V(2).Info("health: starting fresh worker for", "generation", probeCR.Generation, "probe", keyForProbe(probeCR))
 	probe := NewProbe(headers)
-	m.probes[keyForProbe(probeCR)] = probe.Start(ctx, k8sClient, probeCR)
+	m.probes[keyForProbe(probeCR)] = probe.Start(ctx, k8sClient, probeCR, m.probeCollector)
 }
 
 func keyForProbe(probe *v1alpha1.DNSHealthCheckProbe) string {

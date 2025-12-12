@@ -176,6 +176,7 @@ func main() {
 
 	var mgr ctrl.Manager
 	var mcmgr mcmanager.Manager
+	var clusterProvider *kubeconfigprovider.Provider
 	var err error
 	setupLog.Info(fmt.Sprintf("using group: %s", group))
 	setupLog.Info("using delegation role: ", "delegationRole", delegationRole)
@@ -197,7 +198,7 @@ func main() {
 
 		// Create the provider first, then the manager with the provider
 		setupLog.Info("Creating cluster provider")
-		clusterProvider := kubeconfigprovider.New(clusterProviderOpts)
+		clusterProvider = kubeconfigprovider.New(clusterProviderOpts)
 
 		// Setup a cluster-aware Manager, with the provider to lookup clusters.
 		setupLog.Info("Creating cluster aware manager")
@@ -215,10 +216,16 @@ func main() {
 		}
 
 		mgr = mcmgr.GetLocalManager()
-		metrics.Registry.MustRegister(&dnsMetrics.RemoteClusterCollector{Provider: clusterProvider})
 	}
 
 	metrics.Registry.MustRegister(&dnsMetrics.LocalCollector{Ctx: ctx, Mgr: mgr})
+
+	// Create and register the remote cluster collector (only for primary delegation role)
+	var remoteClusterCollector *dnsMetrics.RemoteClusterCollector
+	if delegationRole == controller.DelegationRolePrimary {
+		remoteClusterCollector = dnsMetrics.NewRemoteClusterCollector(clusterProvider)
+		metrics.Registry.MustRegister(remoteClusterCollector)
+	}
 
 	if len(providers) == 0 {
 		defaultProviders := provider.RegisteredDefaultProviders()
@@ -265,6 +272,7 @@ func main() {
 				DelegationRole:  delegationRole,
 				Group:           group,
 			},
+			RemoteClusterCollector: remoteClusterCollector,
 		}
 
 		if err = remoteDNSRecordController.SetupWithManager(mcmgr, false); err != nil {
@@ -274,7 +282,10 @@ func main() {
 	}
 
 	if dnsProbesEnabled {
-		probeManager := probes.NewProbeManager()
+		probeCollector := dnsMetrics.NewProbeCollector()
+		metrics.Registry.MustRegister(probeCollector)
+
+		probeManager := probes.NewProbeManager(probeCollector)
 		if err = (&controller.DNSProbeReconciler{
 			Client:       mgr.GetClient(),
 			Scheme:       mgr.GetScheme(),
