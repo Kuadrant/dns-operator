@@ -3,6 +3,7 @@
 package endpoint
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
@@ -68,6 +70,9 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 		Spec: v1alpha1.DNSRecordSpec{
 			RootHost: "example.com",
 		},
+		Status: v1alpha1.DNSRecordStatus{
+			ZoneDomainName: "example.com",
+		},
 	}
 
 	t.Run("creates authoritative record if one does not already exist", func(t *testing.T) {
@@ -87,8 +92,9 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 		assert.NoError(t, err)
 
 		zone, err := authProvider.DNSZoneForHost(t.Context(), "foo.example.com")
-		assert.NotNil(t, zone)
-		assert.NoError(t, err)
+		// expect an error until zone is set in status
+		assert.Nil(t, zone)
+		assert.Error(t, err)
 
 		dnsRecordsGVR := v1alpha1.GroupVersion.WithResource("dnsrecords")
 
@@ -115,6 +121,18 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 		unst, err := dc.Resource(dnsRecordsGVR).Namespace("test-namespace").Get(t.Context(), desiredAuthRecord.Name, metav1.GetOptions{})
 		assert.NoError(t, err)
 		err = runtime.DefaultUnstructuredConverter.FromUnstructured(unst.Object, &actualAuthRecord)
+		assert.NoError(t, err)
+
+		// set the zoneDomainName in the status
+		actualAuthRecord.Status.ZoneDomainName = "example.com"
+		unstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(actualAuthRecord)
+		assert.NoError(t, err)
+		unst.Object = unstr
+		_, err = dc.Resource(dnsRecordsGVR).Namespace("test-namespace").Update(t.Context(), unst, metav1.UpdateOptions{})
+		assert.NoError(t, err)
+
+		zone, err = authProvider.DNSZoneForHost(t.Context(), "foo.example.com")
+		assert.NotNil(t, zone)
 		assert.NoError(t, err)
 
 		assert.Equal(t, desiredAuthRecord.Name, actualAuthRecord.Name)
@@ -144,6 +162,7 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, zone.ID, authRecord.Name)
+		// When no ZoneDomainName is set in status, falls back to RootHost
 		assert.Equal(t, zone.DNSName, authRecord.Spec.RootHost)
 
 		//Check only the one record exists
@@ -151,6 +170,57 @@ func TestAuthoritativeDNSRecordProvider_DNSZoneForHost(t *testing.T) {
 		uList, err := dc.Resource(dnsRecordsGVR).Namespace("test-namespace").List(t.Context(), metav1.ListOptions{})
 		assert.NoError(t, err)
 		assert.Len(t, uList.Items, 1)
+	})
+
+	t.Run("uses zone domain name from authoritative record status", func(t *testing.T) {
+		rootHost := "loadbalanced.k.example.com"
+		authRecordWithZone := authRecord.DeepCopy()
+		authRecordWithZone.Spec.RootHost = rootHost
+		authRecordWithZone.Name = fmt.Sprintf("authoritative-record-%s", common.HashRootHost(rootHost))
+		authRecordWithZone.Labels = map[string]string{
+			"kuadrant.io/authoritative-record-hash": common.HashRootHost(rootHost),
+			"kuadrant.io/authoritative-record":      "true",
+		}
+
+		dc := cgfake.NewSimpleDynamicClient(scheme, []runtime.Object{authRecordWithZone}...)
+
+		pa := &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-record",
+				Namespace: "test-namespace",
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				RootHost: "loadbalanced.k.example.com",
+			},
+		}
+		authProvider, err := NewAuthoritativeDNSRecordProvider(t.Context(), dc, pa, provider.Config{})
+		assert.NotNil(t, authProvider)
+		assert.NoError(t, err)
+
+		// Update the status with the zone domain name
+		dnsRecordsGVR := v1alpha1.GroupVersion.WithResource("dnsrecords")
+		unst, err := dc.Resource(dnsRecordsGVR).Namespace("test-namespace").Get(t.Context(), authRecordWithZone.Name, metav1.GetOptions{})
+		assert.NoError(t, err)
+
+		actualAuthRecord := &v1alpha1.DNSRecord{}
+		err = runtime.DefaultUnstructuredConverter.FromUnstructured(unst.Object, &actualAuthRecord)
+		assert.NoError(t, err)
+
+		actualAuthRecord.Status.ZoneDomainName = "k.example.com"
+		unstr, err := runtime.DefaultUnstructuredConverter.ToUnstructured(actualAuthRecord)
+		assert.NoError(t, err)
+		unst.Object = unstr
+		_, err = dc.Resource(dnsRecordsGVR).Namespace("test-namespace").Update(t.Context(), unst, metav1.UpdateOptions{})
+		assert.NoError(t, err)
+
+		zone, err := authProvider.DNSZoneForHost(t.Context(), "loadbalanced.k.example.com")
+		assert.NotNil(t, zone)
+		assert.NoError(t, err)
+
+		assert.Equal(t, zone.ID, authRecordWithZone.Name)
+		// Should use the zone domain name from status, not the rootHost
+		assert.Equal(t, zone.DNSName, "k.example.com")
+		assert.NotEqual(t, zone.DNSName, authRecordWithZone.Spec.RootHost)
 	})
 
 	t.Run("adds missing labels to authoritative record", func(t *testing.T) {
