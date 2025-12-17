@@ -1,3 +1,8 @@
+---
+argument-hint: /verify-pr <branch> <Issue URL>
+description: Analyze whether the code changes in the current branch adequately address the requirements specified in a GitHub issue. This verification helps ensure PRs are complete before submission.
+---
+
 You are analyzing whether the code changes in the current branch adequately address the requirements specified in a GitHub issue. This verification helps ensure PRs are complete before submission.
 
 **Parameters:**
