@@ -41,9 +41,9 @@ const (
 	TestTimeoutMedium         = time.Second * 15
 	TestTimeoutLong           = time.Second * 30
 	TestRetryIntervalMedium   = time.Millisecond * 250
-	RequeueDuration           = time.Second * 6
-	ValidityDuration          = time.Second * 3
-	DefaultValidationDuration = time.Millisecond * 500
+	RequeueDuration           = time.Second * 2
+	ValidityDuration          = time.Second * 2
+	DefaultValidationDuration = time.Second * 1
 )
 
 func GenerateName() string {

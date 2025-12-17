@@ -112,7 +112,7 @@ func (r *BaseDNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord D
 	if err != nil {
 		return hadChanges, err
 	}
-	logger.Info("Published DNSRecord to zone")
+	logger.Info("Published DNSRecord to zone", "hadChanges?", hadChanges)
 
 	return hadChanges, nil
 }
@@ -200,7 +200,12 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 }
 
 func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client client.Client, previous, current DNSRecordAccessor, err error) (reconcile.Result, error) {
-	result, uErr := r.updateStatusAndRequeue(ctx, client, previous, current, 0)
+	_, requeueTime := recordReceivedPrematurely(current)
+	if !current.IsActive() {
+		requeueTime = inactiveGroupRequeueTime
+	}
+	result, uErr := r.updateStatusAndRequeue(ctx, client, previous, current, requeueTime)
+
 	if uErr != nil {
 		err = uErr
 	}

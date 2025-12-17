@@ -613,7 +613,7 @@ func TxtRecordsToRegistryMap(endpoints []*endpoint.Endpoint, prefix, suffix, wil
 		for _, target := range ep.Targets {
 			var labelsFromTarget endpoint.Labels
 			ownerID, version, labelsFromTarget, err = NewLabelsFromString(target, txtEncryptAESKey)
-			if errors.Is(err, endpoint.ErrInvalidHeritage) {
+			if err != nil {
 				continue
 			}
 			hasValidHeritage = true
@@ -626,8 +626,11 @@ func TxtRecordsToRegistryMap(endpoints []*endpoint.Endpoint, prefix, suffix, wil
 		}
 
 		// If ownerID wasn't extracted (no delimiter), get it from labels
-		if ownerID == "" {
+		if _, ok := labels[endpoint.OwnerLabelKey]; ok && ownerID == "" {
 			ownerID = labels[endpoint.OwnerLabelKey]
+		} else if ownerID == "" {
+			// couldn't find an owner ID for this record, skip it
+			continue
 		}
 
 		// Convert TXT record name to actual endpoint name

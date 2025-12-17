@@ -2,9 +2,8 @@ package types
 
 import (
 	"fmt"
+	"slices"
 	"strings"
-
-	"github.com/kuadrant/dns-operator/internal/common/slice"
 )
 
 const (
@@ -53,7 +52,7 @@ func (g *Group) Labels() map[string]string {
 type Groups []Group
 
 func (g Groups) HasGroup(group Group) bool {
-	return slice.Contains(g, func(gElem Group) bool { return gElem == group })
+	return slices.Contains(g, group)
 }
 
 func (g Groups) String() string {

@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"maps"
 	"net"
 	"slices"
@@ -27,7 +26,7 @@ import (
 	"github.com/kuadrant/dns-operator/types"
 )
 
-const (
+var (
 	InactiveGroupRequeueTime = time.Second * 15
 )
 
@@ -42,39 +41,37 @@ type DefaultTXTResolver struct{}
 func (d *DefaultTXTResolver) LookupTXT(ctx context.Context, host string, nameservers []string) ([]string, error) {
 	logger, err := logr.FromContext(ctx)
 	if err != nil {
-		return []string{}, nil
+		return []string{}, err
 	}
 	logger.Info("looking up txt record", "host", host, "nameservers", nameservers)
 	// If nameservers are provided, try each one until we get an answer
-	if len(nameservers) > 0 {
-		for _, ns := range nameservers {
-			// Parse the nameserver to handle cases where port is already specified
-			nsAddr := ns
-			if _, _, err := net.SplitHostPort(ns); err != nil {
-				// No port specified, add default port 53
-				nsAddr = net.JoinHostPort(ns, "53")
-			}
-			logger.V(1).Info("using nameserver", "nameserver", ns, "resolved", nsAddr)
-
-			resolver := &net.Resolver{
-				PreferGo: true,
-				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-					dialer := net.Dialer{
-						Timeout: time.Second * 3,
-					}
-					// Always use our specified nameserver, ignoring the address parameter
-					return dialer.DialContext(ctx, network, nsAddr)
-				},
-			}
-
-			records, err := resolver.LookupTXT(ctx, host)
-
-			if err == nil && len(records) > 0 {
-				logger.V(1).Info("successfully resolved txt record", "nameserver", nsAddr, "records", records)
-				return records, nil
-			}
-			logger.V(1).Info("failed to resolve txt record", "nameserver", nsAddr, "error", err)
+	for _, ns := range nameservers {
+		// Parse the nameserver to handle cases where port is already specified
+		nsAddr := ns
+		if _, _, err := net.SplitHostPort(ns); err != nil {
+			// No port specified, add default port 53
+			nsAddr = net.JoinHostPort(ns, "53")
 		}
+		logger.V(1).Info("using nameserver", "nameserver", ns, "resolved", nsAddr)
+
+		resolver := &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				dialer := net.Dialer{
+					Timeout: time.Second * 3,
+				}
+				// Always use our specified nameserver, ignoring the address parameter
+				return dialer.DialContext(ctx, network, nsAddr)
+			},
+		}
+
+		records, err := resolver.LookupTXT(ctx, host)
+
+		if err == nil && len(records) > 0 {
+			logger.V(1).Info("successfully resolved txt record", "nameserver", nsAddr, "records", records)
+			return records, nil
+		}
+		logger.V(1).Info("failed to resolve txt record", "nameserver", nsAddr, "error", err)
 	}
 
 	// Fall back to default net.LookupTXT if no custom nameservers resolved.
@@ -96,12 +93,12 @@ func newGroupAdapter(accessor DNSRecordAccessor, activeGroups types.Groups) *Gro
 }
 
 func (s *GroupAdapter) IsActive() bool {
-	//this controller is ungrouped
-	return s.GetGroup() == "" ||
-		//no active groups specified or
-		len(s.activeGroups) == 0 ||
-		//this controllers group is active or
-		s.activeGroups.HasGroup(s.GetGroup())
+	//this controller is ungrouped - always active
+	if s.GetGroup() == "" {
+		return true
+	}
+	//this controllers group is active
+	return s.activeGroups.HasGroup(s.GetGroup())
 }
 
 func (s *GroupAdapter) SetStatusConditions(hadChanges bool) {
@@ -110,10 +107,8 @@ func (s *GroupAdapter) SetStatusConditions(hadChanges bool) {
 	if s.GetGroup() != "" {
 		if !s.IsActive() {
 			s.SetStatusCondition(string(v1alpha1.ConditionTypeActive), metav1.ConditionFalse, string(v1alpha1.ConditionReasonNotInActiveGroup), "Group is not included in active groups")
-		} else if len(s.activeGroups) != 0 {
-			s.SetStatusCondition(string(v1alpha1.ConditionTypeActive), metav1.ConditionTrue, string(v1alpha1.ConditionReasonInActiveGroup), "Group is included in active groups")
 		} else {
-			s.SetStatusCondition(string(v1alpha1.ConditionTypeActive), metav1.ConditionTrue, string(v1alpha1.ConditionReasonNoActiveGroups), "Group is active as no active groups were found")
+			s.SetStatusCondition(string(v1alpha1.ConditionTypeActive), metav1.ConditionTrue, string(v1alpha1.ConditionReasonInActiveGroup), "Group is included in active groups")
 		}
 	} else {
 		s.ClearStatusCondition(string(v1alpha1.ConditionTypeActive))
@@ -126,7 +121,11 @@ func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, c client.
 	activeGroups := types.Groups{}
 	activeGroupsHost := activeGroupsTXTRecordName + "." + dnsRecord.GetZoneDomainName()
 
-	nameservers := r.getNameserversFromProvider(ctx, c, dnsRecord)
+	nameservers, err := r.getNameserversFromProvider(ctx, c, dnsRecord)
+	if err != nil {
+		logger.Error(err, "error getting custom nameservers from provider")
+		return activeGroups
+	}
 	values, err := r.TXTResolver.LookupTXT(ctx, activeGroupsHost, nameservers)
 	if err != nil {
 		logger.Error(err, "error looking up active groups")
@@ -138,6 +137,10 @@ func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, c client.
 		pairs := strings.SplitSeq(activeGroupsStr, ";")
 		for pairStr := range pairs {
 			sections := strings.Split(pairStr, "=")
+			if len(sections) != 2 {
+				// bad registry pair entry, skip
+				continue
+			}
 			if sections[0] == "groups" {
 				for g := range strings.SplitSeq(sections[1], "&&") {
 					group := types.Group(g)
@@ -156,7 +159,7 @@ func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, c client.
 }
 
 // getNameserversFromProvider extracts nameservers from the provider secret
-func (r *BaseDNSRecordReconciler) getNameserversFromProvider(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) []string {
+func (r *BaseDNSRecordReconciler) getNameserversFromProvider(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) ([]string, error) {
 	var nameservers []string
 	var providerSecret v1.Secret
 	providerRef := dnsRecord.GetProviderRef()
@@ -169,6 +172,8 @@ func (r *BaseDNSRecordReconciler) getNameserversFromProvider(ctx context.Context
 
 		if err := c.Get(ctx, secretKey, &providerSecret); err == nil {
 			nameservers = r.extractNameserversFromSecret(&providerSecret)
+		} else {
+			return nameservers, err
 		}
 	} else {
 		secretList := &v1.SecretList{}
@@ -183,12 +188,15 @@ func (r *BaseDNSRecordReconciler) getNameserversFromProvider(ctx context.Context
 			nameservers = r.extractNameserversFromSecret(&secretList.Items[0])
 		}
 	}
-	return nameservers
+	return nameservers, nil
 }
 
 // extractNameserversFromSecret extracts and parses the NAMESERVERS field from a secret
 func (r *BaseDNSRecordReconciler) extractNameserversFromSecret(secret *v1.Secret) []string {
 	var nameservers []string
+	if secret == nil {
+		return nameservers
+	}
 	if nameserversData, ok := secret.Data["NAMESERVERS"]; ok && len(nameserversData) > 0 {
 		nameserversStr := string(nameserversData)
 		for ns := range strings.SplitSeq(nameserversStr, ",") {
@@ -240,37 +248,38 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c
 		}
 
 		//no registry entries for this host at all, skip it
-		if registryHost, ok := registryMap.Hosts[e.DNSName]; !ok {
+		if _, ok := registryMap.Hosts[e.DNSName]; !ok {
 			continue
+		}
+
+		registryHost := registryMap.Hosts[e.DNSName]
+		if !registryHost.HasAnyGroup(activeGroups) && len(registryHost.UngroupedOwners) == 0 {
+			// This host doesn't have owners in active groups nor any ungrouped owners, delete it
+			changes.Delete = append(changes.Delete, e)
+			continue
+		}
+
+		// active targets is the combination of all active group owners targets, plus all ungrouped owners targets
+		activeTargets := append(registryHost.GetGroupsTargets(activeGroups), registryHost.GetUngroupedTargets()...)
+
+		// remove all inactive targets from endpoint
+		newTargets := []string{}
+		for _, t := range e.Targets {
+			if slices.Contains(activeTargets, t) {
+				newTargets = append(newTargets, t)
+			}
+		}
+
+		if len(newTargets) > 0 {
+			if !slices.Equal(newTargets, e.Targets) {
+				// some targets were only owned from inactive groups, modify the endpoint
+				changes.UpdateOld = append(changes.UpdateOld, e.DeepCopy())
+				e.Targets = newTargets
+				changes.UpdateNew = append(changes.UpdateNew, e)
+			}
 		} else {
-			if !registryHost.HasAnyGroup(activeGroups) && len(registryHost.UngroupedOwners) == 0 {
-				// This host doesn't have owners in active groups nor any ungrouped owners, delete it
-				changes.Delete = append(changes.Delete, e)
-				continue
-			}
-
-			// active targets is the combination of all active group owners targets, plus all ungrouped owners targets
-			activeTargets := append(registryHost.GetGroupsTargets(activeGroups), registryHost.GetUngroupedTargets()...)
-
-			// remove all inactive targets from endpoint
-			newTargets := []string{}
-			for _, t := range e.Targets {
-				if slices.Contains(activeTargets, t) {
-					newTargets = append(newTargets, t)
-				}
-			}
-
-			if len(newTargets) > 0 {
-				if !slices.Equal(newTargets, e.Targets) {
-					// some targets were only owned from inactive groups, modify the endpoint
-					changes.UpdateOld = append(changes.UpdateOld, e.DeepCopy())
-					e.Targets = newTargets
-					changes.UpdateNew = append(changes.UpdateNew, e)
-				}
-			} else {
-				// no targets left for this host, delete it
-				changes.Delete = append(changes.Delete, e)
-			}
+			// no targets left for this host, delete it
+			changes.Delete = append(changes.Delete, e)
 		}
 	}
 
@@ -297,7 +306,7 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c
 		for _, target := range e.Targets {
 			var labelsFromTarget endpoint.Labels
 			_, _, labelsFromTarget, err = registry.NewLabelsFromString(target, []byte(txtRegistryEncryptAESKey))
-			if errors.Is(err, endpoint.ErrInvalidHeritage) {
+			if err != nil {
 				continue
 			}
 			maps.Copy(labels, labelsFromTarget)

@@ -116,6 +116,9 @@ func TestControllers(t *testing.T) {
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.Level(zapcore.DebugLevel)))
 
+	// Speed up inactive group requeuing for tests
+	InactiveGroupRequeueTime = time.Millisecond * 500
+
 	ctx, cancel = context.WithCancel(ctrl.SetupSignalHandler())
 	By("bootstrapping test environment")
 

@@ -189,6 +189,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		dnsRecord.SetStatusZoneDomainName("")
 		dnsRecord.SetStatusZoneID("")
 		dnsRecord.SetStatusDomainOwners(nil)
+		controllerutil.RemoveFinalizer(dnsRecord.GetDNSRecord(), DNSRecordFinalizer)
 
 		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, time.Second)
 	}
@@ -261,21 +262,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
-	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() && r.Group != "" {
-		var activeGroups types.Groups
-		activeGroups = r.getActiveGroups(ctx, r.Client, dnsRecord)
-		dnsRecord.SetStatusActiveGroups(activeGroups)
-		dnsRecord = newGroupAdapter(dnsRecord, activeGroups)
-	}
-
-	if !dnsRecord.IsActive() {
-		logger.V(1).Info("record is from an inactive group, exiting reconcile")
-		res, err := r.updateStatus(ctx, previous, dnsRecord, false, nil)
-		if err != nil {
-			return res, err
-		}
-		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
-	}
 
 	// Ensure we have provider secret
 	if !dnsRecord.IsDelegating() && !dnsRecord.HasProviderSecretAssigned() {
@@ -342,6 +328,24 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		//Update logger and context so it includes updated zone metadata
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
+	}
+
+	// Check active groups for grouped records after zone assignment
+	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() && r.Group != "" {
+		var activeGroups types.Groups
+		activeGroups = r.getActiveGroups(ctx, r.Client, dnsRecord)
+		dnsRecord.SetStatusActiveGroups(activeGroups)
+		dnsRecord = newGroupAdapter(dnsRecord, activeGroups)
+
+		// If this grouped record is not active, exit early (only active groups process unpublishing)
+		if !dnsRecord.IsActive() {
+			logger.V(1).Info("record is from an inactive group, exiting reconcile")
+			res, err := r.updateStatus(ctx, previous, dnsRecord, false, nil)
+			if err != nil {
+				return res, err
+			}
+			return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
+		}
 	}
 
 	// Create a dns provider for the current record, must have an owner and zone assigned or will throw an error
@@ -572,14 +576,14 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, val
 func recordReceivedPrematurely(record DNSRecordAccessor) (bool, time.Duration) {
 	var prematurely bool
 
-	// do not consider active records premature, as they may have some unpublishing to do
-	if record.IsActive() && record.GetGroup() != "" {
-		return false, defaultRequeueTime
-	}
-
 	requeueIn := validFor
 	if record.GetStatus().ValidFor != "" {
 		requeueIn, _ = time.ParseDuration(record.GetStatus().ValidFor)
+	}
+
+	// do not consider active records premature, as they may have some unpublishing to do
+	if record.IsActive() && record.GetGroup() != "" {
+		return false, requeueIn
 	}
 
 	expiryTime := metav1.NewTime(record.GetStatus().QueuedAt.Add(requeueIn))

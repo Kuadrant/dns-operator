@@ -396,7 +396,7 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 				)
 			}, TestTimeoutLong, time.Second).Should(Succeed())
 
-			By("verifying all records are published in zone (no active groups set)")
+			By("verifying only ungrouped records are published in zone (no active groups set)")
 			memClient := inmemory.GetInMemoryClient()
 			Eventually(func(g Gomega) {
 				records, err := memClient.Records(testZoneDomainName)
@@ -410,10 +410,10 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 					}
 				}
 
-				// Should have all 5 targets (group1: 2, group2: 2, ungrouped: 1)
+				// Should only have ungrouped (127.0.0.5) - grouped records are inactive
 				g.Expect(aRecords).To(HaveLen(1))
-				g.Expect(aRecords[0].Targets).To(ConsistOf("127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"))
-			}, TestTimeoutLong, time.Second).Should(Succeed())
+				g.Expect(aRecords[0].Targets).To(ConsistOf("127.0.0.5"))
+			}, TestTimeoutLong*3, time.Second).Should(Succeed())
 
 			By("setting group1 as the active group")
 			Expect(setActiveGroupsInDNS(ctx, testZoneDomainName, types.Groups{types.Group("group1")})).To(Succeed())
@@ -473,7 +473,7 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 				// Should only have group1 (127.0.0.1, 127.0.0.2) and ungrouped (127.0.0.5)
 				g.Expect(aRecords).To(HaveLen(1))
 				g.Expect(aRecords[0].Targets).To(ConsistOf("127.0.0.1", "127.0.0.2", "127.0.0.5"))
-			}, TestTimeoutLong*2, time.Second).Should(Succeed())
+			}, TestTimeoutLong*3, time.Second).Should(Succeed())
 
 			By("switching to group2 as the active group")
 			Expect(setActiveGroupsInDNS(ctx, testZoneDomainName, types.Groups{types.Group("group2")})).To(Succeed())
@@ -533,12 +533,12 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 				// Should only have group2 (127.0.0.3, 127.0.0.4) and ungrouped (127.0.0.5)
 				g.Expect(aRecords).To(HaveLen(1))
 				g.Expect(aRecords[0].Targets).To(ConsistOf("127.0.0.3", "127.0.0.4", "127.0.0.5"))
-			}, TestTimeoutLong*2, time.Second).Should(Succeed())
+			}, TestTimeoutLong*3, time.Second).Should(Succeed())
 
 			By("clearing active groups")
 			Expect(setActiveGroupsInDNS(ctx, testZoneDomainName, types.Groups{})).To(Succeed())
 
-			By("verifying all records are published again when no active groups")
+			By("verifying only ungrouped records are published when no active groups")
 			Eventually(func(g Gomega) {
 				records, err := memClient.Records(testZoneDomainName)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -551,10 +551,10 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 					}
 				}
 
-				// Should have all 5 targets back
+				// Should only have ungrouped (127.0.0.5) - grouped records are inactive
 				g.Expect(aRecords).To(HaveLen(1))
-				g.Expect(aRecords[0].Targets).To(ConsistOf("127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"))
-			}, TestTimeoutLong, time.Second).Should(Succeed())
+				g.Expect(aRecords[0].Targets).To(ConsistOf("127.0.0.5"))
+			}, TestTimeoutLong*3, time.Second).Should(Succeed())
 		})
 	})
 })

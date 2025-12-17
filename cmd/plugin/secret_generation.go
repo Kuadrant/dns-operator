@@ -439,7 +439,7 @@ func saveSecret(log logr.Logger, secret Secret, dirPath string) (*os.File, error
 }
 
 func applySecretToCluser(log logr.Logger, secretFile string) error {
-	log.V(1).Info("Write secert to main cluster")
+	log.V(1).Info("Write secret to main cluster")
 	args := []string{
 		"apply",
 		"--filename",
@@ -460,7 +460,7 @@ func applySecretToCluser(log logr.Logger, secretFile string) error {
 		return errors.New("unable to write secret to cluster")
 	}
 
-	log.Info(fmt.Sprintf("Secert %s created in namespace %s", generateSecretFlags.name, generateSecretFlags.namespace))
+	log.Info(fmt.Sprintf("secret %s created in namespace %s", generateSecretFlags.name, generateSecretFlags.namespace))
 
 	return nil
 }
