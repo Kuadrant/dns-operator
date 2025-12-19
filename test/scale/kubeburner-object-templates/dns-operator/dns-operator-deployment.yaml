@@ -21,7 +21,7 @@ spec:
         - --leader-elect
         - --metrics-bind-address=:8080
         - --provider=aws,google,inmemory,azure
-        - --zap-log-level=debug
+        - --log-level=debug
         command:
         - /manager
         env:
