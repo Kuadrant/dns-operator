@@ -1,11 +1,9 @@
 //go:build unit
 
-package common_test
+package output
 
 import (
 	"testing"
-
-	"github.com/kuadrant/dns-operator/cmd/plugin/common"
 )
 
 func TestNewLogger(t *testing.T) {
@@ -16,27 +14,27 @@ func TestNewLogger(t *testing.T) {
 		expectV1Enabled bool
 	}{
 		{
-			name:            "verboseness set to default (error level)",
+			name:            "verboseness set to default (info level)",
 			verboseness:     0,
-			expectV0Enabled: false,
-			expectV1Enabled: false,
-		},
-		{
-			name:            "verboseness set to info",
-			verboseness:     1,
 			expectV0Enabled: true,
 			expectV1Enabled: false,
 		},
 		{
+			name:            "verboseness set to error",
+			verboseness:     3,
+			expectV0Enabled: false,
+			expectV1Enabled: false,
+		},
+		{
 			name:            "verboseness set to debug",
-			verboseness:     2,
+			verboseness:     -1,
 			expectV0Enabled: true,
 			expectV1Enabled: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := common.NewLogger(tt.verboseness)
+			logger := NewLogger(tt.verboseness)
 
 			v0Enabled := logger.V(0).Enabled()
 			if v0Enabled != tt.expectV0Enabled {

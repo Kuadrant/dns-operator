@@ -3,6 +3,7 @@ package failover
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -12,6 +13,7 @@ import (
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 
 	"github.com/kuadrant/dns-operator/cmd/plugin/common"
+	"github.com/kuadrant/dns-operator/cmd/plugin/output"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
@@ -39,7 +41,7 @@ func getActiveGroups(_ *cobra.Command, _ []string) error {
 
 	resourceRef, err = common.ParseProviderRef(providerRef)
 	if err != nil {
-		log.Error(err, "failed to parse provider ref")
+		output.Formatter.Error(err, "failed to parse provider ref")
 		return err
 	}
 
@@ -64,7 +66,7 @@ func getActiveGroups(_ *cobra.Command, _ []string) error {
 	}
 
 	if len(allZones) == 0 {
-		log.Info(fmt.Sprintf("No DNS zones found for domain %s", domain))
+		output.Formatter.Print(fmt.Sprintf("No DNS zones found for domain %s", domain))
 		return nil
 	}
 
@@ -124,13 +126,17 @@ func getActiveGroups(_ *cobra.Command, _ []string) error {
 		log.Info(fmt.Sprintf("No active groups found for domain %s", domain))
 		return nil
 	}
-
-	for zone, groups := range allActiveGroups {
-		log.Info(fmt.Sprintf("Zone %s (ID %s):", zone.name, zone.id))
-		for _, group := range groups {
-			log.Info(fmt.Sprintf("\t%s", group))
-		}
+	activeGroups := output.PrintableTable{
+		Headers: []string{"Zone Name", "Zone ID", "Active Groups"},
 	}
+	for zone, groups := range allActiveGroups {
+		activeGroups.Data = append(activeGroups.Data, []string{
+			zone.name,
+			zone.id,
+			strings.Join(groups, ","),
+		})
+	}
+	output.Formatter.PrintTable(activeGroups)
 
 	return nil
 }

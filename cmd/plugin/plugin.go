@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -9,15 +8,16 @@ import (
 
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/kuadrant/dns-operator/cmd/plugin/common"
 	"github.com/kuadrant/dns-operator/cmd/plugin/failover"
+	"github.com/kuadrant/dns-operator/cmd/plugin/output"
 )
 
 var (
-	verbose int
-	gitSHA  string // value injected in compilation-time with go linker
-	version string // value injected in compilation-time with go linker
-	log     = logf.Log
+	verbose      int
+	outputFormat string
+	gitSHA       string // value injected in compilation-time with go linker
+	version      string // value injected in compilation-time with go linker
+	log          = logf.Log
 )
 
 var rootCMD = &cobra.Command{
@@ -25,8 +25,8 @@ var rootCMD = &cobra.Command{
 	Short: "DNS Operator command line utility",
 	Long:  "DNS Operator command line utility",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		logf.SetLogger(common.NewLogger(verbose))
-		cmd.SetContext(context.Background())
+		logf.SetLogger(output.NewLogger(verbose))
+		output.SetOutputFormatter(outputFormat)
 	},
 }
 
@@ -42,7 +42,8 @@ var versionCMD = &cobra.Command{
 
 func init() {
 	rootCMD.SetArgs(os.Args[1:])
-	rootCMD.PersistentFlags().IntVarP(&verbose, "verbose", "v", 0, "verbosity level: 0 (errors only), 1 (+ info), 2 (+ debug)")
+	rootCMD.PersistentFlags().IntVarP(&verbose, "verbose", "v", output.DefaultLevel, "the higher verbosity level the more restrictive output; range from -1 (debug, includes everything) to 4 (panic, most restrictive)")
+	rootCMD.PersistentFlags().StringVarP(&outputFormat, "output", "o", "", "output format text|json|yaml")
 	rootCMD.AddCommand(versionCMD, cleanupOldTXTCMD, getZoneRecordsCMD, addClusterSecretCMD, removeOwnerCMD)
 	rootCMD.AddCommand(failover.AddActiveGroupCMD, failover.GetActiveGroupsCMD, failover.RemoveActiveGroupCMD)
 }

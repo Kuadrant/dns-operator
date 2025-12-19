@@ -14,6 +14,7 @@ import (
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 
 	"github.com/kuadrant/dns-operator/cmd/plugin/common"
+	"github.com/kuadrant/dns-operator/cmd/plugin/output"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
@@ -50,7 +51,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 
 	resourceRef, err = common.ParseProviderRef(providerRef)
 	if err != nil {
-		log.Error(err, "failed to parse provider ref")
+		output.Formatter.Error(err, "failed to parse provider ref")
 		return err
 	}
 
@@ -78,16 +79,16 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 	var selectedZones []provider.DNSZone
 
 	if len(allZones) == 0 {
-		log.Info(fmt.Sprintf("No DNS zones found for domain %s", domain))
+		output.Formatter.Print(fmt.Sprintf("No DNS zones found for domain %s", domain))
 		log.V(1).Info(fmt.Sprintf("Regexp string: %s", domainRegexp.String()))
 		return nil
 	} else if len(allZones) == 1 {
 		selectedZones = allZones
 	} else {
-		log.Info(fmt.Sprintf("Multiple DNS zones (%d) found for domain %s", len(allZones), domain))
+		output.Formatter.Print(fmt.Sprintf("Multiple DNS zones (%d) found for domain %s", len(allZones), domain))
 		for _, zone := range allZones {
 			if !assumeYes {
-				log.Info(fmt.Sprintf("Add group to zone %s (ID: %s)? [Y/N]", zone.DNSName, zone.ID))
+				output.Formatter.Print(fmt.Sprintf("Add group to zone %s (ID: %s)? [Y/N]", zone.DNSName, zone.ID))
 			}
 
 			if assumeYes || inputYes(log) {
@@ -133,7 +134,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 		}
 		if groupTXTRecord != nil && strings.Contains(groupTXTRecord.Targets[0], groupName) {
 			log.Info("Found existing TXT record for domain that already contains group name.", "zone DNS Name", zone.DNSName, "record", groupName)
-			log.Info("Nothing to do")
+			output.Formatter.Print("Nothing to do")
 			log.V(1).Info(fmt.Sprintf("existing record name: %s, targets: %s", groupRecordName, groupTXTRecord.Targets))
 			continue
 
@@ -158,7 +159,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 			continue
 		}
 
-		log.Info(fmt.Sprintf("added group \"%s\" to active groups of \"%s\" zone", args[0], zone.DNSName))
+		output.Formatter.Print(fmt.Sprintf("added group \"%s\" to active groups of \"%s\" zone", args[0], zone.DNSName))
 	}
 	return nil
 }
