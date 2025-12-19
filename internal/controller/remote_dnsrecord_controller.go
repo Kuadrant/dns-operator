@@ -218,8 +218,20 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 	}
 
+	if dnsRecord.GetGroup() != "" {
+		activeGroups := r.getActiveGroups(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord)
+		dnsRecord.SetStatusActiveGroups(activeGroups)
+		dnsRecord = newGroupAdapter(dnsRecord, activeGroups)
+	}
+
+	if !dnsRecord.IsActive() {
+		logger.V(1).Info("remote record is from an inactive group, exiting reconcile")
+		_, err := r.updateStatus(ctx, r.mgr.GetLocalManager().GetClient(), previous, dnsRecord, nil)
+		return reconcile.Result{RequeueAfter: InactiveGroupRequeueTime}, err
+	}
+
 	// Publish the record
-	_, err = r.publishRecord(ctx, dnsRecord, dnsProvider)
+	hadChanges, err := r.publishRecord(ctx, dnsRecord, dnsProvider)
 	if err != nil {
 		logger.Error(err, "Failed to publish record")
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
@@ -229,6 +241,19 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 	dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
 	dnsRecord.SetStatusObservedGeneration(dnsRecord.GetDNSRecord().GetGeneration())
+
+	logger.Info("unpublish section start")
+	// process unpublish of inactive groups once active cluster has no changes to publish
+	if !hadChanges && dnsRecord.GetGroup() != "" {
+		err = r.unpublishInactiveGroups(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord, dnsProvider)
+		if err != nil {
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+				"ProviderError", fmt.Sprintf("The DNS provider failed to unpublish inactive groups: %v", provider.SanitizeError(err)))
+		}
+	} else {
+		logger.Info("not unpublishing for remote record", "hadChanges", hadChanges, "group", dnsRecord.GetGroup())
+	}
+
 	return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
 }
 

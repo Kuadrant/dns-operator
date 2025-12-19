@@ -26,11 +26,17 @@ import (
 	"github.com/kuadrant/dns-operator/types"
 )
 
+const (
+	activeGroupsTXTRecordName = "kuadrant-active-groups"
+	inactiveGroupRequeueTime  = time.Second * 15
+)
+
 type BaseDNSRecordReconciler struct {
 	Scheme          *runtime.Scheme
 	ProviderFactory provider.Factory
 	DelegationRole  string
 	Group           types.Group
+	TXTResolver     TXTResolver
 }
 
 func (r *BaseDNSRecordReconciler) IsPrimary() bool {
@@ -106,7 +112,7 @@ func (r *BaseDNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord D
 	if err != nil {
 		return hadChanges, err
 	}
-	logger.Info("Published DNSRecord to zone")
+	logger.Info("Published DNSRecord to zone", "hadChanges?", hadChanges)
 
 	return hadChanges, nil
 }
@@ -129,9 +135,11 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 		return false, err
 	}
 
-	recordRegistry = registry.GroupRegistry{
-		Registry: recordRegistry,
-		Group:    r.Group,
+	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() {
+		recordRegistry = registry.GroupRegistry{
+			Registry: recordRegistry,
+			Group:    dnsRecord.GetGroup(),
+		}
 	}
 
 	policyID := "sync"
@@ -192,7 +200,12 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 }
 
 func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client client.Client, previous, current DNSRecordAccessor, err error) (reconcile.Result, error) {
-	result, uErr := r.updateStatusAndRequeue(ctx, client, previous, current, 0)
+	_, requeueTime := recordReceivedPrematurely(current)
+	if !current.IsActive() {
+		requeueTime = inactiveGroupRequeueTime
+	}
+	result, uErr := r.updateStatusAndRequeue(ctx, client, previous, current, requeueTime)
+
 	if uErr != nil {
 		err = uErr
 	}

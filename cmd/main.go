@@ -264,6 +264,7 @@ func main() {
 			ProviderFactory: providerFactory,
 			DelegationRole:  delegationRole,
 			Group:           group,
+			TXTResolver:     &controller.DefaultTXTResolver{},
 		},
 		Client: mgr.GetClient(),
 	}
@@ -280,6 +281,7 @@ func main() {
 				ProviderFactory: providerFactory,
 				DelegationRole:  delegationRole,
 				Group:           group,
+				TXTResolver:     &controller.DefaultTXTResolver{},
 			},
 			RemoteClusterCollector: remoteClusterCollector,
 		}

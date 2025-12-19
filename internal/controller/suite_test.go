@@ -99,6 +99,14 @@ var (
 	cancel context.CancelFunc
 )
 
+type MockTXTResolver struct {
+	response []string
+}
+
+func (m *MockTXTResolver) LookupTXT(_ context.Context, host string, nameservers []string) ([]string, error) {
+	return m.response, nil
+}
+
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -107,6 +115,9 @@ func TestControllers(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.Level(zapcore.DebugLevel)))
+
+	// Speed up inactive group requeuing for tests
+	InactiveGroupRequeueTime = time.Millisecond * 500
 
 	ctx, cancel = context.WithCancel(ctrl.SetupSignalHandler())
 	By("bootstrapping test environment")
@@ -300,6 +311,7 @@ func setupEnv(delegationRole string, count int) (*envtest.Environment, ctrl.Mana
 			Scheme:          mgr.GetScheme(),
 			ProviderFactory: providerFactory,
 			DelegationRole:  delegationRole,
+			TXTResolver:     &MockTXTResolver{},
 		},
 	}
 
@@ -314,6 +326,7 @@ func setupEnv(delegationRole string, count int) (*envtest.Environment, ctrl.Mana
 				Scheme:          mgr.GetScheme(),
 				ProviderFactory: providerFactory,
 				DelegationRole:  delegationRole,
+				TXTResolver:     &MockTXTResolver{},
 			},
 		}
 

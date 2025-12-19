@@ -180,6 +180,9 @@ type DNSRecordStatus struct {
 
 	// Group displays the group which the dns-operator belongs to, if set.
 	Group types.Group `json:"group,omitempty"`
+
+	// ActiveGroups displays the last read list of active groups
+	ActiveGroups string `json:"activeGroups,omitempty"`
 }
 
 // GetRemoteRecordStatuses returns any remote record statuses in the current status.
@@ -338,6 +341,10 @@ func (s *DNSRecord) HasProviderSecretAssigned() bool {
 
 func (s *DNSRecord) IsDeleting() bool {
 	return s.DeletionTimestamp != nil && !s.DeletionTimestamp.IsZero()
+}
+
+func (s *DNSRecord) IsActive() bool {
+	return true
 }
 
 // ProviderAccessor impl

@@ -259,5 +259,4 @@ func (s *healthCheckAdapter) SetStatusConditions(hadChanges bool) {
 	}
 	// none of the probes is healthy
 	s.SetStatusCondition(string(v1alpha1.ConditionTypeHealthy), metav1.ConditionFalse, string(v1alpha1.ConditionReasonUnhealthy), fmt.Sprintf("Not healthy addresses: %s", s.notHealthyProbes))
-	return
 }
