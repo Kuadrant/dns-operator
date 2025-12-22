@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"sigs.k8s.io/external-dns/plan"
 
 	"github.com/kuadrant/dns-operator/cmd/plugin/common"
+	"github.com/kuadrant/dns-operator/cmd/plugin/output"
 	"github.com/kuadrant/dns-operator/internal/common/slice"
 	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
@@ -137,16 +139,26 @@ func deleteOldTXT(_ *cobra.Command, args []string) error {
 	})
 
 	if len(endpoints) == 0 {
-		log.Info("no endpoints to be deleted found")
+		output.Formatter.Print("no endpoints to be deleted")
 		return nil
 	}
 
 	// display what is about to be deleted
-	log.Info(fmt.Sprintf("TXT records (%d) to be deleted:", len(endpoints)))
-	for _, txtRecord := range endpoints {
-		logf.Log.Info(fmt.Sprintf("%s\t IN\t %s\t %s", txtRecord.DNSName, txtRecord.RecordType, txtRecord.Targets))
+	output.Formatter.Print(fmt.Sprintf("TXT records (%d) to be deleted:", len(endpoints)))
+	outputTable := output.PrintableTable{
+		Headers: []string{"DNSName", "Targets", "RecordType", "RecordTTL"},
+		Data:    [][]string{},
 	}
-	log.Info(fmt.Sprintf("Do you want to proceed? [Y/N]"))
+	for _, ep := range endpoints {
+		outputTable.Data = append(outputTable.Data, []string{
+			ep.DNSName,
+			strings.Join(ep.Targets, ","),
+			ep.RecordType,
+			strconv.Itoa(int(ep.RecordTTL)),
+		})
+	}
+	output.Formatter.PrintTable(outputTable)
+	output.Formatter.Print(fmt.Sprintf("Do you want to proceed? [Y/N]"))
 	reader := bufio.NewReader(os.Stdin)
 
 	var answer string
@@ -169,12 +181,12 @@ func deleteOldTXT(_ *cobra.Command, args []string) error {
 			log.Error(err, "failed to delete old TXT records")
 			return err
 		}
-		log.Info("records are deleted")
+		output.Formatter.Print("records are deleted")
 		return nil
 	}
 
 	// do nothing
-	log.Info("canceling")
+	output.Formatter.Print("canceling")
 	return nil
 
 }

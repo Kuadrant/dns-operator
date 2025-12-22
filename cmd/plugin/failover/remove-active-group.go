@@ -16,6 +16,7 @@ import (
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 
 	"github.com/kuadrant/dns-operator/cmd/plugin/common"
+	"github.com/kuadrant/dns-operator/cmd/plugin/output"
 	"github.com/kuadrant/dns-operator/internal/provider"
 )
 
@@ -55,7 +56,7 @@ func removeActiveGroup(_ *cobra.Command, args []string) error {
 
 	resourceRef, err = common.ParseProviderRef(providerRef)
 	if err != nil {
-		log.Error(err, "failed to parse provider ref")
+		output.Formatter.Error(err, "failed to parse provider ref")
 		return err
 	}
 
@@ -80,7 +81,7 @@ func removeActiveGroup(_ *cobra.Command, args []string) error {
 	}
 
 	if len(allZones) == 0 {
-		log.Info(fmt.Sprintf("No DNS zones found for domain %s", domain))
+		output.Formatter.Print(fmt.Sprintf("No DNS zones found for domain %s", domain))
 		return nil
 	}
 
@@ -122,12 +123,12 @@ func removeActiveGroup(_ *cobra.Command, args []string) error {
 			continue
 		}
 
-		log.Info(fmt.Sprintf("Removing active group %s from the record: %s", groupName, groupTXTRecord.DNSName))
+		output.Formatter.Print(fmt.Sprintf("Removing active group %s from the record: %s", groupName, groupTXTRecord.DNSName))
 		log.V(1).Info(fmt.Sprintf("Selected zone: %s, (ID: %s)", zone.DNSName, zone.ID))
 
 		var answer string
 		if !assumeYes {
-			log.Info("Do you want to proceed? [Y/N]")
+			output.Formatter.Print("Do you want to proceed? [Y/N]")
 
 			reader := bufio.NewReader(os.Stdin)
 			answer, err = reader.ReadString('\n')
