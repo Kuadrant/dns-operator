@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/cmd/plugin/common"
+	"github.com/kuadrant/dns-operator/cmd/plugin/output"
 	"github.com/kuadrant/dns-operator/internal/common/slice"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/internal/provider/endpoint"
@@ -149,7 +151,7 @@ func hostWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Client,
 		return err
 	}
 
-	common.RenderEndpoints(endpoints)
+	printEndpoints(endpoints)
 
 	return err
 }
@@ -193,7 +195,7 @@ func dnsRecordWorkFlow(ctx context.Context, log logr.Logger, k8sClient client.Cl
 		return err
 	}
 
-	common.RenderEndpoints(endpoints)
+	printEndpoints(endpoints)
 
 	return err
 }
@@ -250,4 +252,20 @@ func getEndpoints(ctx context.Context, p provider.Provider, rootHost string) ([]
 	)
 
 	return endpoints, nil
+}
+
+func printEndpoints(endpoints []*externaldns.Endpoint) {
+	outputTable := output.PrintableTable{
+		Headers: []string{"DNSName", "Targets", "RecordType", "RecordTTL"},
+		Data:    [][]string{},
+	}
+	for _, ep := range endpoints {
+		outputTable.Data = append(outputTable.Data, []string{
+			ep.DNSName,
+			strings.Join(ep.Targets, ","),
+			ep.RecordType,
+			strconv.Itoa(int(ep.RecordTTL)),
+		})
+	}
+	output.Formatter.PrintTable(outputTable)
 }
