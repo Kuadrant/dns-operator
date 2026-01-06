@@ -163,7 +163,7 @@ Not exhaustive list of metadata for DNSRecord controller:
 - `ownerID` - ID the of owner of the DNS Record 
 - `txtPrefix`/`txtSuffix` - prefix and suffix of the TXT record in provider. 
 - `zoneEndpoints` - endpoints that exist in the provider
-- `specEdnoinds` - endpoints defined in the spec
+- `specEndpoints` - endpoints defined in the spec
 - `statusEndpoints` - endpoints that were processed previously
 
 > Note that not all the metadata values are present at each of the logs statements. 

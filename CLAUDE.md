@@ -241,11 +241,12 @@ Key controller flags (can also be set via environment variables):
 
 Follow these guidelines when working with logs:
 
-- `logger.Info()` - High-level resource state (creation, deletion, reconciliation path)
-- `logger.Error()` - Errors not returned in reconciliation result (one error message only)
-- `logger.V(1).Info()` - Debug logs (every change/event/update)
-
-Use `--log-mode=development` flag to enable debug level logs.
+There are two flags to control logging output
+- `--log-mode=[development|<any-other-value>]` will enable debug level logs for the output.
+  The debug mode is the most verbose.
+- `--log-level` controls the level of displayed logs. Defaults to the most verbose in the `development` mode.
+  In any other modes it can take numerical values form `-1` (Debug level) to `4` (Nothing).
+  It is possible to specify other values, but hey will have no effect (e.g. `4` will do the same as `128`)
 
 Common log metadata:
 - `DNSRecord` - Name/namespace of DNSRecord being reconciled
