@@ -286,3 +286,12 @@ Common log metadata:
 - Min requeue time: 5s (prevents API throttling)
 - Max requeue time: 15m (ensures eventual consistency)
 - Exponential backoff between min and max
+
+## Custom Claude
+
+There is a number of custom commands in the `.claude/commands`. 
+
+* The `/verify-pr` will check your branch against the issue. It will analyze changes and will reason about the completeness of the work
+
+There are also the following [skills](https://code.claude.com/docs/en/skills) specific for this Claude config. 
+* doc-verification will evaluate quality and coverage of the documentation 
