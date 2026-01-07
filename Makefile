@@ -157,7 +157,7 @@ test: test-unit test-integration ## Run tests.
 
 .PHONY: test-unit
 test-unit: manifests generate fmt vet ## Run unit tests.
-	go test ./... -tags=unit -coverprofile cover-unit.out
+	go test ./... -tags=unit -coverprofile cover-unit.out -race
 
 .PHONY: test-integration
 test-integration: GINKGO_FLAGS=
