@@ -83,7 +83,7 @@ SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
 # Ginkgo options
-DEFAULT_GINKGO_FLAGS ?= -v
+DEFAULT_GINKGO_FLAGS ?= -v --race
 GINKGO_FLAGS ?= $(DEFAULT_GINKGO_FLAGS)
 
 # To enable set flag to true
@@ -162,7 +162,7 @@ test-unit: manifests generate fmt vet ## Run unit tests.
 .PHONY: test-integration
 test-integration: GINKGO_FLAGS=
 test-integration: manifests generate fmt vet envtest ginkgo ## Run integration tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(GINKGO_FLAGS) -tags=integration ./internal/controller -coverprofile cover-integration.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) $(GINKGO_FLAGS) -tags=integration ./internal/controller -coverprofile cover-integration.out --race
 
 .PHONY: test-e2e
 test-e2e: ginkgo
