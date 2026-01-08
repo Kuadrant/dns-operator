@@ -2045,6 +2045,64 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateSameOwner() {
 	assert.Empty(suite.T(), cp.Errors)
 }
 
+func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateSameOwnerMultipleTargets() {
+	targetWithMutualOwner := &endpoint.Endpoint{
+		DNSName:    "v1",
+		RecordType: endpoint.RecordTypeCNAME,
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1&&owner2",
+		},
+	}
+	targetWithOtherOwner := &endpoint.Endpoint{
+		DNSName:    "v2",
+		RecordType: endpoint.RecordTypeCNAME,
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+	}
+	currentCNAME := &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "CNAME",
+		Targets:    endpoint.Targets{"v1", "v2"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	desiredCNAME := &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "CNAME",
+		Targets:    endpoint.Targets{"v1"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+
+	current := []*endpoint.Endpoint{currentCNAME, targetWithMutualOwner, targetWithOtherOwner}
+	previous := []*endpoint.Endpoint{currentCNAME}
+	// current as desired - the v2 should be removed by the logic we are testing here.
+	// this test is to ensure we remove it without causing out of bounds
+	desired := []*endpoint.Endpoint{currentCNAME, targetWithMutualOwner, targetWithOtherOwner}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{currentCNAME.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{desiredCNAME.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner1",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Previous:       previous,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
 // Should not allow the update of a record with a shared dnsName to a different record type (CNAME -> A) (CONFLICT).
 func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordUpdateRecordTypeConflict() {
 	current := []*endpoint.Endpoint{suite.fooCNAMEv1Owner1}
