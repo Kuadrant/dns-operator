@@ -35,6 +35,7 @@ var _ provider.Provider = &InMemoryProvider{}
 func TestInMemoryProvider(t *testing.T) {
 	t.Run("Records", testInMemoryRecords)
 	t.Run("validateChangeBatch", testInMemoryValidateChangeBatch)
+	t.Run("validateTXTRecord", testValidateTXTRecord)
 	t.Run("ApplyChanges", testInMemoryApplyChanges)
 	t.Run("NewInMemoryProvider", testNewInMemoryProvider)
 	t.Run("CreateZone", testInMemoryCreateZone)
@@ -419,6 +420,159 @@ func testInMemoryValidateChangeBatch(t *testing.T) {
 	}
 }
 
+func testValidateTXTRecord(t *testing.T) {
+	// Generate a string of exactly 255 characters (DNS spec limit)
+	exactly255Chars := generateString(255)
+	// Generate a string of 256 characters (exceeds DNS spec limit)
+	over255Chars := generateString(256)
+	// Generate a string of 200 characters (well under DNS spec limit)
+	under255Chars := generateString(200)
+
+	for _, ti := range []struct {
+		title       string
+		endpoint    *endpoint.Endpoint
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			title: "valid TXT record - under 255 bytes",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeTXT,
+				Targets:    endpoint.Targets{under255Chars},
+			},
+			expectError: false,
+		},
+		{
+			title: "valid TXT record - exactly 255 bytes",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeTXT,
+				Targets:    endpoint.Targets{exactly255Chars},
+			},
+			expectError: false,
+		},
+		{
+			title: "valid TXT record with quotes - under 255 bytes (quotes stripped)",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeTXT,
+				Targets:    endpoint.Targets{`"` + under255Chars + `"`},
+			},
+			expectError: false,
+		},
+		{
+			title: "invalid TXT record - exceeds 255 bytes",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeTXT,
+				Targets:    endpoint.Targets{over255Chars},
+			},
+			expectError: true,
+			errorMsg:    "TXT record value exceeds 255 byte",
+		},
+		{
+			title: "invalid TXT record with quotes - exceeds 255 bytes after stripping quotes",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeTXT,
+				Targets:    endpoint.Targets{`"` + over255Chars + `"`},
+			},
+			expectError: true,
+			errorMsg:    "TXT record value exceeds 255 byte",
+		},
+		{
+			title: "valid TXT record - multiple targets under limit",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeTXT,
+				Targets:    endpoint.Targets{under255Chars, "short-value", exactly255Chars},
+			},
+			expectError: false,
+		},
+		{
+			title: "invalid TXT record - one target exceeds limit among multiple",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeTXT,
+				Targets:    endpoint.Targets{under255Chars, over255Chars, "short-value"},
+			},
+			expectError: true,
+			errorMsg:    "TXT record value exceeds 255 byte",
+		},
+		{
+			title: "non-TXT record - should not be validated (A record)",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeA,
+				Targets:    endpoint.Targets{over255Chars}, // Even if target is long, should pass
+			},
+			expectError: false,
+		},
+		{
+			title: "non-TXT record - should not be validated (CNAME record)",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeCNAME,
+				Targets:    endpoint.Targets{over255Chars}, // Even if target is long, should pass
+			},
+			expectError: false,
+		},
+		{
+			title: "valid TXT record - empty target",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeTXT,
+				Targets:    endpoint.Targets{""},
+			},
+			expectError: false,
+		},
+		{
+			title: "valid TXT record - UTF-8 characters counted as bytes",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "example.org",
+				RecordType: endpoint.RecordTypeTXT,
+				// String with UTF-8 characters: "café" = 4 chars but 5 bytes (é is 2 bytes in UTF-8)
+				Targets: endpoint.Targets{"café test with UTF-8 characters"},
+			},
+			expectError: false,
+		},
+		{
+			title: "real-world example - registry TXT record under limit",
+			endpoint: &endpoint.Endpoint{
+				DNSName:    "kuadrant-a-example.org",
+				RecordType: endpoint.RecordTypeTXT,
+				Targets: endpoint.Targets{
+					`"heritage=external-dns,external-dns/owner=abc12345,external-dns/targets=192.168.1.1;192.168.1.2;192.168.1.3,external-dns/group=group1,external-dns/version=1"`,
+				},
+			},
+			expectError: false,
+		},
+	} {
+		t.Run(ti.title, func(t *testing.T) {
+			err := validateTXTRecord(ti.endpoint)
+			if ti.expectError {
+				require.Error(t, err, "expected error for %s", ti.title)
+				assert.Contains(t, err.Error(), ti.errorMsg, "error message should contain expected text")
+			} else {
+				assert.NoError(t, err, "should not error for %s", ti.title)
+			}
+		})
+	}
+}
+
+// generateString creates a string of exactly n characters for testing
+func generateString(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	bytes := make([]byte, n)
+	for i := range bytes {
+		bytes[i] = 'a' // Use 'a' for simplicity
+	}
+	return string(bytes)
+}
+
 func getInitData() map[string]Zone {
 	return map[string]Zone{
 		"org": makeZone("example.org", "8.8.8.8", endpoint.RecordTypeA,
@@ -543,6 +697,48 @@ func testInMemoryApplyChanges(t *testing.T) {
 					"foo.bar.new.org", "4.8.8.9", endpoint.RecordTypeA,
 				),
 				"com": makeZone("example.com", "4.4.4.4", endpoint.RecordTypeCNAME),
+			},
+		},
+		{
+			title:       "expect error - TXT record exceeds 255 bytes",
+			expectError: true,
+			changes: &plan.Changes{
+				Create: []*endpoint.Endpoint{
+					{
+						DNSName:    "test.org",
+						Targets:    endpoint.Targets{generateString(256)},
+						RecordType: endpoint.RecordTypeTXT,
+						Labels:     endpoint.NewLabels(),
+					},
+				},
+				UpdateNew: []*endpoint.Endpoint{},
+				UpdateOld: []*endpoint.Endpoint{},
+				Delete:    []*endpoint.Endpoint{},
+			},
+		},
+		{
+			title:       "expect error - TXT record update exceeds 255 bytes",
+			expectError: true,
+			init:        getInitData(),
+			changes: &plan.Changes{
+				Create: []*endpoint.Endpoint{},
+				UpdateNew: []*endpoint.Endpoint{
+					{
+						DNSName:    "example.org",
+						Targets:    endpoint.Targets{generateString(300)},
+						RecordType: endpoint.RecordTypeTXT,
+						Labels:     endpoint.NewLabels(),
+					},
+				},
+				UpdateOld: []*endpoint.Endpoint{
+					{
+						DNSName:    "example.org",
+						Targets:    endpoint.Targets{""},
+						RecordType: endpoint.RecordTypeTXT,
+						Labels:     endpoint.NewLabels(),
+					},
+				},
+				Delete: []*endpoint.Endpoint{},
 			},
 		},
 	} {
