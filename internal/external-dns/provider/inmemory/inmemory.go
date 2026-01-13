@@ -32,6 +32,11 @@ import (
 	"sigs.k8s.io/external-dns/provider"
 )
 
+const (
+	// DNSTXTCharacterStringLimit is the maximum length of a single character-string in a TXT record (RFC 1035)
+	DNSTXTCharacterStringLimit = 255
+)
+
 var (
 	// ErrZoneAlreadyExists error returned when Zone cannot be created when it already exists
 	ErrZoneAlreadyExists = errors.New("specified Zone already exists")
@@ -45,6 +50,8 @@ var (
 	ErrDuplicateRecordFound = errors.New("invalid batch request")
 	// ErrNoTargetValue when record has no target values in create/update
 	ErrNoTargetValue = errors.New("record has no target values")
+	// ErrTXTRecordTooLong when a TXT record value exceeds the DNS spec limit (255 bytes per character-string)
+	ErrTXTRecordTooLong = errors.New("TXT record value exceeds 255 byte DNS character-string limit")
 )
 
 // InMemoryProvider - dns provider only used for testing purposes
@@ -387,6 +394,10 @@ func (c *InMemoryClient) validateChangeBatch(zone string, changes *plan.Changes)
 		if _, exists := curZone[newEndpoint.Key()]; exists {
 			return ErrRecordAlreadyExists
 		}
+		// Validate TXT records comply with DNS spec
+		if err := validateTXTRecord(newEndpoint); err != nil {
+			return err
+		}
 		if err := c.updateMesh(mesh, newEndpoint); err != nil {
 			return err
 		}
@@ -397,6 +408,10 @@ func (c *InMemoryClient) validateChangeBatch(zone string, changes *plan.Changes)
 		}
 		if _, exists := curZone[updateEndpoint.Key()]; !exists {
 			return ErrRecordNotFound
+		}
+		// Validate TXT records comply with DNS spec
+		if err := validateTXTRecord(updateEndpoint); err != nil {
+			return err
 		}
 		if err := c.updateMesh(mesh, updateEndpoint); err != nil {
 			return err
@@ -413,6 +428,38 @@ func (c *InMemoryClient) validateChangeBatch(zone string, changes *plan.Changes)
 		}
 		if err := c.updateMesh(mesh, deleteEndpoint); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// validateTXTRecord validates that TXT record targets comply with DNS spec (RFC 1035)
+// Each character-string in a TXT record must be <= 255 bytes.
+//
+// Note: TXT records can contain multiple character-strings to support values longer than 255 bytes.
+// Users must format them as separate strings, e.g., "first-part" "second-part"
+// This is how DNS providers (AWS Route53, Google Cloud DNS, Azure DNS) handle long values.
+//
+// This validation uses byte length (not character count), which is correct for DNS.
+// UTF-8 characters may use multiple bytes: "café" = 5 characters but 6 bytes.
+func validateTXTRecord(ep *endpoint.Endpoint) error {
+	if ep.RecordType != endpoint.RecordTypeTXT {
+		return nil
+	}
+
+	for _, target := range ep.Targets {
+		// Remove surrounding quotes if present (they're part of the format, not the data)
+		value := target
+		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+			value = value[1 : len(value)-1]
+		}
+
+		// Check if the value exceeds the DNS character-string limit
+		// Note: len(string) returns byte length in Go, which is correct for DNS validation
+		if len(value) > DNSTXTCharacterStringLimit {
+			return fmt.Errorf("%w: record '%s' has target of length %d bytes (limit: %d). "+
+				"Consider splitting into multiple character-strings, e.g., \"part1\" \"part2\"",
+				ErrTXTRecordTooLong, ep.DNSName, len(value), DNSTXTCharacterStringLimit)
 		}
 	}
 	return nil
