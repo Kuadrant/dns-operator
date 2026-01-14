@@ -10,6 +10,8 @@ import (
 type TextOutputFormatter struct {
 }
 
+var _ OutputFormatter = &TextOutputFormatter{}
+
 const (
 	minTablePadding = 5
 )
@@ -18,16 +20,16 @@ func init() {
 	RegisterOutputFormatter("text", &TextOutputFormatter{})
 }
 
-func (f TextOutputFormatter) Print(message string) {
+func (f *TextOutputFormatter) Print(message string) {
 	fmt.Println(message)
 }
 
-func (f TextOutputFormatter) Error(err error, message string) {
+func (f *TextOutputFormatter) Error(err error, message string) {
 	fmt.Println(fmt.Sprintf("%s: %s", message, err.Error()))
 
 }
 
-func (f TextOutputFormatter) PrintObject(object any) {
+func (f *TextOutputFormatter) PrintObject(object any) {
 	reflectType := reflect.TypeOf(object)
 
 	switch reflectType.Kind() {
@@ -42,7 +44,7 @@ func (f TextOutputFormatter) PrintObject(object any) {
 	}
 }
 
-func (f TextOutputFormatter) PrintTable(table PrintableTable) {
+func (f *TextOutputFormatter) PrintTable(table PrintableTable) {
 	columnPadding := make([]int, len(table.Headers))
 
 	// this is not efficient, but we do not expect to process huge data structs here
@@ -76,14 +78,14 @@ func (f TextOutputFormatter) PrintTable(table PrintableTable) {
 	}
 }
 
-func (f TextOutputFormatter) printArray(object any) {
+func (f *TextOutputFormatter) printArray(object any) {
 	s := reflect.ValueOf(object)
 	for i := 0; i < s.Len(); i++ {
 		fmt.Printf("%+v\n", s.Index(i))
 	}
 }
 
-func (f TextOutputFormatter) printMap(object any) {
+func (f *TextOutputFormatter) printMap(object any) {
 	m := reflect.ValueOf(object)
 	keys := m.MapKeys()
 
@@ -102,7 +104,7 @@ func (f TextOutputFormatter) printMap(object any) {
 	}
 }
 
-func (f TextOutputFormatter) printStruct(object any) {
+func (f *TextOutputFormatter) printStruct(object any) {
 	out, err := yaml.Marshal(object)
 	if err != nil {
 		fmt.Printf("%+v\n", object)
