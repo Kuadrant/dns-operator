@@ -18,7 +18,7 @@ var (
 )
 
 func init() {
-	Formatter = TextOutputFormatter{}
+	Formatter = &TextOutputFormatter{}
 }
 
 // RegisterOutputFormatter registers formatter under the specific option. E.g. "json" for JsonFormatter
