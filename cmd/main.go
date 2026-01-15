@@ -29,12 +29,15 @@ import (
 
 	"go.uber.org/zap/zapcore"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	zap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
@@ -164,7 +167,6 @@ func main() {
 	overrideControllerFlags()
 
 	ctx := ctrl.SetupSignalHandler()
-
 	defaultOptions := ctrl.Options{
 		Scheme:                 scheme.Scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
@@ -175,6 +177,25 @@ func main() {
 		// make pprof info available at /debug/pprof/${type} where type is one of (goroutine, heap, threadcreate block mutex, profile, trace)
 		// https://pkg.go.dev/runtime/pprof
 		PprofBindAddress: pprofAddr,
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&corev1.Secret{}: {
+					// The multicluster-runtime configures a watch on secrets.
+					// This is out of our control.
+					// Disabling caching on watches is not possible.
+					// We can filter based on the expected labels for the multicluster configurations.
+					// Secrets provided by the providerRefs are not cached.
+					Label: labels.SelectorFromSet(labels.Set{"kuadrant.io/multicluster-kubeconfig": "true"}),
+				},
+			},
+		},
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{
+					&corev1.Secret{},
+				},
+			},
+		},
 	}
 
 	if pprofAddr != "" {
@@ -184,13 +205,11 @@ func main() {
 	if watchNamespaces != "" {
 		namespaces := strings.Split(watchNamespaces, ",")
 		setupLog.Info("watching namespaces set ", watchNamespacesKey.Flag(), namespaces)
-		cacheOpts := cache.Options{
-			DefaultNamespaces: map[string]cache.Config{},
-		}
+		defaultNamespaces := map[string]cache.Config{}
 		for _, ns := range namespaces {
-			cacheOpts.DefaultNamespaces[ns] = cache.Config{}
+			defaultNamespaces[ns] = cache.Config{}
 		}
-		defaultOptions.Cache = cacheOpts
+		defaultOptions.Cache.DefaultNamespaces = defaultNamespaces
 	}
 
 	var mgr ctrl.Manager
