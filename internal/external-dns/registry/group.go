@@ -116,48 +116,44 @@ func (h *RegistryHost) HasGroup(group types.Group) bool {
 }
 
 func (h *RegistryHost) GetUngroupedTargets() []string {
-	targets := []string{}
+	targets := map[string]struct{}{}
 	for _, o := range h.UngroupedOwners {
 		for _, t := range strings.Split(o.Labels["targets"], ",") {
-			if !slices.Contains(targets, t) {
-				targets = append(targets, t)
+			if t != "" {
+				targets[t] = struct{}{}
 			}
 		}
 	}
-	return targets
+	return slices.Collect(maps.Keys(targets))
 }
 
 func (h *RegistryHost) GetGroupsTargets(groups types.Groups) []string {
-	targets := []string{}
+	targets := map[string]struct{}{}
 	for _, g := range groups {
-		if group, ok := h.Groups[g]; !ok {
-			continue
-		} else {
+		if group, ok := h.Groups[g]; ok {
 			for _, t := range group.GetTargets() {
-				if !slices.Contains(targets, t) {
-					targets = append(targets, t)
+				if t != "" {
+					targets[t] = struct{}{}
 				}
 			}
 		}
 	}
-	return targets
+	return slices.Collect(maps.Keys(targets))
 }
 
 func (h *RegistryHost) GetOtherGroupsTargets(groups types.Groups) []string {
-	targets := []string{}
+	targets := map[string]struct{}{}
 	for _, g := range h.Groups {
 		// we want any groups not provided in the argument
-		if groups.HasGroup(g.GroupID) {
-			continue
-		} else {
+		if !groups.HasGroup(g.GroupID) {
 			for _, t := range g.GetTargets() {
-				if !slices.Contains(targets, t) {
-					targets = append(targets, t)
+				if t != "" {
+					targets[t] = struct{}{}
 				}
 			}
 		}
 	}
-	return targets
+	return slices.Collect(maps.Keys(targets))
 }
 
 func (g *RegistryGroup) GetOwnerIDs() []string {
@@ -165,15 +161,15 @@ func (g *RegistryGroup) GetOwnerIDs() []string {
 }
 
 func (g *RegistryGroup) GetTargets() []string {
-	targets := []string{}
+	targets := map[string]struct{}{}
 	for _, o := range g.Owners {
 		for _, t := range strings.Split(o.Labels["targets"], ";") {
-			if !slices.Contains(targets, t) {
-				targets = append(targets, t)
+			if t != "" {
+				targets[t] = struct{}{}
 			}
 		}
 	}
-	return targets
+	return slices.Collect(maps.Keys(targets))
 }
 
 func TxtRecordsToRegistryMap(endpoints []*endpoint.Endpoint, prefix, suffix, wildcardReplacement string, txtEncryptAESKey []byte) *RegistryMap {

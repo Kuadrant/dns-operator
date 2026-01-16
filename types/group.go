@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	GroupLabelKey   = "group"
-	TargetsLabelKey = "targets"
+	GroupLabelKey      = "group"
+	TargetsLabelKey    = "targets"
+	MaxGroupNameLength = 16
 )
 
 // Group string type used for DNS Failover
@@ -28,12 +29,22 @@ func (g *Group) Set(val string) error {
 	return nil
 }
 
-// Validate ensure the group set conforms to the required format
 func (g *Group) Validate() error {
-	invalid := ";&, \"'"
-	if strings.ContainsAny(g.String(), invalid) {
-		return fmt.Errorf("Group value can not contain: \"%s\"", invalid)
+	name := g.String()
+
+	if len(name) == 0 {
+		return nil // Empty is valid (ungrouped)
 	}
+
+	if len(name) > MaxGroupNameLength {
+		return fmt.Errorf("group name exceeds maximum length of %d characters", MaxGroupNameLength)
+	}
+
+	const invalid = ";&, \"'"
+	if strings.ContainsAny(name, invalid) {
+		return fmt.Errorf("group name cannot contain any of these characters: %s", invalid)
+	}
+
 	return nil
 }
 

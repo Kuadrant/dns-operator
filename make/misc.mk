@@ -3,11 +3,6 @@
 
 ## Miscellaneous targets
 
-# CoreDNS Corefile configuration
-COREDNS_CONFIG_DIR=config/coredns
-COREFILE=${COREDNS_CONFIG_DIR}/Corefile
-EXTERNAL_GROUPS_HOST ?= kuadrant-active-groups.hcpapps.net
-
 .PHONY: install-metallb
 install-metallb: SUBNET_OFFSET=1
 install-metallb: CIDR=28
