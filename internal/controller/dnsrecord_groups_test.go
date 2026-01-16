@@ -61,6 +61,7 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 		ungroupedPrimaryEnv       *envtest.Environment
 		ungroupedPrimaryManager   ctrl.Manager
 		ungroupedPrimaryK8sClient client.Client
+		ungroupedPrimaryClusterID string
 	)
 
 	// confirmRecordTargets returns a function that verifies the authoritative record
@@ -91,6 +92,7 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 	}
 
 	BeforeEach(func() {
+		var err error
 		groupsCtx, groupsCancel = context.WithCancel(ctx)
 
 		// Create a shared mock TXT resolver for all environments
@@ -158,6 +160,10 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 			}
 			Expect(ungroupedPrimaryK8sClient.Create(ctx, secret)).To(Succeed())
 		}
+
+		ungroupedPrimaryClusterID, err = getKubeSystemUID(ctx, ungroupedPrimaryK8sClient)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ungroupedPrimaryClusterID).ToNot(BeEmpty())
 
 	})
 
@@ -239,9 +245,36 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
-			}, TestTimeoutLong, time.Second).Should(Succeed())
+				// Ungrouped record should NOT have an Active condition
+				g.Expect(ungroupedDNSRecord.Status.Conditions).ToNot(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type": Equal(string(v1alpha1.ConditionTypeActive)),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
 
-			Eventually(confirmRecordTargets(ctx, ungroupedPrimaryK8sClient, testNamespace, testHostname, []string{"cluster-ungrouped.example.com"}), TestTimeoutLong, time.Second*5).Should(Succeed())
+			By("verifying grouped records have Active=False when no groups are active")
+			Eventually(func(g Gomega) {
+				g.Expect(cluster1Group1K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group1DNSRecord), cluster1Group1DNSRecord)).To(Succeed())
+				g.Expect(cluster1Group1DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
+						"Status": Equal(metav1.ConditionFalse),
+						"Reason": Equal(string(v1alpha1.ConditionReasonNotInActiveGroup)),
+					})),
+				)
+
+				g.Expect(cluster1Group2K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group2DNSRecord), cluster1Group2DNSRecord)).To(Succeed())
+				g.Expect(cluster1Group2DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
+						"Status": Equal(metav1.ConditionFalse),
+						"Reason": Equal(string(v1alpha1.ConditionReasonNotInActiveGroup)),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			Eventually(confirmRecordTargets(ctx, ungroupedPrimaryK8sClient, testNamespace, testHostname, []string{"cluster-ungrouped.example.com"}), TestTimeoutMedium, time.Second*5).Should(Succeed())
 
 			// Step 2: Set active group to group1 - group1 + ungrouped should be published
 			By("STEP 2: setting group1 as the active group")
@@ -258,6 +291,33 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 					})),
 				)
 				g.Expect(cluster1Group1DNSRecord.Status.Group).To(Equal(types.Group("group1")))
+				// group1 should have Active=True since it's in the active groups
+				g.Expect(cluster1Group1DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
+						"Status": Equal(metav1.ConditionTrue),
+						"Reason": Equal(string(v1alpha1.ConditionReasonInActiveGroup)),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			By("verifying group2 has Active=False and ungrouped has no Active condition")
+			Eventually(func(g Gomega) {
+				g.Expect(cluster1Group2K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group2DNSRecord), cluster1Group2DNSRecord)).To(Succeed())
+				g.Expect(cluster1Group2DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
+						"Status": Equal(metav1.ConditionFalse),
+						"Reason": Equal(string(v1alpha1.ConditionReasonNotInActiveGroup)),
+					})),
+				)
+
+				g.Expect(ungroupedPrimaryK8sClient.Get(ctx, client.ObjectKeyFromObject(ungroupedDNSRecord), ungroupedDNSRecord)).To(Succeed())
+				g.Expect(ungroupedDNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).ToNot(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type": Equal(string(v1alpha1.ConditionTypeActive)),
+					})),
+				)
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 			By("verifying group1 and ungrouped records are published via authoritative records")
@@ -271,25 +331,80 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 			By("waiting for group2 DNSRecord to be ready")
 			Eventually(func(g Gomega) {
 				g.Expect(cluster1Group2K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group2DNSRecord), cluster1Group2DNSRecord)).To(Succeed())
-				g.Expect(cluster1Group2DNSRecord.Status.Conditions).To(
+				g.Expect(cluster1Group2DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
 					ContainElement(MatchFields(IgnoreExtras, Fields{
 						"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
 						"Status": Equal(metav1.ConditionTrue),
 					})),
 				)
 				g.Expect(cluster1Group2DNSRecord.Status.Group).To(Equal(types.Group("group2")))
+				// group2 should have Active=True since it's now in the active groups
+				g.Expect(cluster1Group2DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
+						"Status": Equal(metav1.ConditionTrue),
+						"Reason": Equal(string(v1alpha1.ConditionReasonInActiveGroup)),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			By("verifying both group1 and group2 have Active=True and ungrouped has no Active condition")
+			Eventually(func(g Gomega) {
+				g.Expect(cluster1Group1K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group1DNSRecord), cluster1Group1DNSRecord)).To(Succeed())
+				g.Expect(cluster1Group1DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
+						"Status": Equal(metav1.ConditionTrue),
+						"Reason": Equal(string(v1alpha1.ConditionReasonInActiveGroup)),
+					})),
+				)
+
+				g.Expect(ungroupedPrimaryK8sClient.Get(ctx, client.ObjectKeyFromObject(ungroupedDNSRecord), ungroupedDNSRecord)).To(Succeed())
+				g.Expect(ungroupedDNSRecord.Status.Conditions).ToNot(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type": Equal(string(v1alpha1.ConditionTypeActive)),
+					})),
+				)
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 			By("verifying group1, group2, and ungrouped records are published via authoritative records")
-			Eventually(confirmRecordTargets(ctx, ungroupedPrimaryK8sClient, testNamespace, testHostname, []string{"cluster1-group1.example.com", "cluster1-group2.example.com", "cluster-ungrouped.example.com"}), TestTimeoutLong, time.Second*5).Should(Succeed())
+			Eventually(confirmRecordTargets(ctx, ungroupedPrimaryK8sClient, testNamespace, testHostname, []string{"cluster1-group1.example.com", "cluster1-group2.example.com", "cluster-ungrouped.example.com"}), TestTimeoutMedium, time.Second*5).Should(Succeed())
 
 			// Step 4: Remove group1 (only group2 active) - group2 + ungrouped should be published
 			By("STEP 4: removing group1 from active groups (only group2 active)")
 			setActiveGroupsInDNS(testZoneDomainName, types.Groups{types.Group("group2")}, mockTXTResolver)
 			setActiveGroupsInDNS(testHostname, types.Groups{types.Group("group2")}, mockTXTResolver)
 
+			By("verifying group1 has Active=False, group2 has Active=True, and ungrouped has no Active condition")
+			Eventually(func(g Gomega) {
+				g.Expect(cluster1Group1K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group1DNSRecord), cluster1Group1DNSRecord)).To(Succeed())
+				g.Expect(cluster1Group1DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
+						"Status": Equal(metav1.ConditionFalse),
+						"Reason": Equal(string(v1alpha1.ConditionReasonNotInActiveGroup)),
+					})),
+				)
+
+				g.Expect(cluster1Group2K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group2DNSRecord), cluster1Group2DNSRecord)).To(Succeed())
+				g.Expect(cluster1Group2DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
+						"Status": Equal(metav1.ConditionTrue),
+						"Reason": Equal(string(v1alpha1.ConditionReasonInActiveGroup)),
+					})),
+				)
+
+				g.Expect(ungroupedPrimaryK8sClient.Get(ctx, client.ObjectKeyFromObject(ungroupedDNSRecord), ungroupedDNSRecord)).To(Succeed())
+				g.Expect(ungroupedDNSRecord.Status.Conditions).ToNot(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type": Equal(string(v1alpha1.ConditionTypeActive)),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
 			By("verifying group2 and ungrouped records are published via authoritative records")
-			Eventually(confirmRecordTargets(ctx, ungroupedPrimaryK8sClient, testNamespace, testHostname, []string{"cluster1-group2.example.com", "cluster-ungrouped.example.com"}), TestTimeoutLong, time.Second*5).Should(Succeed())
+			Eventually(confirmRecordTargets(ctx, ungroupedPrimaryK8sClient, testNamespace, testHostname, []string{"cluster1-group2.example.com", "cluster-ungrouped.example.com"}), TestTimeoutMedium, time.Second*5).Should(Succeed())
 
 			// Step 5: Delete all records
 			By("STEP 5: deleting all DNSRecords")
@@ -309,7 +424,7 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 				g.Expect(ungroupedPrimaryK8sClient.List(ctx, recordList, client.InNamespace(testNamespace))).To(Succeed())
 				g.Expect(len(recordList.Items)).To(Equal(0))
 
-			}, TestTimeoutLong, time.Second).Should(Succeed())
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 			By("clearing active groups")
 			setActiveGroupsInDNS(testZoneDomainName, types.Groups{}, mockTXTResolver)

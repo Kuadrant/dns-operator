@@ -163,7 +163,7 @@ func (g *RegistryGroup) GetOwnerIDs() []string {
 func (g *RegistryGroup) GetTargets() []string {
 	targets := map[string]struct{}{}
 	for _, o := range g.Owners {
-		for _, t := range strings.Split(o.Labels["targets"], ";") {
+		for _, t := range strings.Split(o.Labels["targets"], ",") {
 			if t != "" {
 				targets[t] = struct{}{}
 			}

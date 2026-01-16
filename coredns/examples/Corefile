@@ -1,22 +1,11 @@
 k.example.com {
-    debug
-    errors
-    log
-    
-    rewrite name regex kuadrant-active-groups\.(.*)k.example\.com kuadrant-active-groups-coredns.hcpapps.net
-    forward kuadrant-active-groups-coredns.hcpapps.net /etc/resolv.conf
-
-    health {
-        lameduck 5s
-    }
-    ready
-    geoip GeoLite2-City-demo.mmdb {
-        edns-subnet
-    }
-    metadata
-    transfer {
-        to *
-    }
-    kuadrant
-    prometheus 0.0.0.0:9153
+   debug
+   errors
+   log
+   geoip GeoLite2-City-demo.mmdb
+   metadata
+   transfer {
+     to *
+   }
+   kuadrant
 }

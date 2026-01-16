@@ -319,12 +319,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// If this grouped record is not active, exit early (only active groups process unpublishing)
 	if !dnsRecord.IsActive() {
-		logger.V(1).Info("record is from an inactive group, exiting reconcile",
-			"currentGroup", dnsRecord.GetGroup(),
-			"activeGroups", dnsRecord.GetStatus().ActiveGroups,
-			"requeueIn", InactiveGroupRequeueTime)
-
-		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "InInactiveGroup", "No further actions to take while in inactive group")
+		dnsRecord.SetStatusConditions(false)
 		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
 	}
 

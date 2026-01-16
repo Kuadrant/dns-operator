@@ -1025,7 +1025,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 				Expect(secondaryK8sClient.Delete(ctx, secondaryDNSRecord)).To(Succeed())
 				// both clusters should eventually see the delete event
 				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"secondary-1.dnsrecord_controller\".+\"msg\":\"Deleting DNSRecord\".+\"controller\":\"dnsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
-				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary-1.remote_dnsrecord_controller\".+\"msg\":\"Deleting DNSRecord\".+\"controller\":\"remotednsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
+				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary-1.remote_dnsrecord_controller\".+\"msg\":\"Deleting remote DNSRecord\".+\"controller\":\"remotednsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
 				// primary should eventually say it's removed the records from the zone
 				Eventually(logBuffer).Should(gbytes.Say(fmt.Sprintf("\"logger\":\"primary-1.remote_dnsrecord_controller\".+\"msg\":\"Deleted DNSRecord in zone\".+\"controller\":\"remotednsrecord\".+\"name\":\"%s\".+\"namespace\":\"%s\"", secondaryDNSRecord.Name, secondaryDNSRecord.Namespace)))
 				// secondary should eventually say it removed the finalizer, primary should not

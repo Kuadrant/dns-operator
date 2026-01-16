@@ -140,10 +140,10 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	}
 
 	if dnsRecord.IsDeleting() {
-		logger.Info("Deleting DNSRecord")
+		logger.Info("Deleting remote DNSRecord")
 
 		if dnsRecord.GetStatus().ProviderEndpointsRemoved() {
-			return ctrl.Result{RequeueAfter: time.Second}, nil
+			return ctrl.Result{}, nil
 		}
 
 		if !dnsRecord.GetStatus().ProviderEndpointsDeletion() {
@@ -162,8 +162,8 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 			_, err = r.deleteRecord(ctx, dnsRecord, dnsProvider)
 			if err != nil {
-				logger.Error(err, "Failed to delete DNSRecord")
-				return ctrl.Result{RequeueAfter: time.Second}, err
+				logger.Error(err, "Failed to delete remote DNSRecord endpoints from provider")
+				return ctrl.Result{}, err
 			}
 		} else {
 			logger.Info("dns zone was never assigned, skipping zone cleanup")
@@ -174,7 +174,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		dnsRecord.SetStatusZoneID("")
 		dnsRecord.SetStatusDomainOwners(nil)
 
-		return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, defaultRequeueTime)
+		return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
 	}
 
 	//Note: Can't use GetStatus() here since it's the remote embedded one returned and we need the higher level one for the ReadyForDelegation status
@@ -220,9 +220,11 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 	dnsRecord = r.applyGroupAdapter(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord)
 
+	// If this grouped record is not active, exit early (only active groups process unpublishing)
 	if !dnsRecord.IsActive() {
-		logger.V(1).Info("remote record is from an inactive group, exiting reconcile")
-		return reconcile.Result{RequeueAfter: InactiveGroupRequeueTime}, nil
+		dnsRecord.SetStatusConditions(false)
+		_, err = r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
+		return reconcile.Result{RequeueAfter: InactiveGroupRequeueTime}, err
 	}
 
 	// Publish the record
@@ -247,6 +249,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		}
 	}
 
+	dnsRecord.SetStatusConditions(hadChanges)
 	return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, defaultRequeueTime)
 }
 

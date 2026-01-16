@@ -63,6 +63,8 @@ func testTXTRegistryNew(t *testing.T) {
 	_, err = NewTXTRegistry(context.Background(), p, "txt", "txt", "owner", time.Hour, "", []string{}, []string{}, false, nil)
 	require.Error(t, err)
 
+	_, ok := r.mapper.(NameMapper)
+	require.True(t, ok)
 	assert.Equal(t, "owner", r.ownerID)
 	assert.Equal(t, p, r.provider)
 
@@ -78,6 +80,9 @@ func testTXTRegistryNew(t *testing.T) {
 
 	r, err = NewTXTRegistry(context.Background(), p, "", "", "owner", time.Hour, "", []string{}, []string{}, true, aesKey)
 	require.NoError(t, err)
+
+	_, ok = r.mapper.(NameMapper)
+	assert.True(t, ok)
 }
 
 func testTXTRegistryRecords(t *testing.T) {

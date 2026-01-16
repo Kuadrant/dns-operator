@@ -67,9 +67,9 @@ func (g Groups) HasGroup(group Group) bool {
 }
 
 func (g Groups) String() string {
-	activeGroupsSlice := []string{}
+	groupsSlice := []string{}
 	for _, group := range g {
-		activeGroupsSlice = append(activeGroupsSlice, string(group))
+		groupsSlice = append(groupsSlice, string(group))
 	}
-	return strings.Join(activeGroupsSlice, ",")
+	return strings.Join(groupsSlice, ",")
 }
