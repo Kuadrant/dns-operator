@@ -264,6 +264,7 @@ func main() {
 			ProviderFactory: providerFactory,
 			DelegationRole:  delegationRole,
 			Group:           group,
+			TXTResolver:     &controller.DefaultTXTResolver{},
 		},
 		Client: mgr.GetClient(),
 	}
@@ -280,11 +281,12 @@ func main() {
 				ProviderFactory: providerFactory,
 				DelegationRole:  delegationRole,
 				Group:           group,
+				TXTResolver:     &controller.DefaultTXTResolver{},
 			},
 			RemoteClusterCollector: remoteClusterCollector,
 		}
 
-		if err = remoteDNSRecordController.SetupWithManager(mcmgr, false); err != nil {
+		if err = remoteDNSRecordController.SetupWithManager(mcmgr, maxRequeueTime, false); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "RemoteDNSRecord")
 			os.Exit(1)
 		}

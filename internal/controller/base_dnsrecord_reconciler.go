@@ -31,6 +31,7 @@ type BaseDNSRecordReconciler struct {
 	ProviderFactory provider.Factory
 	DelegationRole  string
 	Group           types.Group
+	TXTResolver     TXTResolver
 }
 
 func (r *BaseDNSRecordReconciler) IsPrimary() bool {
@@ -39,6 +40,20 @@ func (r *BaseDNSRecordReconciler) IsPrimary() bool {
 
 func (r *BaseDNSRecordReconciler) IsSecondary() bool {
 	return r.DelegationRole == DelegationRoleSecondary
+}
+
+func (r *BaseDNSRecordReconciler) applyGroupAdapter(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) DNSRecordAccessor {
+	activeGroups := types.Groups{}
+
+	// Do not look up active groups or set status if this record has no group set
+	if dnsRecord.GetGroup() != "" {
+		activeGroups = r.getActiveGroups(ctx, c, dnsRecord)
+		dnsRecord.SetStatusActiveGroups(activeGroups)
+	}
+
+	dnsRecord = newGroupAdapter(dnsRecord, activeGroups)
+
+	return dnsRecord
 }
 
 // setLogger Updates the given Logger with record/zone metadata from the given DNSRecord.
@@ -106,7 +121,7 @@ func (r *BaseDNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord D
 	if err != nil {
 		return hadChanges, err
 	}
-	logger.Info("Published DNSRecord to zone")
+	logger.Info("Published DNSRecord to zone", "hadChanges", hadChanges)
 
 	return hadChanges, nil
 }
@@ -129,9 +144,11 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 		return false, err
 	}
 
-	recordRegistry = registry.GroupRegistry{
-		Registry: recordRegistry,
-		Group:    r.Group,
+	if !dnsRecord.GetDNSRecord().IsAuthoritativeRecord() {
+		recordRegistry = registry.GroupRegistry{
+			Registry: recordRegistry,
+			Group:    dnsRecord.GetGroup(),
+		}
 	}
 
 	policyID := "sync"
@@ -193,6 +210,7 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 
 func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client client.Client, previous, current DNSRecordAccessor, err error) (reconcile.Result, error) {
 	result, uErr := r.updateStatusAndRequeue(ctx, client, previous, current, 0)
+
 	if uErr != nil {
 		err = uErr
 	}
@@ -201,12 +219,12 @@ func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client clien
 
 // updateStatusAndRequeue will update the status of the record if the current and previous status is different
 // and returns a reconcile.result that re-queues at the given time.
-func (r *BaseDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, client client.Client, previous, current DNSRecordAccessor, requeueTime time.Duration) (reconcile.Result, error) {
+func (r *BaseDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, c client.Client, previous, current DNSRecordAccessor, requeueTime time.Duration) (reconcile.Result, error) {
 	logger := log.FromContext(ctx)
+	patch := client.MergeFrom(previous.GetDNSRecord())
 	// update the record after setting the status
 	if !equality.Semantic.DeepEqual(previous.GetStatus(), current.GetStatus()) {
-		logger.V(1).Info("Updating status of DNSRecord")
-		if updateError := client.Status().Update(ctx, current.GetDNSRecord()); updateError != nil {
+		if updateError := c.Status().Patch(ctx, current.GetDNSRecord(), patch); updateError != nil {
 			if apierrors.IsConflict(updateError) {
 				return ctrl.Result{RequeueAfter: time.Second}, nil
 			}

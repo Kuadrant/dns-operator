@@ -55,6 +55,7 @@ import (
 	ep "github.com/kuadrant/dns-operator/internal/provider/endpoint"
 	_ "github.com/kuadrant/dns-operator/internal/provider/google"
 	_ "github.com/kuadrant/dns-operator/internal/provider/inmemory"
+	kuadrantTypes "github.com/kuadrant/dns-operator/types"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -99,6 +100,50 @@ var (
 	cancel context.CancelFunc
 )
 
+type MockTXTResolver struct {
+	response []string
+	records  map[string][]string
+}
+
+func NewMockTXTResolver() *MockTXTResolver {
+	return &MockTXTResolver{
+		records: make(map[string][]string),
+	}
+}
+
+func (m *MockTXTResolver) SetTXTRecord(host string, values []string) {
+	if m.records == nil {
+		m.records = make(map[string][]string)
+	}
+	m.records[host] = values
+}
+
+func (m *MockTXTResolver) DeleteTXTRecord(host string) {
+	if m.records != nil {
+		delete(m.records, host)
+	}
+}
+
+func (m *MockTXTResolver) LookupTXT(ctx context.Context, host string, nameservers []string) ([]string, error) {
+	logger := ctrl.LoggerFrom(ctx)
+
+	// If records map is set, use it for host-specific lookups
+	if m.records != nil {
+		if values, ok := m.records[host]; ok {
+			logger.V(1).Info("MockTXTResolver.LookupTXT found record", "host", host, "values", values)
+			return values, nil
+		}
+		availableHosts := []string{}
+		for h := range m.records {
+			availableHosts = append(availableHosts, h)
+		}
+		logger.V(1).Info("MockTXTResolver.LookupTXT no record found", "host", host, "available_hosts", availableHosts)
+		return []string{}, nil
+	}
+	// Fall back to legacy single response behavior for backwards compatibility
+	return m.response, nil
+}
+
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -108,12 +153,15 @@ func TestControllers(t *testing.T) {
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.Level(zapcore.DebugLevel)))
 
+	// Speed up inactive group requeuing for tests
+	InactiveGroupRequeueTime = time.Millisecond * 500
+
 	ctx, cancel = context.WithCancel(ctrl.SetupSignalHandler())
 	By("bootstrapping test environment")
 
-	primaryTestEnv, primaryManager = setupEnv(DelegationRolePrimary, 1)
-	primary2TestEnv, primary2Manager = setupEnv(DelegationRolePrimary, 2)
-	secondaryTestEnv, secondaryManager = setupEnv(DelegationRoleSecondary, 1)
+	primaryTestEnv, primaryManager = setupEnv(DelegationRolePrimary, 1, "", &MockTXTResolver{})
+	primary2TestEnv, primary2Manager = setupEnv(DelegationRolePrimary, 2, "", &MockTXTResolver{})
+	secondaryTestEnv, secondaryManager = setupEnv(DelegationRoleSecondary, 1, "", &MockTXTResolver{})
 
 	primaryK8sClient = primaryManager.GetClient()
 	primary2K8sClient = primary2Manager.GetClient()
@@ -229,7 +277,7 @@ func CreateNamespace(name string, client client.Client) {
 // Secondary:
 //   - create controller-runtime manager
 //   - setup DNSRecordReconciler
-func setupEnv(delegationRole string, count int) (*envtest.Environment, ctrl.Manager) {
+func setupEnv(delegationRole string, count int, group string, txtResolver TXTResolver) (*envtest.Environment, ctrl.Manager) {
 	testEnv := &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
@@ -300,6 +348,8 @@ func setupEnv(delegationRole string, count int) (*envtest.Environment, ctrl.Mana
 			Scheme:          mgr.GetScheme(),
 			ProviderFactory: providerFactory,
 			DelegationRole:  delegationRole,
+			Group:           kuadrantTypes.Group(group),
+			TXTResolver:     txtResolver,
 		},
 	}
 
@@ -314,10 +364,11 @@ func setupEnv(delegationRole string, count int) (*envtest.Environment, ctrl.Mana
 				Scheme:          mgr.GetScheme(),
 				ProviderFactory: providerFactory,
 				DelegationRole:  delegationRole,
+				TXTResolver:     txtResolver,
 			},
 		}
 
-		err = remoteDNSRecordController.SetupWithManager(mcmgr, true)
+		err = remoteDNSRecordController.SetupWithManager(mcmgr, RequeueDuration, true)
 		Expect(err).ToNot(HaveOccurred())
 	}
 

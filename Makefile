@@ -290,7 +290,7 @@ build: manifests generate fmt vet ## Build manager binary.
 RUN_METRICS_ADDR=":8080"
 RUN_HEALTH_ADDR=":8081"
 RUN_DELEGATION_ROLE="primary"
-DEFAULT_RUN_FLAGS ?= --log-mode=development --provider inmemory,aws,google,azure,coredns,endpoint --delegation-role=${RUN_DELEGATION_ROLE} --metrics-bind-address=${RUN_METRICS_ADDR} --health-probe-bind-address=${RUN_HEALTH_ADDR}
+DEFAULT_RUN_FLAGS ?= --log-mode=development --provider inmemory,aws,google,azure,coredns,endpoint --delegation-role=${RUN_DELEGATION_ROLE} --metrics-bind-address=${RUN_METRICS_ADDR} --health-probe-bind-address=${RUN_HEALTH_ADDR} --group=${GROUP}
 RUN_FLAGS ?= $(DEFAULT_RUN_FLAGS)
 
 .PHONY: run
