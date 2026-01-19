@@ -223,8 +223,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	// If this grouped record is not active, exit early (only active groups process unpublishing)
 	if !dnsRecord.IsActive() {
 		dnsRecord.SetStatusConditions(false)
-		_, err = r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, nil)
-		return reconcile.Result{RequeueAfter: InactiveGroupRequeueTime}, err
+		return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, InactiveGroupRequeueTime)
 	}
 
 	// Publish the record

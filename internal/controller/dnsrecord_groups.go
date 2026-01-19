@@ -208,7 +208,7 @@ func (s *GroupAdapter) SetStatusConditions(hadChanges bool) {
 			s.SetStatusCondition(string(v1alpha1.ConditionTypeActive), metav1.ConditionTrue, string(v1alpha1.ConditionReasonInActiveGroup), "Group is included in active groups")
 		} else {
 			s.SetStatusCondition(string(v1alpha1.ConditionTypeActive), metav1.ConditionFalse, string(v1alpha1.ConditionReasonNotInActiveGroup), "Group is not included in active groups")
-			s.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "InInactiveGroup", "No further actions to take while in inactive group")
+			s.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonInInactiveGroup), "No further actions to take while in inactive group")
 		}
 	} else {
 		s.ClearStatusCondition(string(v1alpha1.ConditionTypeActive))

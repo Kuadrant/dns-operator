@@ -257,20 +257,30 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(cluster1Group1K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group1DNSRecord), cluster1Group1DNSRecord)).To(Succeed())
 				g.Expect(cluster1Group1DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
-					ContainElement(MatchFields(IgnoreExtras, Fields{
+					ContainElements(MatchFields(IgnoreExtras, Fields{
 						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
 						"Status": Equal(metav1.ConditionFalse),
 						"Reason": Equal(string(v1alpha1.ConditionReasonNotInActiveGroup)),
-					})),
+					}),
+						MatchFields(IgnoreExtras, Fields{
+							"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status": Equal(metav1.ConditionFalse),
+							"Reason": Equal(string(v1alpha1.ConditionReasonInInactiveGroup)),
+						})),
 				)
 
 				g.Expect(cluster1Group2K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group2DNSRecord), cluster1Group2DNSRecord)).To(Succeed())
 				g.Expect(cluster1Group2DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
-					ContainElement(MatchFields(IgnoreExtras, Fields{
+					ContainElements(MatchFields(IgnoreExtras, Fields{
 						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
 						"Status": Equal(metav1.ConditionFalse),
 						"Reason": Equal(string(v1alpha1.ConditionReasonNotInActiveGroup)),
-					})),
+					}),
+						MatchFields(IgnoreExtras, Fields{
+							"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status": Equal(metav1.ConditionFalse),
+							"Reason": Equal(string(v1alpha1.ConditionReasonInInactiveGroup)),
+						})),
 				)
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
 
@@ -305,11 +315,16 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(cluster1Group2K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group2DNSRecord), cluster1Group2DNSRecord)).To(Succeed())
 				g.Expect(cluster1Group2DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
-					ContainElement(MatchFields(IgnoreExtras, Fields{
+					ContainElements(MatchFields(IgnoreExtras, Fields{
 						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
 						"Status": Equal(metav1.ConditionFalse),
 						"Reason": Equal(string(v1alpha1.ConditionReasonNotInActiveGroup)),
-					})),
+					}),
+						MatchFields(IgnoreExtras, Fields{
+							"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status": Equal(metav1.ConditionFalse),
+							"Reason": Equal(string(v1alpha1.ConditionReasonInInactiveGroup)),
+						})),
 				)
 
 				g.Expect(ungroupedPrimaryK8sClient.Get(ctx, client.ObjectKeyFromObject(ungroupedDNSRecord), ungroupedDNSRecord)).To(Succeed())
@@ -379,11 +394,16 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(cluster1Group1K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group1DNSRecord), cluster1Group1DNSRecord)).To(Succeed())
 				g.Expect(cluster1Group1DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
-					ContainElement(MatchFields(IgnoreExtras, Fields{
+					ContainElements(MatchFields(IgnoreExtras, Fields{
 						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
 						"Status": Equal(metav1.ConditionFalse),
 						"Reason": Equal(string(v1alpha1.ConditionReasonNotInActiveGroup)),
-					})),
+					}),
+						MatchFields(IgnoreExtras, Fields{
+							"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status": Equal(metav1.ConditionFalse),
+							"Reason": Equal(string(v1alpha1.ConditionReasonInInactiveGroup)),
+						})),
 				)
 
 				g.Expect(cluster1Group2K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group2DNSRecord), cluster1Group2DNSRecord)).To(Succeed())
