@@ -462,41 +462,6 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, val
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.DNSRecord{}).
-		Watches(&v1.Secret{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
-			logger := log.FromContext(ctx)
-			s, ok := o.(*v1.Secret)
-			if !ok {
-				logger.V(1).Info("unexpected object type", "error", fmt.Sprintf("%T is not a *v1.Secret", o))
-				return nil
-			}
-			if !strings.HasPrefix(string(s.Type), "kuadrant.io") {
-				return nil
-			}
-			var toReconcile []reconcile.Request
-			// list dns records in the secret namespace as they will be in the same namespace as the secret
-			records := &v1alpha1.DNSRecordList{}
-			if err := mgr.GetClient().List(ctx, records, &client.ListOptions{Namespace: o.GetNamespace()}); err != nil {
-				logger.Error(err, "failed to list dnsrecords ", "namespace", o.GetNamespace())
-				return toReconcile
-			}
-
-			isDefaultSecret := s.Labels[v1alpha1.DefaultProviderSecretLabel] == "true"
-
-			for _, record := range records.Items {
-				if record.Status.ProviderRef.Name == o.GetName() {
-					logger.Info("secret updated", "secret", o.GetNamespace()+"/"+o.GetName(), "enqueuing dnsrecord ", record.GetName())
-					toReconcile = append(toReconcile, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&record)})
-				}
-
-				// if this is a default and we don't have secret in spec (we need a default) and we haven't assigned a secret yet
-				// (note that the status ref is not a pointer so no need for a nil check) add a records to the queue.
-				// the secret that just got updated should be assigned to such a record
-				if isDefaultSecret && (record.Spec.ProviderRef == nil || record.Spec.ProviderRef.Name == "") && record.Status.ProviderRef.Name == "" {
-					toReconcile = append(toReconcile, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&record)})
-				}
-			}
-			return toReconcile
-		})).
 		Watches(&v1alpha1.DNSHealthCheckProbe{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
 			logger := log.FromContext(ctx)
 			probe, ok := o.(*v1alpha1.DNSHealthCheckProbe)
