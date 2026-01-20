@@ -17,45 +17,47 @@ spec:
         control-plane: dns-operator-controller-manager
     spec:
       containers:
-      - args:
-        - --leader-elect
-        - --metrics-bind-address=:8080
-        - --provider=aws,google,inmemory,azure
-        - --log-level=debug
-        command:
-        - /manager
-        env:
-        - name: WATCH_NAMESPACES
-          value: scale-test-{{.Iteration}},kuadrant-dns-operator-{{.Iteration}}
-        image: quay.io/kuadrant/dns-operator:latest
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8081
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        name: manager
-        ports:
-          - containerPort: 8080
-            name: metrics
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8081
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        resources:
-          limits:
-            cpu: 200m
-            memory: 128Mi
-          requests:
-            cpu: 10m
-            memory: 64Mi
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
+        - args:
+            - --leader-elect
+            - --metrics-bind-address=:8080
+            - --provider=aws,google,inmemory,azure
+            - --log-level=debug
+          command:
+            - /manager
+          env:
+            - name: WATCH_NAMESPACES
+              value: scale-test-{{.Iteration}},kuadrant-dns-operator-{{.Iteration}}
+          image: quay.io/kuadrant/dns-operator:latest
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          name: manager
+          ports:
+            - containerPort: 8080
+              name: metrics
+            - containerPort: 8082
+              name: pprof
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
       securityContext:
         runAsNonRoot: true
       serviceAccountName: controller-manager

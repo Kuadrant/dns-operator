@@ -69,6 +69,7 @@ var (
 	metricsAddr            string
 	enableLeaderElection   bool
 	probeAddr              string
+	pprofAddr              string
 	minRequeueTime         time.Duration
 	validFor               time.Duration
 	maxRequeueTime         time.Duration
@@ -83,10 +84,11 @@ var (
 	logMode                string
 	logLevel               string
 
-	// represents booth flag and envar key
+	// represents both flag and envar key
 	metricsAddrKey            = variableKey("metrics-bind-address")
 	enableLeaderElectionKey   = variableKey("leader-elect")
 	probeAddrKey              = variableKey("health-probe-bind-address")
+	pprofAddressKey           = variableKey("pprof-bind-address")
 	minRequeueTimeKey         = variableKey("min-requeue-time")
 	validForKey               = variableKey("valid-for")
 	maxRequeueTimeKey         = variableKey("max-requeue-time")
@@ -129,6 +131,7 @@ func main() {
 
 	flag.StringVar(&metricsAddr, metricsAddrKey.Flag(), ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, probeAddrKey.Flag(), ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&pprofAddr, pprofAddressKey.Flag(), ":8082", "The address the pprof endpoints can be reached at.")
 	flag.BoolVar(&enableLeaderElection, enableLeaderElectionKey.Flag(), false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -169,6 +172,13 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "a3f98d6c.kuadrant.io",
+		// make pprof info available at /debug/pprof/${type} where type is one of (goroutine, heap, threadcreate block mutex, profile, trace)
+		// https://pkg.go.dev/runtime/pprof
+		PprofBindAddress: pprofAddr,
+	}
+
+	if pprofAddr != "" {
+		setupLog.Info("Pprof configured", "listening", pprofAddr)
 	}
 
 	if watchNamespaces != "" {

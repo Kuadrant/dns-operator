@@ -10,6 +10,9 @@ spec:
   - name: metrics
     port: 8080
     targetPort: metrics
+  - name: pprof
+    port: 8082
+    targetPort: pprof
   selector:
     control-plane: dns-operator-controller-manager
 status:

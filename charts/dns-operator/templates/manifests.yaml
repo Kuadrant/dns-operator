@@ -890,6 +890,9 @@ spec:
   - name: metrics
     port: 8080
     targetPort: metrics
+  - name: pprof
+    port: 8082
+    targetPort: pprof
   selector:
     control-plane: dns-operator-controller-manager
 ---
@@ -946,6 +949,8 @@ spec:
         ports:
         - containerPort: 8080
           name: metrics
+        - containerPort: 8082
+          name: pprof
         readinessProbe:
           httpGet:
             path: /readyz
