@@ -4,6 +4,7 @@ package provider
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -51,184 +52,203 @@ func TestSanitizeError(t *testing.T) {
 
 func Test_findDNSZoneForHost(t *testing.T) {
 	testCases := []struct {
-		name      string
-		host      string
-		zones     []DNSZone
-		allowApex bool
-		want      string
-		want1     string
-		wantErr   bool
+		name          string
+		host          string
+		zones         []DNSZone
+		denyApex      bool
+		wantZone      string
+		wantSubdomain string
+		wantErr       bool
+		expectedErrIs error // Expected sentinel error for errors.Is() check
 	}{
-		{
-			name:      "no zones",
-			host:      "sub.domain.test.example.com",
-			zones:     []DNSZone{},
-			allowApex: true,
-			want:      "",
-			want1:     "",
-			wantErr:   true,
-		},
+		// Success cases
 		{
 			name: "single zone with match",
 			host: "sub.domain.test.example.com",
 			zones: []DNSZone{
-				{
-					DNSName: "example.com",
-				},
+				{DNSName: "example.com"},
 			},
-			allowApex: true,
-			want:      "example.com",
-			want1:     "sub.domain.test",
-			wantErr:   false,
+			denyApex:      false,
+			wantZone:      "example.com",
+			wantSubdomain: "sub.domain.test",
+			wantErr:       false,
 		},
 		{
-			name: "does not match exact dns name",
+			name: "multiple zones that all match - returns longest match",
 			host: "sub.domain.test.example.com",
 			zones: []DNSZone{
-				{
-					DNSName: "sub.domain.test.example.com",
-				},
+				{DNSName: "example.com"},
+				{DNSName: "test.example.com"},
+				{DNSName: "domain.test.example.com"},
 			},
-			allowApex: true,
-			want:      "",
-			want1:     "",
-			wantErr:   true,
-		},
-		{
-			name: "multiple zones that all match",
-			host: "sub.domain.test.example.com",
-			zones: []DNSZone{
-				{
-					DNSName: "example.com",
-				},
-				{
-					DNSName: "test.example.com",
-				},
-				{
-					DNSName: "domain.test.example.com",
-				},
-			},
-			allowApex: true,
-			want:      "domain.test.example.com",
-			want1:     "sub",
-			wantErr:   false,
+			denyApex:      false,
+			wantZone:      "domain.test.example.com",
+			wantSubdomain: "sub",
+			wantErr:       false,
 		},
 		{
 			name: "multiple zones some match",
 			host: "sub.domain.test.example.com",
 			zones: []DNSZone{
-				{
-					DNSName: "example.com",
-				},
-				{
-					DNSName: "test.example.com",
-				},
-				{
-					DNSName: "test.otherdomain.com",
-				},
+				{DNSName: "example.com"},
+				{DNSName: "test.example.com"},
+				{DNSName: "test.otherdomain.com"},
 			},
-			allowApex: true,
-			want:      "test.example.com",
-			want1:     "sub.domain",
-			wantErr:   false,
+			denyApex:      false,
+			wantZone:      "test.example.com",
+			wantSubdomain: "sub.domain",
+			wantErr:       false,
 		},
 		{
-			name: "multiple zones no match",
+			name: "handles tld with a dot (e.g., co.uk)",
+			host: "sub.domain.test.example.co.uk",
+			zones: []DNSZone{
+				{DNSName: "example.co.uk"},
+			},
+			denyApex:      false,
+			wantZone:      "example.co.uk",
+			wantSubdomain: "sub.domain.test",
+			wantErr:       false,
+		},
+		{
+			name: "apex domain allowed when denyApex=false",
+			host: "example.com",
+			zones: []DNSZone{
+				{DNSName: "example.com", ID: "zone-1"},
+			},
+			denyApex:      false,
+			wantZone:      "example.com",
+			wantSubdomain: "",
+			wantErr:       false,
+		},
+
+		// Error cases - ErrNoZoneForHost
+		{
+			name:          "error when no zones provided",
+			host:          "sub.domain.test.example.com",
+			zones:         []DNSZone{},
+			denyApex:      false,
+			wantErr:       true,
+			expectedErrIs: ErrNoZoneForHost,
+		},
+		{
+			name: "error when no matching zones",
 			host: "sub.domain.test.example2.com",
 			zones: []DNSZone{
-				{
-					DNSName: "example.com",
-				},
-				{
-					DNSName: "test.example.com",
-				},
-				{
-					DNSName: "test.otherdomain.com",
-				},
+				{DNSName: "example.com"},
+				{DNSName: "test.example.com"},
+				{DNSName: "test.otherdomain.com"},
 			},
-			allowApex: true,
-			want:      "",
-			want1:     "",
-			wantErr:   true,
+			denyApex:      false,
+			wantErr:       true,
+			expectedErrIs: ErrNoZoneForHost,
 		},
 		{
-			name: "handles tld with a dot",
+			name: "error when host is a TLD",
+			host: "com",
+			zones: []DNSZone{
+				{DNSName: "example.com"},
+			},
+			denyApex:      false,
+			wantErr:       true,
+			expectedErrIs: ErrNoZoneForHost,
+		},
+		{
+			name: "error when host reaches TLD during recursion",
 			host: "sub.domain.test.example.co.uk",
 			zones: []DNSZone{
-				{
-					DNSName: "example.co.uk",
-				},
+				{DNSName: "co.uk"},
 			},
-			allowApex: true,
-			want:      "example.co.uk",
-			want1:     "sub.domain.test",
-			wantErr:   false,
+			denyApex:      false,
+			wantErr:       true,
+			expectedErrIs: ErrNoZoneForHost,
 		},
 		{
-			name: "tld with a dot will not match against a zone of the tld",
-			host: "sub.domain.test.example.co.uk",
+			name: "error when host has invalid format (single label)",
+			host: "localhost",
 			zones: []DNSZone{
-				{
-					DNSName: "co.uk",
-				},
+				{DNSName: "example.com"},
 			},
-			allowApex: true,
-			want:      "",
-			want1:     "",
-			wantErr:   true,
+			denyApex:      false,
+			wantErr:       true,
+			expectedErrIs: ErrNoZoneForHost,
 		},
+
+		// Error cases - ErrApexDomainNotAllowed
 		{
-			name: "multiple zones with multiple matches for the same dns name",
-			host: "domain.test.example.com",
+			name: "error when apex domain denied",
+			host: "example.com",
 			zones: []DNSZone{
-				{
-					DNSName: "example.com",
-				},
-				{
-					DNSName: "test.example.com",
-				},
-				{
-					DNSName: "test.example.com",
-				},
+				{DNSName: "example.com", ID: "zone-1"},
 			},
-			allowApex: true,
-			want:      "",
-			want1:     "",
-			wantErr:   true,
+			denyApex:      true,
+			wantErr:       true,
+			expectedErrIs: ErrApexDomainNotAllowed,
 		},
 		{
-			name: "apex domain",
+			name: "error when host exactly matches zone with denyApex=true",
 			host: "test.example.com",
 			zones: []DNSZone{
-				{
-					DNSName: "example.com",
-				},
-				{
-					DNSName: "test.example.com",
-				},
+				{DNSName: "example.com"},
+				{DNSName: "test.example.com", ID: "zone-2"},
 			},
-			allowApex: true,
-			want:      "",
-			want1:     "",
-			wantErr:   true,
+			denyApex:      true,
+			wantErr:       true,
+			expectedErrIs: ErrApexDomainNotAllowed,
+		},
+
+		// Error cases - ErrMultipleZonesFound
+		{
+			name: "error when multiple zones have same DNS name",
+			host: "domain.test.example.com",
+			zones: []DNSZone{
+				{DNSName: "example.com", ID: "zone-1"},
+				{DNSName: "test.example.com", ID: "zone-2"},
+				{DNSName: "test.example.com", ID: "zone-3"},
+			},
+			denyApex:      false,
+			wantErr:       true,
+			expectedErrIs: ErrMultipleZonesFound,
 		},
 	}
+
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1, err := findDNSZoneForHost(tt.host, tt.host, tt.zones, tt.allowApex)
+			gotZone, gotSubdomain, err := findDNSZoneForHost(tt.host, tt.host, tt.zones, tt.denyApex)
+
+			// Check error expectation
 			if (err != nil) != tt.wantErr {
 				t.Errorf("findDNSZoneForHost() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if got == nil {
-				if tt.want != "" {
-					t.Errorf("findDNSZoneForHost() got = unexpetd nil value")
+
+			// Verify error cases
+			if tt.wantErr {
+				// Verify specific error type if specified
+				if tt.expectedErrIs != nil {
+					if !errors.Is(err, tt.expectedErrIs) {
+						t.Errorf("findDNSZoneForHost() error = %v, expectedErrIs %v", err, tt.expectedErrIs)
+					}
 				}
-			} else if got.DNSName != tt.want {
-				t.Errorf("findDNSZoneForHost() got = %v, want %v", got, tt.want)
+
+				// Verify original host is present in error message
+				if err != nil && !strings.Contains(err.Error(), tt.host) {
+					t.Errorf("findDNSZoneForHost() error message %q does not contain original host %q", err.Error(), tt.host)
+				}
 			}
-			if got1 != tt.want1 {
-				t.Errorf("findDNSZoneForHost() got1 = %v, want %v", got1, tt.want1)
+
+			// Check success case results
+			if !tt.wantErr {
+				if gotZone == nil {
+					t.Errorf("findDNSZoneForHost() got nil zone, want %v", tt.wantZone)
+					return
+				}
+				if gotZone.DNSName != tt.wantZone {
+					t.Errorf("findDNSZoneForHost() gotZone = %v, want %v", gotZone.DNSName, tt.wantZone)
+				}
+				if gotSubdomain != tt.wantSubdomain {
+					t.Errorf("findDNSZoneForHost() gotSubdomain = %v, want %v", gotSubdomain, tt.wantSubdomain)
+				}
 			}
 		})
 	}

@@ -22,7 +22,34 @@ var (
 	requestIDRegexp         = regexp.MustCompile(`request id: [^\s]+`)
 	saxParseExceptionRegexp = regexp.MustCompile(`Invalid XML ; javax.xml.stream.XMLStreamException: org.xml.sax.SAXParseException; lineNumber: [^\s]+; columnNumber: [^\s]+`)
 
+	// ErrNoZoneForHost is returned when no DNS zone can be found that matches the requested host.
+	// This error occurs when:
+	//   - No zones are available from the provider
+	//   - The host is a top-level domain (TLD)
+	//   - The host doesn't match any available zone domains
+	//   - The host has invalid format (single label)
+	//
+	// Callers should use errors.Is(err, ErrNoZoneForHost) to check for this error.
 	ErrNoZoneForHost = fmt.Errorf("no zone for host")
+
+	// ErrApexDomainNotAllowed is returned when the requested host matches an apex domain
+	// (zone root) and the provider does not support apex domains (denyApex=true).
+	// Apex domains can only have A/AAAA records, not CNAME records, so some providers
+	// restrict their usage.
+	//
+	// Example: For zone "example.com", the host "example.com" is the apex domain.
+	//
+	// Callers should use errors.Is(err, ErrApexDomainNotAllowed) to check for this error.
+	ErrApexDomainNotAllowed = fmt.Errorf("apex domain not allowed")
+
+	// ErrMultipleZonesFound is returned when multiple zones with the same DNS name exist,
+	// making zone selection ambiguous. This typically indicates a configuration issue
+	// where zone filters should be used to disambiguate.
+	//
+	// Example: Two zones both named "example.com" with different IDs.
+	//
+	// Callers should use errors.Is(err, ErrMultipleZonesFound) to check for this error.
+	ErrMultipleZonesFound = fmt.Errorf("multiple zones found for host")
 
 	DNSProviderCoreDNS  DNSProviderName = "coredns"
 	DNSProviderAWS      DNSProviderName = "aws"
@@ -116,7 +143,7 @@ func IsWildCardHost(host string) bool {
 // findDNSZoneForHost will take a host and look for a zone that patches the immediate parent of that host and will continue to step through parents until it either finds a zone  or fails. Example *.example.com will look for example.com and other.domain.example.com will step through each subdomain until it hits example.com.
 func findDNSZoneForHost(originalHost, host string, zones []DNSZone, denyApex bool) (*DNSZone, string, error) {
 	if len(zones) == 0 {
-		return nil, "", fmt.Errorf("%w : %s", ErrNoZoneForHost, host)
+		return nil, "", fmt.Errorf("%w: %s", ErrNoZoneForHost, host)
 	}
 	host = strings.ToLower(host)
 	//get the TLD from this host
@@ -124,22 +151,26 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone, denyApex boo
 
 	//The host is a TLD, so we now know `originalHost` can't possibly have a valid `DNSZone` available.
 	if host == tld {
-		return nil, "", fmt.Errorf("no valid zone found for host: %v", originalHost)
+		return nil, "", fmt.Errorf("%w: %s", ErrNoZoneForHost, originalHost)
 	}
 
 	// We do not currently support creating records for Apex domains, and a DNSZone represents an Apex domain we cannot setup dns for the host
-	if id, is := IsApexDomain(originalHost, zones); is && denyApex {
-		return nil, "", fmt.Errorf("host %s is an apex domain with zone id %s. Cannot configure DNS for apex domain as apex domains only support A records", originalHost, id)
+	if _, is := IsApexDomain(originalHost, zones); is && denyApex {
+		return nil, "", fmt.Errorf("%w: %s", ErrApexDomainNotAllowed, originalHost)
 	}
 
 	hostParts := strings.SplitN(host, ".", 2)
 	if len(hostParts) < 2 {
-		return nil, "", fmt.Errorf("no valid zone found for host: %s", originalHost)
+		return nil, "", fmt.Errorf("%w: %s", ErrNoZoneForHost, originalHost)
 	}
 	parentDomain := hostParts[1]
-	// We do not currently support creating records for Apex domains, and a DNSZone represents an Apex domain, as such
-	// we should never be trying to find a zone that matches the `originalHost` exactly. Instead, we just continue
-	// on to the next possible valid host to try i.e. the parent domain.
+
+	// When apex domains are denied and we're on the first iteration (host == originalHost),
+	// skip checking if the host itself is a zone and immediately recurse to the parent domain.
+	// This prevents matching the host as an apex domain, which would be denied by the check above
+	// after matching. Instead, we proactively skip to the parent to find a valid parent zone.
+	// Example: For "example.com" with denyApex=true, skip directly to "com" instead of
+	// potentially matching "example.com" as a zone and then failing the apex check.
 	if host == originalHost && denyApex {
 		return findDNSZoneForHost(originalHost, parentDomain, zones, denyApex)
 	}
@@ -149,9 +180,14 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone, denyApex boo
 	})
 	if len(matches) > 0 {
 		if len(matches) > 1 {
-			return nil, "", fmt.Errorf("multiple zones found for host: %s", originalHost)
+			return nil, "", fmt.Errorf("%w: %s", ErrMultipleZonesFound, originalHost)
 		}
-		subdomain := strings.Replace(strings.ToLower(originalHost), "."+strings.ToLower(matches[0].DNSName), "", 1)
+		// Calculate subdomain by removing the zone suffix
+		// For apex domains (where host == zone), subdomain should be empty
+		subdomain := ""
+		if strings.ToLower(originalHost) != strings.ToLower(matches[0].DNSName) {
+			subdomain = strings.Replace(strings.ToLower(originalHost), "."+strings.ToLower(matches[0].DNSName), "", 1)
+		}
 		return &matches[0], subdomain, nil
 	}
 
