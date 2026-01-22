@@ -79,22 +79,12 @@ func (p *CoreDNSProvider) DNSZones(_ context.Context) ([]provider.DNSZone, error
 
 // DNSZoneForHost returns the DNSZone that best matches the given host in the providers list of zones
 func (p *CoreDNSProvider) DNSZoneForHost(ctx context.Context, host string) (*provider.DNSZone, error) {
-	var assignedZone *provider.DNSZone
-	zones, _ := p.DNSZones(ctx)
-	for _, z := range zones {
-		if strings.HasSuffix(host, z.DNSName) {
-			if assignedZone == nil {
-				assignedZone = &z
-			}
-			if len(assignedZone.DNSName) < len(z.DNSName) {
-				assignedZone = &z
-			}
-		}
+	zones, err := p.DNSZones(ctx)
+	if err != nil {
+		return nil, err
 	}
-	if assignedZone == nil {
-		return nil, provider.ErrNoZoneForHost
-	}
-	return assignedZone, nil
+	// CoreDNS supports apex domains (denyApex=false), similar to EndpointProvider
+	return provider.FindDNSZoneForHost(ctx, host, zones, false)
 }
 
 func (p *CoreDNSProvider) ProviderSpecific() provider.ProviderSpecificLabels {
