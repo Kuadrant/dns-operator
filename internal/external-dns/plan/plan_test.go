@@ -107,6 +107,42 @@ type PlanTestSuite struct {
 	ecCNAMEfooecOwner1       *endpoint.Endpoint
 	fooecCNAMEbarecOwner1    *endpoint.Endpoint
 	barecCNAMEbodoOwner1     *endpoint.Endpoint
+	//AAAA Records
+	fooAAAA1OwnerNone *endpoint.Endpoint
+	fooAAAA2OwnerNone *endpoint.Endpoint
+	barAAAA3OwnerNone *endpoint.Endpoint
+	barAAAA4OwnerNone *endpoint.Endpoint
+	fooAAAA1Owner1    *endpoint.Endpoint
+	fooAAAA1Owner2    *endpoint.Endpoint
+	fooAAAA1Owner12   *endpoint.Endpoint
+	fooAAAA2Owner1    *endpoint.Endpoint
+	fooAAAA2Owner2    *endpoint.Endpoint
+	fooAAAA12Owner12  *endpoint.Endpoint
+	barAAAA3Owner1    *endpoint.Endpoint
+	barAAAA3Owner2    *endpoint.Endpoint
+	barAAAA4Owner1    *endpoint.Endpoint
+	barAAAA4Owner2    *endpoint.Endpoint
+	//AAAA Records with SetIdentifier
+	fooAAAA1Owner1WithSetIdentifier1 *endpoint.Endpoint
+	fooAAAA2Owner2WithSetIdentifier2 *endpoint.Endpoint
+	//NS Records
+	fooNS1OwnerNone *endpoint.Endpoint
+	fooNS2OwnerNone *endpoint.Endpoint
+	barNS3OwnerNone *endpoint.Endpoint
+	barNS4OwnerNone *endpoint.Endpoint
+	fooNS1Owner1    *endpoint.Endpoint
+	fooNS1Owner2    *endpoint.Endpoint
+	fooNS1Owner12   *endpoint.Endpoint
+	fooNS2Owner1    *endpoint.Endpoint
+	fooNS2Owner2    *endpoint.Endpoint
+	fooNS12Owner12  *endpoint.Endpoint
+	barNS3Owner1    *endpoint.Endpoint
+	barNS3Owner2    *endpoint.Endpoint
+	barNS4Owner1    *endpoint.Endpoint
+	barNS4Owner2    *endpoint.Endpoint
+	//NS Records with SetIdentifier
+	fooNS1Owner1WithSetIdentifier1 *endpoint.Endpoint
+	fooNS2Owner2WithSetIdentifier2 *endpoint.Endpoint
 }
 
 func (suite *PlanTestSuite) SetupTest() {
@@ -633,6 +669,246 @@ func (suite *PlanTestSuite) SetupTest() {
 		Labels: map[string]string{
 			endpoint.OwnerLabelKey: "owner1",
 		},
+	}
+	// AAAA Records
+	suite.fooAAAA1OwnerNone = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::1"},
+	}
+	suite.fooAAAA2OwnerNone = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::2"},
+	}
+	suite.barAAAA3OwnerNone = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::3"},
+	}
+	suite.barAAAA4OwnerNone = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::4"},
+	}
+	suite.fooAAAA1Owner1 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::1"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.fooAAAA1Owner2 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::1"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+	}
+	suite.fooAAAA1Owner12 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::1"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1&&owner2",
+		},
+	}
+	suite.fooAAAA2Owner1 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::2"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.fooAAAA2Owner2 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::2"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+	}
+	suite.fooAAAA12Owner12 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::1", "2001:db8::2"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1&&owner2",
+		},
+	}
+	suite.barAAAA3Owner1 = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::3"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.barAAAA3Owner2 = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::3"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+	}
+	suite.barAAAA4Owner1 = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::4"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.barAAAA4Owner2 = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::4"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+	}
+	// AAAA Records with SetIdentifier
+	suite.fooAAAA1Owner1WithSetIdentifier1 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::1"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+		SetIdentifier: "1",
+	}
+	suite.fooAAAA2Owner2WithSetIdentifier2 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "AAAA",
+		Targets:    endpoint.Targets{"2001:db8::2"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+		SetIdentifier: "2",
+	}
+	// NS Records
+	suite.fooNS1OwnerNone = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns1.example.com"},
+	}
+	suite.fooNS2OwnerNone = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns2.example.com"},
+	}
+	suite.barNS3OwnerNone = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns3.example.com"},
+	}
+	suite.barNS4OwnerNone = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns4.example.com"},
+	}
+	suite.fooNS1Owner1 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns1.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.fooNS1Owner2 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns1.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+	}
+	suite.fooNS1Owner12 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns1.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1&&owner2",
+		},
+	}
+	suite.fooNS2Owner1 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns2.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.fooNS2Owner2 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns2.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+	}
+	suite.fooNS12Owner12 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns1.example.com", "ns2.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1&&owner2",
+		},
+	}
+	suite.barNS3Owner1 = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns3.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.barNS3Owner2 = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns3.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+	}
+	suite.barNS4Owner1 = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns4.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+	}
+	suite.barNS4Owner2 = &endpoint.Endpoint{
+		DNSName:    "bar",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns4.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+	}
+	// NS Records with SetIdentifier
+	suite.fooNS1Owner1WithSetIdentifier1 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns1.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner1",
+		},
+		SetIdentifier: "1",
+	}
+	suite.fooNS2Owner2WithSetIdentifier2 = &endpoint.Endpoint{
+		DNSName:    "foo",
+		RecordType: "NS",
+		Targets:    endpoint.Targets{"ns2.example.com"},
+		Labels: map[string]string{
+			endpoint.OwnerLabelKey: "owner2",
+		},
+		SetIdentifier: "2",
 	}
 }
 
@@ -2248,6 +2524,318 @@ func (suite *PlanTestSuite) TestMultiOwnerCNAMERecordDelete() {
 		Desired:        desired,
 		Previous:       previous,
 		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// AAAA Record Tests
+
+func (suite *PlanTestSuite) TestMultiOwnerAAAARecordCreate() {
+	current := []*endpoint.Endpoint{}
+	desired := []*endpoint.Endpoint{suite.fooAAAA1Owner1}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{suite.fooAAAA1Owner1.DeepCopy()},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner1",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should not merge targets of AAAA records with a shared dnsName, type and a set identifier.
+// SetIdentifier is used for routing policies (weighted, geo, etc.) where each record must remain distinct.
+// When SetIdentifier is present, records are NOT merged even if they share the same dnsName and type.
+func (suite *PlanTestSuite) TestMultiOwnerAAAARecordWithSetIdentifierCreate() {
+	current := []*endpoint.Endpoint{suite.fooAAAA1Owner1WithSetIdentifier1}
+	desired := []*endpoint.Endpoint{suite.fooAAAA2Owner2WithSetIdentifier2}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{suite.fooAAAA2Owner2WithSetIdentifier2.DeepCopy()},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should allow owned AAAA records to be updated from the creation of records with a shared dnsName and type by a plan with a different owner.
+func (suite *PlanTestSuite) TestMultiOwnerAAAARecordUpdateCreate() {
+	current := []*endpoint.Endpoint{suite.fooAAAA1Owner1, suite.barAAAA3Owner2}
+	previous := []*endpoint.Endpoint{suite.barAAAA3Owner2}
+	desired := []*endpoint.Endpoint{suite.fooAAAA2OwnerNone, suite.barAAAA3Owner2}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.fooAAAA1Owner1.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.fooAAAA12Owner12.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Previous:       previous,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should allow owned AAAA records to be updated from the change to a record with a shared dnsName and type by a plan with the same owner.
+// Should remove the previous target value
+// Should merge targets of AAAA records with a shared dnsName and type.
+func (suite *PlanTestSuite) TestMultiOwnerAAAARecordUpdateSameOwner() {
+	current := []*endpoint.Endpoint{suite.barAAAA3Owner2}
+	previous := []*endpoint.Endpoint{suite.barAAAA3Owner2}
+	desired := []*endpoint.Endpoint{suite.barAAAA4OwnerNone}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.barAAAA3Owner2.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.barAAAA4Owner2.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Previous:       previous,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+func (suite *PlanTestSuite) TestMultiOwnerAAAARecordDelete() {
+	current := []*endpoint.Endpoint{suite.barAAAA3Owner1, suite.barAAAA4Owner2, suite.fooAAAA12Owner12}
+	previous := []*endpoint.Endpoint{suite.barAAAA4Owner2, suite.fooAAAA2Owner2}
+	desired := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.fooAAAA12Owner12.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.fooAAAA1Owner1.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{suite.barAAAA4Owner2.DeepCopy()},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		Previous:       previous,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should delete AAAA record with the same host and target from two owners.
+func (suite *PlanTestSuite) TestMultiOwnerAAAARecordDeleteSameAddress() {
+	current := []*endpoint.Endpoint{suite.fooAAAA1Owner12}
+	previous := []*endpoint.Endpoint{suite.fooAAAA1Owner2}
+	desired := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.fooAAAA1Owner12.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.fooAAAA1Owner1.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		Previous:       previous,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// NS Record Tests
+
+func (suite *PlanTestSuite) TestMultiOwnerNSRecordCreate() {
+	current := []*endpoint.Endpoint{}
+	desired := []*endpoint.Endpoint{suite.fooNS1Owner1}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{suite.fooNS1Owner1.DeepCopy()},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner1",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should not merge targets of NS records with a shared dnsName, type and a set identifier.
+// SetIdentifier is used for routing policies (weighted, geo, etc.) where each record must remain distinct.
+// When SetIdentifier is present, records are NOT merged even if they share the same dnsName and type.
+func (suite *PlanTestSuite) TestMultiOwnerNSRecordWithSetIdentifierCreate() {
+	current := []*endpoint.Endpoint{suite.fooNS1Owner1WithSetIdentifier1}
+	desired := []*endpoint.Endpoint{suite.fooNS2Owner2WithSetIdentifier2}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{suite.fooNS2Owner2WithSetIdentifier2.DeepCopy()},
+		UpdateOld: []*endpoint.Endpoint{},
+		UpdateNew: []*endpoint.Endpoint{},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should allow owned NS records to be updated from the creation of records with a shared dnsName and type by a plan with a different owner.
+func (suite *PlanTestSuite) TestMultiOwnerNSRecordUpdateCreate() {
+	current := []*endpoint.Endpoint{suite.fooNS1Owner1, suite.barNS3Owner2}
+	previous := []*endpoint.Endpoint{suite.barNS3Owner2}
+	desired := []*endpoint.Endpoint{suite.fooNS2OwnerNone, suite.barNS3Owner2}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.fooNS1Owner1.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.fooNS12Owner12.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Previous:       previous,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should allow owned NS records to be updated from the change to a record with a shared dnsName and type by a plan with the same owner.
+// Should remove the previous target value
+// Should merge targets of NS records with a shared dnsName and type.
+func (suite *PlanTestSuite) TestMultiOwnerNSRecordUpdateSameOwner() {
+	current := []*endpoint.Endpoint{suite.barNS3Owner2}
+	previous := []*endpoint.Endpoint{suite.barNS3Owner2}
+	desired := []*endpoint.Endpoint{suite.barNS4OwnerNone}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.barNS3Owner2.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.barNS4Owner2.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Previous:       previous,
+		Desired:        desired,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+func (suite *PlanTestSuite) TestMultiOwnerNSRecordDelete() {
+	current := []*endpoint.Endpoint{suite.barNS3Owner1, suite.barNS4Owner2, suite.fooNS12Owner12}
+	previous := []*endpoint.Endpoint{suite.barNS4Owner2, suite.fooNS2Owner2}
+	desired := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.fooNS12Owner12.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.fooNS1Owner1.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{suite.barNS4Owner2.DeepCopy()},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		Previous:       previous,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
+	}
+
+	cp := p.Calculate()
+	validateChanges(suite.T(), cp.Changes, expectedChanges)
+	assert.Empty(suite.T(), cp.Errors)
+}
+
+// Should delete NS record with the same host and target from two owners.
+func (suite *PlanTestSuite) TestMultiOwnerNSRecordDeleteSameNameserver() {
+	current := []*endpoint.Endpoint{suite.fooNS1Owner12}
+	previous := []*endpoint.Endpoint{suite.fooNS1Owner2}
+	desired := []*endpoint.Endpoint{}
+	expectedChanges := &plan.Changes{
+		Create:    []*endpoint.Endpoint{},
+		UpdateOld: []*endpoint.Endpoint{suite.fooNS1Owner12.DeepCopy()},
+		UpdateNew: []*endpoint.Endpoint{suite.fooNS1Owner1.DeepCopy()},
+		Delete:    []*endpoint.Endpoint{},
+	}
+
+	p := &Plan{
+		OwnerID:        "owner2",
+		Policies:       []Policy{&SyncPolicy{}},
+		Current:        current,
+		Desired:        desired,
+		Previous:       previous,
+		ManagedRecords: []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME, endpoint.RecordTypeNS},
 	}
 
 	cp := p.Calculate()
