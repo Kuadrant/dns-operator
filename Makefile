@@ -289,8 +289,9 @@ build: manifests generate fmt vet ## Build manager binary.
 
 RUN_METRICS_ADDR=":8080"
 RUN_HEALTH_ADDR=":8081"
+RUN_PPROF_ADDR=":8082"
 RUN_DELEGATION_ROLE="primary"
-DEFAULT_RUN_FLAGS ?= --log-mode=development --provider inmemory,aws,google,azure,coredns,endpoint --delegation-role=${RUN_DELEGATION_ROLE} --metrics-bind-address=${RUN_METRICS_ADDR} --health-probe-bind-address=${RUN_HEALTH_ADDR} --group=${GROUP}
+DEFAULT_RUN_FLAGS ?= --log-mode=development --provider inmemory,aws,google,azure,coredns,endpoint --delegation-role=${RUN_DELEGATION_ROLE} --metrics-bind-address=${RUN_METRICS_ADDR} --health-probe-bind-address=${RUN_HEALTH_ADDR} --pprof-bind-address=${RUN_PPROF_ADDR} --group=${GROUP}
 RUN_FLAGS ?= $(DEFAULT_RUN_FLAGS)
 
 .PHONY: run
@@ -304,7 +305,7 @@ run-primary: run ## Run a controller from your host with the primary delegation 
 
 .PHONY: run-secondary
 run-secondary: ## Run a controller from your host with the secondary delegation role.
-	$(MAKE) run RUN_FLAGS="${DEFAULT_RUN_FLAGS} --delegation-role=secondary --metrics-bind-address=:8082 --health-probe-bind-address=:8083"
+	$(MAKE) run RUN_FLAGS="${DEFAULT_RUN_FLAGS} --delegation-role=secondary --metrics-bind-address=:8084 --health-probe-bind-address=:8085 --pprof-bind-address=:8086"
 
 .PHONY: run-with-probes
 run-with-probes: GIT_SHA=$(shell git rev-parse HEAD || echo "unknown")
