@@ -502,8 +502,10 @@ func (e *managedRecordSetChanges) calculateDesired(update *endpointUpdate) {
 	currentCopy := update.current.DeepCopy()
 	desiredCopy := update.desired.DeepCopy()
 
-	// A Records can be merged, but we remove the known previous target values first in order to ensure potentially stale values are removed
-	if update.current.RecordType == endpoint.RecordTypeA {
+	// A, AAAA, and NS Records support multi-owner merging by combining targets from different owners.
+	// This enables multiple clusters to contribute IPs (A/AAAA) or nameservers (NS) to the same DNS record.
+	// We remove the known previous target values first to ensure stale values from updates are cleaned up.
+	if update.current.RecordType == endpoint.RecordTypeA || update.current.RecordType == endpoint.RecordTypeAAAA || update.current.RecordType == endpoint.RecordTypeNS {
 		if update.previous != nil {
 			removeEndpointTargets(update.previous.Targets, currentCopy)
 		}

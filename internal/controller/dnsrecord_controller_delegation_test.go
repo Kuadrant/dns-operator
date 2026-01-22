@@ -1754,6 +1754,301 @@ var _ = Describe("DNSRecordReconciler", func() {
 					g.Expect(err).To(MatchError(ContainSubstring("not found")))
 				}, TestTimeoutMedium, time.Second, ctx).Should(Succeed())
 			})
+
+			// Test that NS records from multiple primaries are correctly merged into authoritative record
+			It("should merge NS records from multiple primaries into authoritative record", Labels{"primary", "multi-primary", "ns-records"}, func(ctx SpecContext) {
+				var primary1AuthRecord, primary2AuthRecord *v1alpha1.DNSRecord
+
+				// Create delegating NS records on both primaries
+				primary1NSRecord := &v1alpha1.DNSRecord{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ns-" + testHostname,
+						Namespace: testNamespace,
+					},
+					Spec: v1alpha1.DNSRecordSpec{
+						RootHost: testHostname,
+						Endpoints: []*externaldnsendpoint.Endpoint{
+							{
+								DNSName:          testHostname,
+								Targets:          []string{"ns1.primary1.example.com"},
+								RecordType:       "NS",
+								RecordTTL:        300,
+								Labels:           nil,
+								ProviderSpecific: nil,
+							},
+						},
+						Delegate: true,
+					},
+				}
+
+				primary2NSRecord := &v1alpha1.DNSRecord{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ns-" + testHostname,
+						Namespace: testNamespace,
+					},
+					Spec: v1alpha1.DNSRecordSpec{
+						RootHost: testHostname,
+						Endpoints: []*externaldnsendpoint.Endpoint{
+							{
+								DNSName:          testHostname,
+								Targets:          []string{"ns1.primary2.example.com"},
+								RecordType:       "NS",
+								RecordTTL:        300,
+								Labels:           nil,
+								ProviderSpecific: nil,
+							},
+						},
+						Delegate: true,
+					},
+				}
+
+				By("creating delegating NS record on primary-1")
+				Expect(primaryK8sClient.Create(ctx, primary1NSRecord)).To(Succeed())
+
+				By("creating delegating NS record on primary-2")
+				Expect(primary2K8sClient.Create(ctx, primary2NSRecord)).To(Succeed())
+
+				By("verifying the status of primary-1 and primary-2 NS records")
+				Eventually(func(g Gomega) {
+					// Find the primary-1 NS record
+					g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(primary1NSRecord), primary1NSRecord)).To(Succeed())
+					// Find the primary-2 NS record
+					g.Expect(primary2K8sClient.Get(ctx, client.ObjectKeyFromObject(primary2NSRecord), primary2NSRecord)).To(Succeed())
+
+					// Verify the expected state of the primary records
+					g.Expect(primary1NSRecord.Status.Conditions).To(
+						ContainElement(MatchFields(IgnoreExtras, Fields{
+							"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status":             Equal(metav1.ConditionTrue),
+							"Reason":             Equal("ProviderSuccess"),
+							"Message":            Equal("Provider ensured the dns record"),
+							"ObservedGeneration": Equal(primary1NSRecord.Generation),
+						})),
+					)
+					g.Expect(primary1NSRecord.IsDelegating()).To(BeTrue())
+					g.Expect(primary1NSRecord.Status.DomainOwners).To(ConsistOf(primary1NSRecord.GetUIDHash(), primary2NSRecord.GetUIDHash()))
+
+					g.Expect(primary2NSRecord.Status.Conditions).To(
+						ContainElement(MatchFields(IgnoreExtras, Fields{
+							"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status":             Equal(metav1.ConditionTrue),
+							"Reason":             Equal("ProviderSuccess"),
+							"Message":            Equal("Provider ensured the dns record"),
+							"ObservedGeneration": Equal(primary2NSRecord.Generation),
+						})),
+					)
+					g.Expect(primary2NSRecord.IsDelegating()).To(BeTrue())
+					g.Expect(primary2NSRecord.Status.DomainOwners).To(ConsistOf(primary1NSRecord.GetUIDHash(), primary2NSRecord.GetUIDHash()))
+				}, TestTimeoutLong, time.Second).Should(Succeed())
+
+				By("verifying an authoritative record exists for the test host on both primary-1 and primary-2")
+				Eventually(func(g Gomega) {
+					// Find the authoritative record on primary-1
+					authRecords := &v1alpha1.DNSRecordList{}
+					g.Expect(primaryK8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.AuthoritativeRecordLabel: "true", v1alpha1.AuthoritativeRecordHashLabel: common.HashRootHost(testHostname)})).To(Succeed())
+					g.Expect(authRecords.Items).To(HaveLen(1))
+					primary1AuthRecord = &authRecords.Items[0]
+
+					// Find the authoritative record on primary-2
+					g.Expect(primary2K8sClient.List(ctx, authRecords, client.InNamespace(testNamespace), client.MatchingLabels{v1alpha1.AuthoritativeRecordLabel: "true", v1alpha1.AuthoritativeRecordHashLabel: common.HashRootHost(testHostname)})).To(Succeed())
+					g.Expect(authRecords.Items).To(HaveLen(1))
+					primary2AuthRecord = &authRecords.Items[0]
+				}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+				By(fmt.Sprintf("setting the inmemory dns provider as the default in the '%s' test namespace on primary-1", testNamespace))
+				// Set the default-provider label on the provider secret for primary-1
+				labels := primary1DNSProviderSecret.GetLabels()
+				if labels == nil {
+					labels = map[string]string{}
+				}
+				labels[v1alpha1.DefaultProviderSecretLabel] = "true"
+				primary1DNSProviderSecret.SetLabels(labels)
+				Expect(primaryK8sClient.Update(ctx, primary1DNSProviderSecret)).To(Succeed())
+
+				By(fmt.Sprintf("setting the inmemory dns provider as the default in the '%s' test namespace on primary-2", testNamespace))
+				// Set the default-provider label on the provider secret for primary-2
+				labels = primary2DNSProviderSecret.GetLabels()
+				if labels == nil {
+					labels = map[string]string{}
+				}
+				labels[v1alpha1.DefaultProviderSecretLabel] = "true"
+				primary2DNSProviderSecret.SetLabels(labels)
+				Expect(primary2K8sClient.Update(ctx, primary2DNSProviderSecret)).To(Succeed())
+
+				By("verifying the authoritative records have the correct merged NS endpoints")
+				Eventually(func(g Gomega) {
+					// Get the authoritative record on primary-1
+					g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(primary1AuthRecord), primary1AuthRecord)).To(Succeed())
+
+					// Verify the expected state of the authoritative record
+					g.Expect(primary1AuthRecord.Name).To(Equal(fmt.Sprintf("authoritative-record-%s", common.HashRootHost(testHostname))))
+					g.Expect(primary1AuthRecord.IsDelegating()).To(BeFalse())
+					g.Expect(primary1AuthRecord.Spec.RootHost).To(Equal(testHostname))
+					g.Expect(primary1AuthRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
+					g.Expect(primary1AuthRecord.Status.Conditions).To(
+						ContainElement(MatchFields(IgnoreExtras, Fields{
+							"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status":  Equal(metav1.ConditionTrue),
+							"Reason":  Equal("ProviderSuccess"),
+							"Message": Equal("Provider ensured the dns record"),
+						})),
+					)
+
+					// Authoritative record should contain the merged NS endpoints from both primaries
+					g.Expect(primary1AuthRecord.Spec.Endpoints).To(HaveLen(3))
+					g.Expect(primary1AuthRecord.Spec.Endpoints).To(ContainElements(
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    Equal(testHostname),
+							"Targets":    ConsistOf("ns1.primary1.example.com", "ns1.primary2.example.com"),
+							"RecordType": Equal("NS"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(300)),
+						})),
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    HaveSuffix(testHostname),
+							"Targets":    ConsistOf("\"heritage=external-dns,external-dns/owner=" + primary1NSRecord.Status.OwnerID + ",external-dns/version=1\""),
+							"RecordType": Equal("TXT"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(0)),
+						})),
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    HaveSuffix(testHostname),
+							"Targets":    ConsistOf("\"heritage=external-dns,external-dns/owner=" + primary2NSRecord.Status.OwnerID + ",external-dns/version=1\""),
+							"RecordType": Equal("TXT"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(0)),
+						})),
+					))
+
+					// Get the authoritative record on primary-2
+					g.Expect(primary2K8sClient.Get(ctx, client.ObjectKeyFromObject(primary2AuthRecord), primary2AuthRecord)).To(Succeed())
+
+					// Verify the expected state of the authoritative record on primary-2
+					g.Expect(primary2AuthRecord.Name).To(Equal(fmt.Sprintf("authoritative-record-%s", common.HashRootHost(testHostname))))
+					g.Expect(primary2AuthRecord.IsDelegating()).To(BeFalse())
+					g.Expect(primary2AuthRecord.Spec.RootHost).To(Equal(testHostname))
+					g.Expect(primary2AuthRecord.Labels).Should(HaveKeyWithValue("kuadrant.io/dns-provider-name", "inmemory"))
+					g.Expect(primary2AuthRecord.Status.Conditions).To(
+						ContainElement(MatchFields(IgnoreExtras, Fields{
+							"Type":    Equal(string(v1alpha1.ConditionTypeReady)),
+							"Status":  Equal(metav1.ConditionTrue),
+							"Reason":  Equal("ProviderSuccess"),
+							"Message": Equal("Provider ensured the dns record"),
+						})),
+					)
+
+					// Authoritative record on primary-2 should also contain the merged NS endpoints
+					g.Expect(primary2AuthRecord.Spec.Endpoints).To(HaveLen(3))
+					g.Expect(primary2AuthRecord.Spec.Endpoints).To(ContainElements(
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    Equal(testHostname),
+							"Targets":    ConsistOf("ns1.primary1.example.com", "ns1.primary2.example.com"),
+							"RecordType": Equal("NS"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(300)),
+						})),
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    HaveSuffix(testHostname),
+							"Targets":    ConsistOf("\"heritage=external-dns,external-dns/owner=" + primary1NSRecord.Status.OwnerID + ",external-dns/version=1\""),
+							"RecordType": Equal("TXT"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(0)),
+						})),
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    HaveSuffix(testHostname),
+							"Targets":    ConsistOf("\"heritage=external-dns,external-dns/owner=" + primary2NSRecord.Status.OwnerID + ",external-dns/version=1\""),
+							"RecordType": Equal("TXT"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(0)),
+						})),
+					))
+				}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+				By("updating NS record on primary-1 to add an additional nameserver")
+				Eventually(func(g Gomega) {
+					g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(primary1NSRecord), primary1NSRecord)).To(Succeed())
+					primary1NSRecord.Spec.Endpoints = []*externaldnsendpoint.Endpoint{
+						{
+							DNSName:          testHostname,
+							Targets:          []string{"ns1.primary1.example.com", "ns2.primary1.example.com"},
+							RecordType:       "NS",
+							RecordTTL:        300,
+							Labels:           nil,
+							ProviderSpecific: nil,
+						},
+					}
+					g.Expect(primaryK8sClient.Update(ctx, primary1NSRecord)).To(Succeed())
+				}, TestTimeoutShort, time.Second).Should(Succeed())
+
+				By("verifying the authoritative record is updated with the new nameserver")
+				Eventually(func(g Gomega) {
+					// Get the authoritative record on primary-1
+					g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(primary1AuthRecord), primary1AuthRecord)).To(Succeed())
+
+					// Authoritative record should now contain all three nameservers
+					g.Expect(primary1AuthRecord.Spec.Endpoints).To(ContainElement(
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    Equal(testHostname),
+							"Targets":    ConsistOf("ns1.primary1.example.com", "ns2.primary1.example.com", "ns1.primary2.example.com"),
+							"RecordType": Equal("NS"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(300)),
+						})),
+					))
+
+					// Get the authoritative record on primary-2
+					g.Expect(primary2K8sClient.Get(ctx, client.ObjectKeyFromObject(primary2AuthRecord), primary2AuthRecord)).To(Succeed())
+
+					// Authoritative record on primary-2 should also be updated
+					g.Expect(primary2AuthRecord.Spec.Endpoints).To(ContainElement(
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    Equal(testHostname),
+							"Targets":    ConsistOf("ns1.primary1.example.com", "ns2.primary1.example.com", "ns1.primary2.example.com"),
+							"RecordType": Equal("NS"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(300)),
+						})),
+					))
+				}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+				By("deleting NS record on primary-1")
+				Expect(primaryK8sClient.Delete(ctx, primary1NSRecord)).To(Succeed())
+
+				By("verifying the authoritative record is updated to remove primary-1 nameservers")
+				Eventually(func(g Gomega) {
+					// Get the authoritative record on primary-1
+					g.Expect(primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(primary1AuthRecord), primary1AuthRecord)).To(Succeed())
+
+					// Authoritative record should only contain primary-2's nameserver
+					g.Expect(primary1AuthRecord.Spec.Endpoints).To(HaveLen(2))
+					g.Expect(primary1AuthRecord.Spec.Endpoints).To(ContainElements(
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    Equal(testHostname),
+							"Targets":    ConsistOf("ns1.primary2.example.com"),
+							"RecordType": Equal("NS"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(300)),
+						})),
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    HaveSuffix(testHostname),
+							"Targets":    ConsistOf("\"heritage=external-dns,external-dns/owner=" + primary2NSRecord.Status.OwnerID + ",external-dns/version=1\""),
+							"RecordType": Equal("TXT"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(0)),
+						})),
+					))
+
+					// Get the authoritative record on primary-2
+					g.Expect(primary2K8sClient.Get(ctx, client.ObjectKeyFromObject(primary2AuthRecord), primary2AuthRecord)).To(Succeed())
+
+					// Authoritative record on primary-2 should also be updated
+					g.Expect(primary2AuthRecord.Spec.Endpoints).To(HaveLen(2))
+					g.Expect(primary2AuthRecord.Spec.Endpoints).To(ContainElements(
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    Equal(testHostname),
+							"Targets":    ConsistOf("ns1.primary2.example.com"),
+							"RecordType": Equal("NS"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(300)),
+						})),
+						PointTo(MatchFields(IgnoreExtras, Fields{
+							"DNSName":    HaveSuffix(testHostname),
+							"Targets":    ConsistOf("\"heritage=external-dns,external-dns/owner=" + primary2NSRecord.Status.OwnerID + ",external-dns/version=1\""),
+							"RecordType": Equal("TXT"),
+							"RecordTTL":  Equal(externaldnsendpoint.TTL(0)),
+						})),
+					))
+				}, TestTimeoutMedium, time.Second).Should(Succeed())
+			})
 		})
 	})
 

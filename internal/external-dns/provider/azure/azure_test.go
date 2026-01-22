@@ -25,6 +25,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	dns "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns"
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 	"github.com/stretchr/testify/assert"
 
 	"sigs.k8s.io/external-dns/endpoint"
@@ -186,6 +187,19 @@ func txtRecordSetPropertiesGetter(values []string, ttl int64) *dns.RecordSetProp
 	}
 }
 
+func nsRecordSetPropertiesGetter(values []string, ttl int64) *dns.RecordSetProperties {
+	nsRecords := make([]*dns.NsRecord, len(values))
+	for i, value := range values {
+		nsRecords[i] = &dns.NsRecord{
+			Nsdname: to.Ptr(value),
+		}
+	}
+	return &dns.RecordSetProperties{
+		TTL:       to.Ptr(ttl),
+		NsRecords: nsRecords,
+	}
+}
+
 func othersRecordSetPropertiesGetter(values []string, ttl int64) *dns.RecordSetProperties {
 	return &dns.RecordSetProperties{
 		TTL: to.Ptr(ttl),
@@ -214,6 +228,8 @@ func createMockRecordSetMultiWithTTL(name, recordType string, ttl int64, values 
 		getterFunc = mxRecordSetPropertiesGetter
 	case endpoint.RecordTypeTXT:
 		getterFunc = txtRecordSetPropertiesGetter
+	case endpoint.RecordTypeNS:
+		getterFunc = nsRecordSetPropertiesGetter
 	default:
 		getterFunc = othersRecordSetPropertiesGetter
 	}
@@ -275,6 +291,7 @@ func TestAzureRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := []*endpoint.Endpoint{
+		endpoint.NewEndpoint("example.com", endpoint.RecordTypeNS, "ns1-03.azure-dns.com"),
 		endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "123.123.123.122"),
 		endpoint.NewEndpoint("example.com", endpoint.RecordTypeAAAA, "2001::123:123:123:122"),
 		endpoint.NewEndpoint("example.com", endpoint.RecordTypeTXT, "heritage=external-dns,external-dns/owner=default"),
@@ -315,6 +332,7 @@ func TestAzureMultiRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := []*endpoint.Endpoint{
+		endpoint.NewEndpoint("example.com", endpoint.RecordTypeNS, "ns1-03.azure-dns.com"),
 		endpoint.NewEndpoint("example.com", endpoint.RecordTypeA, "123.123.123.122", "234.234.234.233"),
 		endpoint.NewEndpoint("example.com", endpoint.RecordTypeAAAA, "2001::123:123:123:122", "2001::234:234:234:233"),
 		endpoint.NewEndpoint("example.com", endpoint.RecordTypeTXT, "heritage=external-dns,external-dns/owner=default"),
@@ -592,4 +610,75 @@ func TestCleanAzureError(t *testing.T) {
 
 		})
 	}
+}
+
+func TestAzureNSRecordSupport(t *testing.T) {
+	RegisterTestingT(t)
+
+	// Test NewRecordSet creates NS records correctly
+	t.Run("NewRecordSet creates NS record with trailing dots", func(t *testing.T) {
+		ep := endpoint.NewEndpoint("ns.example.com", endpoint.RecordTypeNS, "ns1.example.com", "ns2.example.com")
+		ep.RecordTTL = 300
+
+		provider := &AzureProvider{}
+		recordSet, err := provider.NewRecordSet(ep)
+
+		Expect(err).To(BeNil())
+		Expect(recordSet.Properties).ToNot(BeNil())
+		Expect(recordSet.Properties.NsRecords).To(HaveLen(2))
+		// NS records should have trailing dots added by EnsureTrailingDot
+		Expect(*recordSet.Properties.NsRecords[0].Nsdname).To(Equal("ns1.example.com."))
+		Expect(*recordSet.Properties.NsRecords[1].Nsdname).To(Equal("ns2.example.com."))
+		Expect(*recordSet.Properties.TTL).To(Equal(int64(300)))
+	})
+
+	// Test ExtractAzureTargets extracts NS records correctly
+	t.Run("ExtractAzureTargets extracts NS record targets", func(t *testing.T) {
+		recordSet := &dns.RecordSet{
+			Properties: &dns.RecordSetProperties{
+				TTL: to.Ptr(int64(300)),
+				NsRecords: []*dns.NsRecord{
+					{Nsdname: to.Ptr("ns1.example.com.")},
+					{Nsdname: to.Ptr("ns2.example.com.")},
+				},
+			},
+		}
+
+		targets := ExtractAzureTargets(recordSet)
+
+		Expect(targets).To(HaveLen(2))
+		Expect(targets).To(ConsistOf("ns1.example.com.", "ns2.example.com."))
+	})
+
+	// Test NS records in full provider flow
+	t.Run("Provider handles NS records end-to-end", func(t *testing.T) {
+		provider, err := newMockedAzureProvider(
+			endpoint.NewDomainFilter([]string{"example.com"}),
+			endpoint.NewDomainFilter([]string{}),
+			provider.NewZoneIDFilter([]string{""}),
+			true,
+			"k8s",
+			"",
+			[]*dns.Zone{
+				createMockZone("example.com", "/dnszones/example.com"),
+			},
+			[]*dns.RecordSet{
+				createMockRecordSetMultiWithTTL("ns", endpoint.RecordTypeNS, 300, "ns1.example.com.", "ns2.example.com."),
+			},
+		)
+		Expect(err).To(BeNil())
+
+		ctx := context.Background()
+		actual, err := provider.Records(ctx)
+		Expect(err).To(BeNil())
+
+		// Should find the NS record
+		// Note: endpoint.NewEndpointWithTTL strips trailing dots from targets
+		Expect(actual).To(ContainElement(PointTo(MatchFields(IgnoreExtras, Fields{
+			"DNSName":    Equal("ns.example.com"),
+			"RecordType": Equal(endpoint.RecordTypeNS),
+			"RecordTTL":  Equal(endpoint.TTL(300)),
+			"Targets":    ConsistOf("ns1.example.com", "ns2.example.com"),
+		}))))
+	})
 }

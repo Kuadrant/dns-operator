@@ -133,7 +133,7 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	//ToDo We can't use GetRootHost() here as it currently removes any wildcard prefix which needs to be maintained in this scenario.
 	rootDomainName := dnsRecord.GetSpec().RootHost
 	zoneDomainFilter := externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetZoneDomainName()})
-	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
+	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME, externaldnsendpoint.RecordTypeNS}
 	var excludeDNSRecordTypes []string
 
 	var recordRegistry externaldnsregistry.Registry
