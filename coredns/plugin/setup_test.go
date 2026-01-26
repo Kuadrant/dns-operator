@@ -45,6 +45,20 @@ func TestParseArguments(t *testing.T) {
 			},
 		},
 		{
+			"valid args with rname",
+			`
+						kuadrant {
+							rname admin@example.com
+						}`,
+			false,
+			&Kuadrant{
+				Zones: Zones{
+					Z:     map[string]*Zone{},
+					Names: make([]string, 0),
+				},
+			},
+		},
+		{
 			"invalid args",
 			`
 						kuadrant {

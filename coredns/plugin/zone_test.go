@@ -212,3 +212,87 @@ func TestZone_InsertEndpoint(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertEmailToMailbox(t *testing.T) {
+	tests := []struct {
+		name     string
+		email    string
+		expected string
+	}{
+		{
+			name:     "standard email",
+			email:    "admin@example.com",
+			expected: "admin.example.com.",
+		},
+		{
+			name:     "email with spaces",
+			email:    "  admin@example.com  ",
+			expected: "admin.example.com.",
+		},
+		{
+			name:     "subdomain email",
+			email:    "hostmaster@sub.example.com",
+			expected: "hostmaster.sub.example.com.",
+		},
+		{
+			name:     "email with multiple dots",
+			email:    "dns.admin@example.com",
+			expected: "dns.admin.example.com.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertEmailToMailbox(tt.email)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestNewZone_CustomRNAME(t *testing.T) {
+	tests := []struct {
+		name         string
+		zoneName     string
+		rname        string
+		expectedMbox string
+	}{
+		{
+			name:         "default rname (empty string)",
+			zoneName:     "example.com",
+			rname:        "",
+			expectedMbox: "hostmaster.example.com.",
+		},
+		{
+			name:         "custom rname",
+			zoneName:     "example.com",
+			rname:        "admin@example.com",
+			expectedMbox: "admin.example.com.",
+		},
+		{
+			name:         "custom rname with subdomain",
+			zoneName:     "sub.example.com",
+			rname:        "dns@sub.example.com",
+			expectedMbox: "dns.sub.example.com.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			zone := NewZone(tt.zoneName, tt.rname)
+			assert.NotNil(t, zone)
+
+			// Find the SOA record in the zone
+			var soaRecord *dns.SOA
+			zone.RLock()
+			apex := zone.Apex
+			zone.RUnlock()
+
+			if apex.SOA != nil {
+				soaRecord = apex.SOA
+			}
+
+			assert.NotNil(t, soaRecord, "SOA record should exist")
+			if soaRecord != nil {
+				assert.Equal(t, tt.expectedMbox, soaRecord.Mbox, "SOA Mbox should match expected value")
+			}
+		})
+	}
+}

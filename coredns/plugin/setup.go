@@ -45,14 +45,10 @@ func parse(c *caddy.Controller) (*Kuadrant, error) {
 
 	z := make(map[string]*Zone)
 	names := []string{}
+	rname := "" // Default empty, will use "hostmaster" if not set
 
 	for c.Next() {
 		origins := plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
-
-		for i := range origins {
-			z[origins[i]] = NewZone(origins[i])
-			names = append(names, origins[i])
-		}
 
 		for c.NextBlock() {
 			key := c.Val()
@@ -66,9 +62,17 @@ func parse(c *caddy.Controller) (*Kuadrant, error) {
 				if len(args) == 2 {
 					k.ConfigContext = args[1]
 				}
+			case "rname":
+				rname = args[0]
 			default:
 				return k, c.Errf("Unknown property '%s'", c.Val())
 			}
+		}
+
+		// Create zones with rname after parsing config
+		for i := range origins {
+			z[origins[i]] = NewZone(origins[i], rname)
+			names = append(names, origins[i])
 		}
 	}
 

@@ -128,7 +128,7 @@ dig @$NS kuadrant-active-groups.k.example.com TXT +short
 
 ### Running controller on existing cluster
 
-You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
+You'll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
 **Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
 
 1. Apply Operator manifests
@@ -140,6 +140,33 @@ kustomize build config/default | kubectl apply -f -
 ```sh
 kubectl logs -f deployments/dns-operator-controller-manager -n dns-operator-system
 ```
+
+## CoreDNS Provider
+
+The DNS Operator includes a CoreDNS plugin that enables serving DNS zone data from Kubernetes DNSRecord resources. This is particularly useful for local development and testing.
+
+### CoreDNS Plugin Configuration
+
+The kuadrant CoreDNS plugin supports the following configuration options:
+
+#### Custom SOA RNAME Email Address
+
+You can customize the SOA (Start of Authority) RNAME (Responsible Mail) field to use a specific email address for the zone contact. If not specified, it defaults to `hostmaster.{zone}`.
+
+Example Corefile configuration:
+```corefile
+example.org {
+   kuadrant {
+      rname admin@example.com
+   }
+}
+```
+
+The email format (e.g., `admin@example.com`) will be automatically converted to DNS mailbox format (e.g., `admin.example.com.`) in the SOA record.
+
+For detailed CoreDNS configuration and integration documentation, see:
+- [CoreDNS Plugin Documentation](./coredns/plugin/README.md)
+- [CoreDNS Integration Guide](./docs/coredns/README.md)
 
 ## Development
 

@@ -34,6 +34,38 @@ Tail CoreDNS logs
 kubectl logs -f deployments/kuadrant-coredns -n kuadrant-coredns
 ```
 
+#### Customizing SOA RNAME Email
+
+The default SOA (Start of Authority) RNAME field uses `hostmaster.{zone}` format. You can customize this to use a specific email address by modifying the Corefile configuration.
+
+To set a custom RNAME email, edit the Corefile in the `kuadrant-coredns` configmap:
+```corefile
+k.example.com {
+   debug
+   errors
+   log
+   kuadrant {
+      rname admin@example.com
+   }
+}
+```
+
+After updating the configmap, restart CoreDNS:
+```shell
+kubectl -n kuadrant-coredns rollout restart deployment kuadrant-coredns
+```
+
+Verify the SOA record contains the custom email (converted to DNS mailbox format):
+```shell
+NS1=`kubectl get service/kuadrant-coredns -n kuadrant-coredns -o yaml | yq '.status.loadBalancer.ingress[0].ip'`
+dig @${NS1} k.example.com SOA +short
+```
+Expected output with custom RNAME:
+```
+ns1.k.example.com. admin.example.com. 12345 7200 1800 86400 60
+```
+Note: `admin@example.com` is converted to `admin.example.com.` in DNS mailbox format.
+
 #### Enable Monitoring:
 
 Monitoring is not enabled by default, if you configured the observability stack above, the CoreDNS instance can be  updated to enable it with:

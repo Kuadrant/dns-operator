@@ -37,14 +37,16 @@ type Zone struct {
 	origLen    int
 	rrData     map[string]rrData
 	RRResolver RRResolver
+	rname      string
 }
 
-func NewZone(name string) *Zone {
+func NewZone(name string, rname string) *Zone {
 	z := &Zone{
 		origin:  dns.Fqdn(name),
 		origLen: dns.CountLabel(dns.Fqdn(name)),
 		Zone:    file.NewZone(name, ""),
 		rrData:  map[string]rrData{},
+		rname:   rname,
 	}
 
 	// The file plugin will do a recursive lookup of CNAMEs when resolving queries, default behaviour of this is to use
@@ -71,8 +73,14 @@ func NewZone(name string) *Zone {
 	}
 	z.Insert(ns)
 
+	// Use custom rname if provided, otherwise use default hostmaster
+	mbox := dnsutil.Join("hostmaster", name)
+	if rname != "" {
+		mbox = convertEmailToMailbox(rname)
+	}
+
 	soa := &dns.SOA{Hdr: dns.RR_Header{Name: dns.Fqdn(name), Rrtype: dns.TypeSOA, Ttl: ttlSOA, Class: dns.ClassINET},
-		Mbox:    dnsutil.Join("hostmaster", name),
+		Mbox:    mbox,
 		Ns:      dnsutil.Join("ns1", name),
 		Serial:  12345,
 		Refresh: 7200,
@@ -221,6 +229,14 @@ func (z *Zone) parseGeoAnswers(ctx context.Context, request request.Request, grr
 	}
 
 	return []dns.RR{*answer}
+}
+
+// convertEmailToMailbox converts email format (admin@example.com) to DNS mailbox format (admin.example.com.)
+func convertEmailToMailbox(email string) string {
+	email = strings.TrimSpace(email)
+	// Replace @ with . and ensure FQDN
+	mailbox := strings.Replace(email, "@", ".", 1)
+	return dns.Fqdn(mailbox)
 }
 
 // Taken from https://github.com/coredns/coredns/blob/master/plugin/loadbalance/loadbalance.go
