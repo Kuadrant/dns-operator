@@ -219,12 +219,7 @@ kubectl get service/kuadrant-coredns -n kuadrant-coredns \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
 
-> **Note on AWS LoadBalancers**: AWS ELB/NLB services typically expose a DNS hostname (e.g., `abc123.elb.us-east-1.amazonaws.com`) rather than a static IP address. If using AWS, you'll need to resolve this hostname to get the actual IP addresses for your DNSRecord A records:
-> ```bash
-> LB_HOSTNAME=$(kubectl get service/kuadrant-coredns -n kuadrant-coredns -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-> dig +short $LB_HOSTNAME
-> ```
-> Use the resolved IP addresses in your zone configuration DNSRecord. Note that AWS ELB IPs can change, so consider using AWS NLB with static Elastic IPs for production authoritative nameservers.
+> **Note on AWS LoadBalancers**: AWS ELB/NLB services typically expose a DNS hostname (e.g., `abc123.elb.us-east-1.amazonaws.com`) rather than a static IP address. You can use the ELB hostname directly as your NS record target without needing glue A records, since the hostname is in a different DNS zone and resolvers can query it independently. This simplifies configuration and avoids tracking changing IP addresses.
 
 **Important Considerations:**
 - **LoadBalancer IPs**: The CoreDNS service LoadBalancer IP is typically assigned automatically by your cloud provider and should remain stable across pod restarts
@@ -253,7 +248,7 @@ ns2.k.example.com.      300  IN  A   172.18.0.18
 
 **For dynamic updates (BIND9 with nsupdate):**
 ```bash
-EDGE_NS=<parent-nameserver-ip>
+EDGE_NS=<parent-nameserver>
 cat <<EOF >nsupdate-delegation
 server ${EDGE_NS}
 debug yes
@@ -319,17 +314,25 @@ Regardless of the method, ensure you create:
 
 ### Glue Records
 
-Glue records are **required** when nameserver hostnames are within the delegated zone (e.g., `ns1.k.example.com` for zone `k.example.com`). Without glue records, a circular dependency occurs:
-1. Resolver tries to find `k.example.com` nameservers
-2. Parent says "ask `ns1.k.example.com`"
-3. To find `ns1.k.example.com`, resolver needs to query `k.example.com`
-4. Circular dependency - resolution fails
+Glue records are **required** when nameserver hostnames are within the delegated zone (e.g., `ns1.k.example.com` for zone `k.example.com`). For a detailed explanation of glue records and their role in DNS delegation, see [RFC 9471 - DNS Glue Requirements in Referral Responses](https://www.rfc-editor.org/rfc/rfc9471).
 
-The A records in the parent zone break this cycle by providing the IP addresses directly.
+**TTL Best Practices:**
+- **Within parent zone**: NS and A (glue) records should use the same TTL (e.g., 300 seconds or longer)
+- **Within child zone**: NS and A records should use the same TTL (e.g., 60 seconds)
+- **Between zones**: Parent and child zones MAY use different TTL values for their NS records ([RFC 7477](https://www.rfc-editor.org/rfc/rfc7477.html))
+  - Parent delegation NS records typically use longer TTLs (1 day is common, minimum 1 hour recommended)
+  - Child authoritative NS records can use shorter TTLs for faster updates
+- Using consistent TTLs within each zone ensures related records expire together, preventing inconsistent resolution during updates
 
 ## Verification
 
-### Verify Zone Transfer Shows All NS Records
+### Verify CoreDNS Zone Configuration
+
+You can verify the zone configuration using either of the following methods:
+
+**Option 1: Zone Transfer Query (requires transfer plugin)**
+
+If your CoreDNS instance has the `transfer` plugin enabled, you can view the complete zone configuration in a single query:
 
 ```bash
 # Get CoreDNS IP
@@ -340,44 +343,51 @@ NS1=$(kubectl get service/kuadrant-coredns -n kuadrant-coredns \
 dig @${NS1} -t AXFR k.example.com
 ```
 
-**Expected output should include:**
+**Expected output:**
 ```
 k.example.com.          60      IN      SOA     ns1.k.example.com. hostmaster.k.example.com. 12345 7200 1800 86400 60
 k.example.com.          60      IN      NS      ns1.k.example.com.
 k.example.com.          60      IN      NS      ns2.k.example.com.
 ns1.k.example.com.      60      IN      A       172.18.0.17
 ns2.k.example.com.      60      IN      A       172.18.0.18
+k.example.com.          60      IN      SOA     ns1.k.example.com. hostmaster.k.example.com. 12345 7200 1800 86400 60
 ```
 
-### Verify Nameserver A Records Resolve
+> **Note**: The CoreDNS `transfer` plugin is optional and not enabled by default. If you get an error or refused response, use Option 2 instead.
+
+**Option 2: Standard DNS Queries (always works)**
+
+Query individual record types to verify the configuration:
 
 ```bash
-# Verify each nameserver resolves
-dig @${NS1} ns1.k.example.com +short
-# Expected: 172.18.0.17
+# Get CoreDNS IP
+NS1=$(kubectl get service/kuadrant-coredns -n kuadrant-coredns \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
-dig @${NS1} ns2.k.example.com +short
-# Expected: 172.18.0.18
-```
-
-### Verify NS Records from CoreDNS
-
-```bash
-# Query for NS records
+# Verify NS records
 dig @${NS1} k.example.com NS +short
+
+# Verify nameserver A records
+dig @${NS1} ns1.k.example.com +short
+dig @${NS1} ns2.k.example.com +short
 ```
 
 **Expected output:**
 ```
+# NS records
 ns1.k.example.com.
 ns2.k.example.com.
+
+# A records
+172.18.0.17
+172.18.0.18
 ```
 
 ### Verify Delegation from Parent Zone
 
 ```bash
 # Query parent zone's nameserver for delegation
-dig @<parent-nameserver-ip> k.example.com NS +short
+dig @<parent-nameserver> k.example.com NS +short
 ```
 
 **Expected output:**
@@ -390,21 +400,24 @@ ns2.k.example.com.
 
 ```bash
 # Query parent zone for glue records
-dig @<parent-nameserver-ip> ns1.k.example.com A +short
-dig @<parent-nameserver-ip> ns2.k.example.com A +short
+dig @<parent-nameserver> ns1.k.example.com A +short
+dig @<parent-nameserver> ns2.k.example.com A +short
 ```
 
 ### End-to-End Resolution Test
 
 ```bash
-# Test resolution through public DNS (uses parent delegation)
-dig k.example.com NS
-dig ns1.k.example.com A
-dig ns2.k.example.com A
+# Test resolution through public DNS with trace to verify delegation chain
+dig k.example.com SOA +trace
 
-# Test actual record resolution
-dig simple.k.example.com A
+# Verify SOA record resolves through your nameservers
+dig @ns1.k.example.com k.example.com SOA
 ```
+
+**Expected output should show:**
+- The delegation chain from root servers to your zone
+- SOA record with serial number, refresh/retry timings, and nameserver details
+- Confirmation that your CoreDNS nameservers are authoritative for the zone
 
 ### Multi-Cluster Verification
 
@@ -438,7 +451,7 @@ If CoreDNS instance IPs change (e.g., due to cluster recreation or service recon
 Edit the DNSRecord to reflect new IP addresses:
 
 ```bash
-kubectl edit dnsrecord dnsrecord-k-example-com-zone-config -n kuadrant-coredns
+kubectl edit dnsrecords.kuadrant.io dnsrecord-k-example-com-zone-config -n kuadrant-coredns
 ```
 
 Update the targets in the A record endpoints:
@@ -458,13 +471,18 @@ Update the glue records in the parent zone to match the new IPs. The exact metho
 ### 3. Wait for TTL Expiration
 
 DNS changes are subject to TTL (Time To Live) caching:
-- **Zone config TTL**: Default 60 seconds (as shown in examples)
-- **Parent zone TTL**: Typically 300 seconds (5 minutes) or higher
+- **Child zone (zone config)**: NS and A records typically use 60 seconds (as shown in examples)
+- **Parent zone (delegation)**: NS and A (glue) records typically use 300 seconds or longer (1 day is common)
 - **Recursive resolver caching**: Varies by resolver
+
+**Important**:
+- NS and A records within each zone should use the same TTL to ensure they expire together
+- Parent and child zones MAY use different TTL values ([RFC 7477](https://www.rfc-editor.org/rfc/rfc7477.html))
+- Resolvers prefer authoritative NS records from the child zone over delegation NS records from the parent
 
 Allow sufficient time for all caches to expire before expecting consistent resolution. A good rule of thumb is to wait:
 ```
-Wait Time = MAX(zone_config_ttl, parent_delegation_ttl) + 5 minutes
+Wait Time = MAX(child_zone_ttl, parent_zone_ttl) + 5 minutes
 ```
 
 ### 4. Verify Updates
@@ -473,11 +491,11 @@ After the TTL period:
 
 ```bash
 # Verify new IP is in CoreDNS zone
-dig @<new-coredns-ip> ns1.k.example.com +short
+dig @<new-coredns-server> ns1.k.example.com +short
 # Expected: 192.168.1.100
 
 # Verify parent zone has new glue records
-dig @<parent-nameserver-ip> ns1.k.example.com +short
+dig @<parent-nameserver> ns1.k.example.com +short
 # Expected: 192.168.1.100
 
 # Test end-to-end resolution
@@ -641,7 +659,7 @@ In multi-tenant clusters, zone configuration becomes even more critical:
 *Solution*:
 ```bash
 # Check DNSRecord status
-kubectl get dnsrecord dnsrecord-k-example-com-zone-config -n kuadrant-coredns -o yaml
+kubectl get dnsrecords.kuadrant.io dnsrecord-k-example-com-zone-config -n kuadrant-coredns -o yaml
 
 # Check DNS operator logs
 kubectl logs -f deployment/dns-operator-controller-manager -n dns-operator-system
