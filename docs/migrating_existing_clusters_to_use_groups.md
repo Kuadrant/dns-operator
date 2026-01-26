@@ -1,13 +1,12 @@
 # Migrating Existing Clusters To Use Groups
 
 ## Why use Groups
-By using groups it allows for planned migrations, and failovers in unexpected outages of deployments.
+Using groups allows for planned migrations, and for fail-overs when unexpected outages occur.
 
 For the planned migrations, new deployment can be configured with the required infrastructure. 
 Once operational, the active group can be switched to the newer deployment.
 
-Unexpected failures do happen, and by planning ahead with having a replica deployment of the production deployment.
-The groups will allow for a timely switch of DNS traffic from the failing deployment to the replica deployment. 
+Unexpected failures do happen, and planning ahead by having a replica of the production deployment configured with DNS groups allows for a timely switch of DNS traffic from the failing deployment to the replica deployment. 
 
 ## Terminology
 ### Group
@@ -37,13 +36,13 @@ For this reason dns-operators in inactive groups don't attempt any clean up.
 When a dns-operator does not have a group assigned it is regarded as being ungrouped.
 A ungrouped dns-operator will reconcile all dnsrecords that the operator has access to no matter what groups are configured in the active groups.
 
-Ungrouped dns-operators will not unpublish any records not related to their resources.
+Ungrouped dns-operators will not process the unpublishing of in inactive groups records. 
 This includes DNS records created by now inactive group dns-operators which do require cleaning up.
 
 ## How To Configure Existing Cluster
 ### Starting point 
 There is an existing cluster configured with dns-operator deployed without groups configured. 
-A long with the dns-operator deployment, dns-records have being reconciled, and are in a ready state.
+Along with the dns-operator deployment, dns-records have being reconciled, and are in a ready state.
 
 ### Create the active-groups TXT record
 The active-groups record list is a TXT record that is created in the provider.
@@ -79,6 +78,14 @@ Sample TXT Record
 Record name: kuadrant-active-groups.<domain>
 Record type: TXT
 Value: "version=1;groups=GROUP_ID1&&GROUP_ID2"
+```
+
+This information can be viewed by preforming a dig against the TXT record.
+```sh
+dig kuadrant-active-groups.<domain> TXT +short
+
+# example output
+"version=1;groups=GROUP_ID1&&GROUP_ID2"
 ```
 
 #### Creation of active-groups TXT record manual.
