@@ -76,7 +76,12 @@ func NewZone(name string, rname string) *Zone {
 	// Use custom rname if provided, otherwise use default hostmaster
 	mbox := dnsutil.Join("hostmaster", name)
 	if rname != "" {
-		mbox = convertEmailToMailbox(rname)
+		customMbox := convertEmailToMailbox(rname)
+		if customMbox != "" {
+			mbox = customMbox
+		} else {
+			log.Warningf("invalid rname '%s' for zone %s, using default hostmaster", rname, name)
+		}
 	}
 
 	soa := &dns.SOA{Hdr: dns.RR_Header{Name: dns.Fqdn(name), Rrtype: dns.TypeSOA, Ttl: ttlSOA, Class: dns.ClassINET},
@@ -232,10 +237,42 @@ func (z *Zone) parseGeoAnswers(ctx context.Context, request request.Request, grr
 }
 
 // convertEmailToMailbox converts email format (admin@example.com) to DNS mailbox format (admin.example.com.)
+// According to RFC 1035 and RFC 2142, dots in the local part (before @) must be escaped with backslash
+// Returns empty string if the email format is invalid
 func convertEmailToMailbox(email string) string {
 	email = strings.TrimSpace(email)
-	// Replace @ with . and ensure FQDN
-	mailbox := strings.Replace(email, "@", ".", 1)
+
+	// Validate email is not empty
+	if email == "" {
+		log.Warningf("email address is empty, cannot convert to mailbox format")
+		return ""
+	}
+
+	// Split email into local part and domain
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 {
+		log.Warningf("email address '%s' is missing @ symbol, cannot convert to mailbox format", email)
+		return ""
+	}
+
+	localPart := strings.TrimSpace(parts[0])
+	domain := strings.TrimSpace(parts[1])
+
+	// Validate both parts are non-empty
+	if localPart == "" {
+		log.Warningf("email address '%s' has empty local part, cannot convert to mailbox format", email)
+		return ""
+	}
+	if domain == "" {
+		log.Warningf("email address '%s' has empty domain part, cannot convert to mailbox format", email)
+		return ""
+	}
+
+	// Escape any dots in the local part with backslash
+	localPart = strings.ReplaceAll(localPart, ".", "\\.")
+
+	// Join local part and domain with a dot (replacing @) and ensure FQDN
+	mailbox := localPart + "." + domain
 	return dns.Fqdn(mailbox)
 }
 

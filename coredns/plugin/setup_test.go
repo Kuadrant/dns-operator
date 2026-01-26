@@ -77,3 +77,57 @@ func TestParseArguments(t *testing.T) {
 		})
 	}
 }
+
+func TestSetup_ZoneWithRNAME(t *testing.T) {
+	tests := []struct {
+		name          string
+		configuration string
+		zoneName      string
+		expectedRNAME string
+	}{
+		{
+			name: "zone with custom rname",
+			configuration: `kuadrant example.com {
+							rname dns.admin@example.com
+						}`,
+			zoneName:      "example.com.",
+			expectedRNAME: "dns\\.admin.example.com.",
+		},
+		{
+			name:          "zone without rname uses default",
+			configuration: `kuadrant example.com`,
+			zoneName:      "example.com.",
+			expectedRNAME: "hostmaster.example.com.",
+		},
+		{
+			name: "zone with simple rname",
+			configuration: `kuadrant test.org {
+							rname admin@test.org
+						}`,
+			zoneName:      "test.org.",
+			expectedRNAME: "admin.test.org.",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c := caddy.NewTestController("dns", test.configuration)
+			kuadrant, err := parse(c)
+			require.NoError(t, err)
+			require.NotNil(t, kuadrant)
+
+			// Get the zone from the parsed configuration
+			zone, ok := kuadrant.Zones.Z[test.zoneName]
+			require.True(t, ok, "Zone should exist in parsed configuration")
+			require.NotNil(t, zone)
+
+			// Get the SOA record from the zone
+			zone.RLock()
+			soaRecord := zone.Apex.SOA
+			zone.RUnlock()
+
+			require.NotNil(t, soaRecord, "SOA record should exist")
+			assert.Equal(t, test.expectedRNAME, soaRecord.Mbox, "SOA RNAME should match expected value")
+		})
+	}
+}

@@ -50,7 +50,9 @@ kuadrant [ZONES...] {
 * `kubeconfig` **KUBECONFIG [CONTEXT]** authenticates the connection to a remote k8s cluster using a kubeconfig file.
   **[CONTEXT]** is optional, if not set, then the current context specified in kubeconfig will be used.
 * `rname` **EMAIL** sets the email address (RNAME) in the SOA record for the zone. The email format (e.g., `admin@example.com`)
-  will be converted to DNS mailbox format (e.g., `admin.example.com.`). If not specified, defaults to `hostmaster.{zone}`.
+  will be converted to DNS mailbox format (e.g., `admin.example.com.`). According to RFC 1035 and RFC 2142, any dots in the
+  local part (before @) will be escaped with backslash (e.g., `dns.admin@example.com` becomes `dns\.admin.example.com.`).
+  If not specified, defaults to `hostmaster.{zone}`.
 
 For enabling zone transfers look at the *transfer* plugin.
 

@@ -64,7 +64,7 @@ Expected output with custom RNAME:
 ```
 ns1.k.example.com. admin.example.com. 12345 7200 1800 86400 60
 ```
-Note: `admin@example.com` is converted to `admin.example.com.` in DNS mailbox format.
+Note: `admin@example.com` is converted to `admin.example.com.` in DNS mailbox format. According to RFC 1035 and RFC 2142, any dots in the local part (before @) are escaped with backslash (e.g., `dns.admin@example.com` becomes `dns\.admin.example.com.`).
 
 #### Enable Monitoring:
 
