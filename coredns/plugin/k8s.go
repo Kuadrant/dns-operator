@@ -35,7 +35,7 @@ type zoneInformers struct {
 
 func (zi *zoneInformers) refreshZone() {
 	log.Infof("updating zone %s", zi.zoneOrigin)
-	newZ := NewZone(zi.zoneOrigin)
+	newZ := NewZone(zi.zoneOrigin, zi.zone.rname)
 
 	for _, informer := range zi.informers {
 		for _, obj := range informer.GetStore().List() {

@@ -43,11 +43,16 @@ it specifies all the zones the plugin should be authoritative for.
 ```
 kuadrant [ZONES...] {
     kubeconfig KUBECONFIG [CONTEXT]
+    rname EMAIL
 }
 ```
 
 * `kubeconfig` **KUBECONFIG [CONTEXT]** authenticates the connection to a remote k8s cluster using a kubeconfig file.
   **[CONTEXT]** is optional, if not set, then the current context specified in kubeconfig will be used.
+* `rname` **EMAIL** sets the email address (RNAME) in the SOA record for the zone. The email format (e.g., `admin@example.com`)
+  will be converted to DNS mailbox format (e.g., `admin.example.com.`). According to RFC 1035 and RFC 2142, any dots in the
+  local part (before @) will be escaped with backslash (e.g., `dns.admin@example.com` becomes `dns\.admin.example.com.`).
+  If not specified, defaults to `hostmaster.{zone}`.
 
 For enabling zone transfers look at the *transfer* plugin.
 
@@ -78,7 +83,17 @@ spec:
         - 1.1.1.1
 ```
 
-Load the `example.org` zone from DNSRecord resources on cluster with the label `kuadrant.io/coredns-zone-name: example.org` and 
+Load the `example.org` zone with a custom SOA RNAME email address:
+
+```corefile
+example.org {
+   kuadrant {
+      rname admin@example.com
+   }
+}
+```
+
+Load the `example.org` zone from DNSRecord resources on cluster with the label `kuadrant.io/coredns-zone-name: example.org` and
 apply geoip lookup.
 
 ```corefile

@@ -212,3 +212,169 @@ func TestZone_InsertEndpoint(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertEmailToMailbox(t *testing.T) {
+	tests := []struct {
+		name     string
+		email    string
+		expected string
+	}{
+		{
+			name:     "standard email",
+			email:    "admin@example.com",
+			expected: "admin.example.com.",
+		},
+		{
+			name:     "email with spaces",
+			email:    "  admin@example.com  ",
+			expected: "admin.example.com.",
+		},
+		{
+			name:     "subdomain email",
+			email:    "hostmaster@sub.example.com",
+			expected: "hostmaster.sub.example.com.",
+		},
+		{
+			name:     "email with dot in local part (RFC 1035/2142 - dots must be escaped)",
+			email:    "dns.admin@example.com",
+			expected: "dns\\.admin.example.com.",
+		},
+		{
+			name:     "email with multiple dots in local part",
+			email:    "my.dns.admin@example.com",
+			expected: "my\\.dns\\.admin.example.com.",
+		},
+		{
+			name:     "empty email (invalid)",
+			email:    "",
+			expected: "",
+		},
+		{
+			name:     "email missing @ symbol (invalid)",
+			email:    "adminexample.com",
+			expected: "",
+		},
+		{
+			name:     "email with empty local part (invalid)",
+			email:    "@example.com",
+			expected: "",
+		},
+		{
+			name:     "email with empty domain (invalid)",
+			email:    "admin@",
+			expected: "",
+		},
+		{
+			name:     "email with spaces in local part (invalid after trim)",
+			email:    "  @example.com",
+			expected: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertEmailToMailbox(tt.email)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestNewZone_CustomRNAME(t *testing.T) {
+	tests := []struct {
+		name         string
+		zoneName     string
+		rname        string
+		expectedMbox string
+	}{
+		{
+			name:         "default rname (empty string)",
+			zoneName:     "example.com",
+			rname:        "",
+			expectedMbox: "hostmaster.example.com.",
+		},
+		{
+			name:         "custom rname",
+			zoneName:     "example.com",
+			rname:        "admin@example.com",
+			expectedMbox: "admin.example.com.",
+		},
+		{
+			name:         "custom rname with subdomain",
+			zoneName:     "sub.example.com",
+			rname:        "dns@sub.example.com",
+			expectedMbox: "dns.sub.example.com.",
+		},
+		{
+			name:         "custom rname with dot in local part (RFC 1035/2142)",
+			zoneName:     "example.com",
+			rname:        "dns.admin@example.com",
+			expectedMbox: "dns\\.admin.example.com.",
+		},
+		{
+			name:         "invalid rname falls back to default",
+			zoneName:     "example.com",
+			rname:        "invalid-email-no-at",
+			expectedMbox: "hostmaster.example.com.",
+		},
+		{
+			name:         "invalid rname with empty domain falls back to default",
+			zoneName:     "example.com",
+			rname:        "admin@",
+			expectedMbox: "hostmaster.example.com.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			zone := NewZone(tt.zoneName, tt.rname)
+			assert.NotNil(t, zone)
+
+			// Find the SOA record in the zone
+			var soaRecord *dns.SOA
+			zone.RLock()
+			apex := zone.Apex
+			zone.RUnlock()
+
+			if apex.SOA != nil {
+				soaRecord = apex.SOA
+			}
+
+			assert.NotNil(t, soaRecord, "SOA record should exist")
+			if soaRecord != nil {
+				assert.Equal(t, tt.expectedMbox, soaRecord.Mbox, "SOA Mbox should match expected value")
+			}
+		})
+	}
+}
+
+func TestZone_RefreshPreservesRNAME(t *testing.T) {
+	// Create a zone with custom RNAME
+	originalRname := "dns.admin@example.com"
+	zone1 := NewZone("example.com", originalRname)
+	assert.NotNil(t, zone1)
+
+	// Verify the zone has the rname field set
+	assert.Equal(t, originalRname, zone1.rname)
+
+	// Get the original SOA record
+	zone1.RLock()
+	originalSOA := zone1.Apex.SOA
+	zone1.RUnlock()
+	assert.NotNil(t, originalSOA)
+	assert.Equal(t, "dns\\.admin.example.com.", originalSOA.Mbox)
+
+	// Simulate zone refresh by creating a new zone with the preserved rname
+	zone2 := NewZone("example.com", zone1.rname)
+	assert.NotNil(t, zone2)
+
+	// Verify the refreshed zone has the same rname
+	assert.Equal(t, originalRname, zone2.rname)
+
+	// Get the new SOA record
+	zone2.RLock()
+	newSOA := zone2.Apex.SOA
+	zone2.RUnlock()
+	assert.NotNil(t, newSOA)
+
+	// Verify the SOA RNAME is preserved
+	assert.Equal(t, originalSOA.Mbox, newSOA.Mbox, "SOA RNAME should be preserved after zone refresh")
+	assert.Equal(t, "dns\\.admin.example.com.", newSOA.Mbox)
+}
