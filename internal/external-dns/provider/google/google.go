@@ -229,6 +229,8 @@ func (p *GoogleProvider) Records(ctx context.Context) (endpoints []*endpoint.End
 			if !p.SupportedRecordType(r.Type) {
 				continue
 			}
+			// Note: NewEndpointWithTTL strips trailing dots from both DNSName and Targets,
+			// so all endpoint objects use non-FQDN format internally
 			endpoints = append(endpoints, endpoint.NewEndpointWithTTL(r.Name, r.Type, endpoint.TTL(r.Ttl), r.Rrdatas...))
 		}
 
@@ -540,6 +542,15 @@ func resourceRecordSetFromEndpoint(ep *endpoint.Endpoint) *dns.ResourceRecordSet
 	if ep.RecordType == endpoint.RecordTypeSRV {
 		for i, srvRecord := range ep.Targets {
 			targets[i] = provider.EnsureTrailingDot(srvRecord)
+		}
+	}
+
+	// Google Cloud DNS requires NS record targets in FQDN format with trailing dot.
+	// Targets are stored internally without trailing dots (stripped by endpoint.NewEndpointWithTTL),
+	// so we add them here when writing to GCP.
+	if ep.RecordType == endpoint.RecordTypeNS {
+		for i, nsRecord := range ep.Targets {
+			targets[i] = provider.EnsureTrailingDot(nsRecord)
 		}
 	}
 
