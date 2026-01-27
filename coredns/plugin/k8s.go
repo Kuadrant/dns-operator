@@ -113,7 +113,7 @@ func newKubeController(ctx context.Context, c *dnsop.DNSRecordClient, zones map[
 				&v1alpha1.DNSRecord{},
 				defaultResyncPeriod,
 			)
-			_, _ = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			_, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 				AddFunc: func(obj interface{}) {
 					zi.refreshZone()
 				},
@@ -124,6 +124,10 @@ func newKubeController(ctx context.Context, c *dnsop.DNSRecordClient, zones map[
 					zi.refreshZone()
 				},
 			})
+			if err != nil {
+				log.Errorf("Failed to add event handler for zone %s in namespace %s: %v. This zone will not be updated when DNSRecords change.", origin, ns, err)
+				continue
+			}
 			zi.informers = append(zi.informers, informer)
 		}
 
@@ -155,12 +159,12 @@ func (ctrl *KubeController) run() {
 		}
 	}
 	log.Infof("Waiting for controllers to sync")
-	if !cache.WaitForCacheSync(stopCh, synced...) {
-		log.Warningf("Failed to sync controllers")
-		ctrl.hasSynced = false
-	} else {
+	if cache.WaitForCacheSync(stopCh, synced...) {
 		log.Infof("Successfully synced all required resources")
 		ctrl.hasSynced = true
+	} else {
+		log.Warningf("Failed to sync controllers")
+		ctrl.hasSynced = false
 	}
 
 	<-stopCh
@@ -218,11 +222,11 @@ func existDNSRecordCRDs(ctx context.Context, c *dnsop.DNSRecordClient) bool {
 
 func handleCRDCheckError(err error, resourceName string, apiGroup string) bool {
 	if meta.IsNoMatchError(err) || runtime.IsNotRegisteredError(err) || apierrors.IsNotFound(err) {
-		log.Warningf("CRITICAL: %s CRDs are not installed on the cluster. The kuadrant plugin will not function correctly. Please install the Kuadrant DNS Operator CRDs before using this plugin. DNS queries will return NXDOMAIN for all records.", resourceName)
+		log.Warningf("%s CRDs not found. Plugin will not serve DNS records.", resourceName)
 		return false
 	}
 	if apierrors.IsForbidden(err) {
-		log.Warningf("CRITICAL: Access to `%s` API group is forbidden. Please check RBAC permissions for the ServiceAccount. The kuadrant plugin requires read access to %s resources. DNS queries will return NXDOMAIN for all records.", apiGroup, resourceName)
+		log.Warningf("Forbidden access to %s API. Check ServiceAccount RBAC permissions.", apiGroup)
 		return false
 	}
 	if err != nil {

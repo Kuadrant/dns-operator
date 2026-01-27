@@ -273,7 +273,7 @@ func TestStripClosingDot(t *testing.T) {
 
 func TestZoneInformers_RefreshZone(t *testing.T) {
 	// Test that refreshZone creates a new zone and copies it to the existing zone
-	zone := NewZone("example.com")
+	zone := NewZone("example.com.", "")
 
 	zi := &zoneInformers{
 		informers:  []cache.SharedInformer{},
