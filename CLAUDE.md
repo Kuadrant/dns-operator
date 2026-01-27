@@ -15,8 +15,8 @@ DNS Operator is a Kubernetes controller for managing DNS records across multiple
 make run
 
 # Run with specific delegation role
-make run-primary    # Primary cluster mode (default)
-make run-secondary  # Secondary cluster mode
+make run-primary    # Primary cluster mode (default) - ports 8080-8082
+make run-secondary  # Secondary cluster mode - ports 8084-8086
 
 # Build the binary
 make build
@@ -211,6 +211,7 @@ Key controller flags (can also be set via environment variables):
 |------|---------|---------|-------------|
 | `--metrics-bind-address` | `METRICS_BIND_ADDRESS` | `:8080` | Metrics endpoint |
 | `--health-probe-bind-address` | `HEALTH_PROBE_BIND_ADDRESS` | `:8081` | Health probe endpoint |
+| `--pprof-bind-address` | `PPROF_BIND_ADDRESS` | `:8082` | Pprof profiling endpoint |
 | `--leader-elect` | `LEADER_ELECT` | `false` | Enable leader election |
 | `--min-requeue-time` | `MIN_REQUEUE_TIME` | `5s` | Min timeout between provider calls |
 | `--max-requeue-time` | `MAX_REQUEUE_TIME` | `15m` | Max time between reconciliations |
