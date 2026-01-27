@@ -20,10 +20,6 @@ Dns-operators that are configured with a group that is in the active-groups will
 
 Dns-operators in the active groups will tidy up orphaned DNS records from any dns-operator that may now be part of an inactive group.
 
-**Note:** In a multi cluster setup, the secondary clusters do not have to be part of a group.
-But it is recommended to have secondary clusters in the same group the primary cluster is in.
-
-
 ### Inactive group
 Dns-operators configured with a group that is not in the active-groups are considered to be part of the inactive group.
 DNS records in the provider that were previously created by the dns-operator that is now in the inactive group while be removed by the dns-operators that are in the active groups.
@@ -112,14 +108,34 @@ Value: "version=1;groups=GROUP_ID1&&GROUP_ID2"
 
 ### Checking the active groups list
 Before moving on to configuring the dns-operator to be part of a group, it is good practice to ensure the correct groups are active.
-This can be easily done via the `kubectl-kuadrant_dns` CLI.
+This can be easily done via the `kubectl-kuadrant_dns` CLI, or manually via the DNS provider.
 
+#### Via the kudectl-kuadrant_dns CLI
 To do this the follow information is required.
 - providerRef, this is the secret used by the dns-operator to connect to the provider. Format required \<namespace\>/\<name\>.
 - domain, this is the route domain for the zone.
 With this information the CLI command to use is.
 ```sh
 kubectl-kuadrant_dns get-active-groups --providerRef <namespace>/<name> --domain <domain>
+```
+
+#### Manually via the DNS provider
+In the DNS provider there will be a TXT record created that states the active groups.
+This TXT record has a naming schema of `kuadrant-active-groups.<domain>`.
+The active groups are in a `&&` separated list.
+
+Below is a sample TXT record.
+
+```txt
+Record name: kuadrant-active-groups.<domain>
+Record type: TXT
+Value: "version=1;groups=GROUP_ID1&&GROUP_ID2"
+```
+
+The TXT record can also be accessed by doing a dig on the TXT record.
+
+```sh
+dig kuadrant-active-groups.<domain> TXT +short
 ```
 
 ### Configuring the dns-operator to be part of a group
