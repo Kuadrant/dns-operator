@@ -7,21 +7,28 @@ The DNS fail-over via groups allows switching traffic from one group of clusters
 ## How 
 ### Starting Point
 For this example use case the follow configuration will be assumed.
-There are two clusters configured, both with the dns-operator configured to use groups.
-Cluster_A is the initial active cluster, and Cluster_B is a replica of Cluster_A.
-Cluster_A and Cluster_B have the same dnsrecords deployed for a set of hosts.
-Of course the dnsrecords are configured with paths to the service on the respected clusters.
+- There are two clusters configured, both with the dns-operator configured to use groups.
+- Cluster_A is a member of the initial active group, and Cluster_B is a replica of Cluster_A, but in a currently inactive group.
+- Cluster_A and Cluster_B have the same dnsrecords deployed for a set of hosts.
+- The dnsrecords on each cluster are configured with IP addresses or CNAMEs that resolve to the service on that cluster.
 
 Cluster_A goes offline for some reason.
-Now traffic needs to be diverted from Cluster_A to Cluster_B at the DNS level.
+Now traffic needs to be diverted from the group that Cluster_A is a member of to the group that Cluster_B is a member of, at the DNS level.
 
 For the example Cluster_A is configured in group\_1, and Cluster_B is configured in group\_2.
+
+### Note for CoreDNS users
+When using CoreDNS the active groups TXT record can proxy to any user defined TXT.
+Meaning `kudarant-active-groups.<domain>` could point to `company-kuadrant-record-for-groups.<company domain>` TXT record.
+In the case of CoreDNS, the record ca be read from the Corefile configmap
+
+Within this guide when the `kuadrant-active-groups.<domain>` TXT record is referred, it is the top level TXT record that being talk about, which may be proxied in the CoreDNS configuration.
 
 ### Confirming the current group
 
 #### Via CLI
 To get which groups are currently configured as the active groups the `kubectl-kuadrant_dns` CLI can be used.
-For this there are two bits of information that is required.
+For this we will need 2 pieces of information.
 The domain that is covered by the providerRef secret, and a reference to the providerRef secret.
 The providerRef has the format of \<namespace\>/\<name\>.
 Using the below command the current group can be confirmed.
@@ -33,7 +40,7 @@ This will return the list of currently actives groups.
 It is possible to have more than one active group.
 
 #### Manually
-The currently configured active groups can be check manually by logging into the DNS provider.
+The currently configured active groups can be checked manually by logging into the DNS provider.
 There a TXT record is created listing the active groups.
 The record has naming format of `kuadrant-active-groups.<domain>`. 
 An example of the record is below.
@@ -56,8 +63,8 @@ There are two ways of updating the active groups.
 The easiest method is by using the `kubectl-kuadrant_dns` CLI, which is shipped as part of the kuadrantctl, and can work as a plugin to kubectl.
 But also the active groups can be modified by updating the TXT record in the DNS provider directly.
 
-#### Setting active groups via the CLI
-In order to configure the groups via the CLI three pieces of information is required.
+#### Adding a new active group via the CLI
+In order to configure the groups via the CLI we will need 3 pieces of information.
 
 - GROUP_ID this is the name of the group that is to be added to the list of active groups.
 - \<domain\>, root domain of the zone to add the group to.
@@ -118,6 +125,9 @@ Remove the group which is wanted to be disabled.
 The dns-operator does not watch for changes in the active-groups TXT records.
 During the scheduled reconciles of the dns-operator, the dns-operator evaluates the active-groups TXT record, acting as required.
 In turn, this means fail-over will not be instant, and requires some time to complete.
+
+In dev preview this delay can be up to 15 minutes by default.
+This value can be modified by setting `--max-requeue-time` argument on the dns-operator deployment, or `MAX_REQUEUE_TIME` in the `dns-operator-controller-env` configmap.
 
 ### Confirming fail-over successful
 To confirm the fail-over has being successful the dnsrecords on the cluster_B can be monitored for a ready status.
