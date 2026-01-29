@@ -269,8 +269,6 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 	It("creates all supported record types (A, AAAA, CNAME, NS)", Labels{"record-types"}, func(ctx SpecContext) {
 		testTargetIP := "127.0.0.1"
 		testTargetIPv6 := "2001:db8::1"
-		// Note: endpoint.NewEndpointWithTTL strips trailing dots from targets,
-		// so we expect to read them back without dots even though we write with dots
 		testCNAMETarget := "cname-target.example.com"
 		testNSTarget1 := "ns1.example.com"
 		testNSTarget2 := "ns2.example.com"
