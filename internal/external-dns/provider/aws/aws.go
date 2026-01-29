@@ -1048,11 +1048,15 @@ func cleanZoneID(id string) string {
 	return strings.TrimPrefix(id, "/hostedzone/")
 }
 
+// SupportedRecordType determines if a record type is supported by the AWS provider.
+// AWS Route53 supports NS records through the base provider implementation (no explicit handling needed).
+// Route53 accepts non-FQDN target values, unlike Azure/GCP which require trailing dots.
 func (p *AWSProvider) SupportedRecordType(recordType string) bool {
 	switch recordType {
 	case "MX":
 		return true
 	default:
+		// Delegates to base implementation which supports: A, AAAA, CNAME, NS, TXT, SRV, etc.
 		return provider.SupportedRecordType(recordType)
 	}
 }

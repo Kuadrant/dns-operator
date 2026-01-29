@@ -266,6 +266,171 @@ var _ = Describe("Single Record Test", Labels{"single_record"}, func() {
 		Expect(dnsRecord.Status.DomainOwners).To(expectedDomainOwnersMatcher)
 	})
 
+	It("creates all supported record types (A, AAAA, CNAME, NS)", Labels{"record-types"}, func(ctx SpecContext) {
+		testTargetIP := "127.0.0.1"
+		testTargetIPv6 := "2001:db8::1"
+		testCNAMETarget := "cname-target.example.com"
+		testNSTarget1 := "ns1.example.com"
+		testNSTarget2 := "ns2.example.com"
+
+		testAAAAHostname := "aaaa." + testHostname
+		testCNAMEHostname := "cname." + testHostname
+		testNSHostname := "ns." + testHostname
+
+		dnsRecord = &v1alpha1.DNSRecord{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testID,
+				Namespace: testDNSProviderSecret.Namespace,
+			},
+			Spec: v1alpha1.DNSRecordSpec{
+				RootHost: testHostname,
+				ProviderRef: &v1alpha1.ProviderRef{
+					Name: testProviderSecretName,
+				},
+				Endpoints: []*externaldnsendpoint.Endpoint{
+					{
+						DNSName:    testHostname,
+						Targets:    []string{testTargetIP},
+						RecordType: "A",
+						RecordTTL:  builder.DefaultTTL,
+					},
+					{
+						DNSName:    testAAAAHostname,
+						Targets:    []string{testTargetIPv6},
+						RecordType: "AAAA",
+						RecordTTL:  builder.DefaultTTL,
+					},
+					{
+						DNSName:    testCNAMEHostname,
+						Targets:    []string{testCNAMETarget},
+						RecordType: "CNAME",
+						RecordTTL:  builder.DefaultTTL,
+					},
+					{
+						DNSName:    testNSHostname,
+						Targets:    []string{testNSTarget1, testNSTarget2},
+						RecordType: "NS",
+						RecordTTL:  300,
+					},
+				},
+				HealthCheck: nil,
+			},
+		}
+
+		By("creating dnsrecord " + dnsRecord.Name + " with A, AAAA, CNAME, and NS records")
+		err := k8sClient.Create(ctx, dnsRecord)
+		Expect(err).ToNot(HaveOccurred())
+
+		By("checking " + dnsRecord.Name + " becomes ready")
+		Eventually(func(g Gomega, ctx context.Context) {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type":   Equal(string(v1alpha1.ConditionTypeReady)),
+					"Status": Equal(metav1.ConditionTrue),
+				})),
+			)
+			if txtRegistryEnabled {
+				g.Expect(dnsRecord.Status.DomainOwners).NotTo(BeEmpty())
+				g.Expect(dnsRecord.Status.DomainOwners).To(ContainElement(dnsRecord.GetUIDHash()))
+			} else {
+				g.Expect(dnsRecord.Status.DomainOwners).To(BeEmpty())
+			}
+		}, recordsReadyMaxDuration, 10*time.Second, ctx).Should(Succeed())
+
+		By("checking " + dnsRecord.Name + " ownerID is set correctly")
+		Expect(dnsRecord.Spec.OwnerID).To(BeEmpty())
+		Expect(dnsRecord.Status.OwnerID).ToNot(BeNil())
+		Expect(dnsRecord.Status.OwnerID).To(Equal(dnsRecord.GetUIDHash()))
+
+		By("ensuring all record types are created in the provider")
+		testProvider, err := ProviderForDNSRecord(ctx, dnsRecord, k8sClient, dynamicClient)
+		Expect(err).NotTo(HaveOccurred())
+		zoneEndpoints, err := EndpointsForHost(ctx, testProvider, testHostname)
+		Expect(err).NotTo(HaveOccurred())
+
+		expectedElementMatchers := []types.GomegaMatcher{
+			PointTo(MatchFields(IgnoreExtras, Fields{
+				"DNSName":       Equal(testHostname),
+				"Targets":       ConsistOf(testTargetIP),
+				"RecordType":    Equal("A"),
+				"SetIdentifier": Equal(""),
+				"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
+			})),
+			PointTo(MatchFields(IgnoreExtras, Fields{
+				"DNSName":       Equal(testAAAAHostname),
+				"Targets":       ConsistOf(testTargetIPv6),
+				"RecordType":    Equal("AAAA"),
+				"SetIdentifier": Equal(""),
+				"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
+			})),
+			PointTo(MatchFields(IgnoreExtras, Fields{
+				"DNSName":       Equal(testCNAMEHostname),
+				"Targets":       ConsistOf(testCNAMETarget),
+				"RecordType":    Equal("CNAME"),
+				"SetIdentifier": Equal(""),
+				"RecordTTL":     Equal(externaldnsendpoint.TTL(builder.DefaultTTL)),
+			})),
+			PointTo(MatchFields(IgnoreExtras, Fields{
+				"DNSName":       Equal(testNSHostname),
+				"Targets":       ConsistOf(testNSTarget1, testNSTarget2),
+				"RecordType":    Equal("NS"),
+				"SetIdentifier": Equal(""),
+				"RecordTTL":     Equal(externaldnsendpoint.TTL(300)),
+			})),
+		}
+
+		expectedDomainOwnersMatcher := BeEmpty()
+		if txtRegistryEnabled {
+			// Add TXT registry records for each endpoint
+			expectedElementMatchers = append(expectedElementMatchers,
+				PointTo(MatchFields(IgnoreExtras, Fields{
+					"DNSName":       Equal("kuadrant-" + hash.ToBase36HashLen(dnsRecord.Status.OwnerID, 8) + "-a-" + testHostname),
+					"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
+					"RecordType":    Equal("TXT"),
+					"SetIdentifier": Equal(""),
+				})),
+				PointTo(MatchFields(IgnoreExtras, Fields{
+					"DNSName":       Equal("kuadrant-" + hash.ToBase36HashLen(dnsRecord.Status.OwnerID, 8) + "-aaaa-" + testAAAAHostname),
+					"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
+					"RecordType":    Equal("TXT"),
+					"SetIdentifier": Equal(""),
+				})),
+				PointTo(MatchFields(IgnoreExtras, Fields{
+					"DNSName":       Equal("kuadrant-" + hash.ToBase36HashLen(dnsRecord.Status.OwnerID, 8) + "-cname-" + testCNAMEHostname),
+					"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
+					"RecordType":    Equal("TXT"),
+					"SetIdentifier": Equal(""),
+				})),
+				PointTo(MatchFields(IgnoreExtras, Fields{
+					"DNSName":       Equal("kuadrant-" + hash.ToBase36HashLen(dnsRecord.Status.OwnerID, 8) + "-ns-" + testNSHostname),
+					"Targets":       ConsistOf("\"heritage=external-dns,external-dns/owner=" + dnsRecord.Status.OwnerID + ",external-dns/version=1\""),
+					"RecordType":    Equal("TXT"),
+					"SetIdentifier": Equal(""),
+				})),
+			)
+			expectedDomainOwnersMatcher = ConsistOf(dnsRecord.GetUIDHash())
+		}
+
+		By("verifying all record types (A, AAAA, CNAME, NS) are created correctly in the provider")
+		Expect(zoneEndpoints).To(HaveLen(len(expectedElementMatchers)))
+		Expect(zoneEndpoints).To(ContainElements(expectedElementMatchers))
+		Expect(dnsRecord.Status.DomainOwners).To(expectedDomainOwnersMatcher)
+
+		By("verifying NS record has multiple targets")
+		var nsEndpoint *externaldnsendpoint.Endpoint
+		for _, ep := range zoneEndpoints {
+			if ep.RecordType == "NS" && ep.DNSName == testNSHostname {
+				nsEndpoint = ep
+				break
+			}
+		}
+		Expect(nsEndpoint).NotTo(BeNil(), "NS record should exist")
+		Expect(nsEndpoint.Targets).To(HaveLen(2), "NS record should have 2 nameserver targets")
+		Expect(nsEndpoint.Targets).To(ConsistOf(testNSTarget1, testNSTarget2))
+	})
+
 	Context("simple", Labels{"simple"}, func() {
 		It("makes available a hostname that can be resolved", Labels{"happy"}, func(ctx SpecContext) {
 			testTargetIP := "127.0.0.1"

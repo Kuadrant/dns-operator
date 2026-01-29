@@ -396,6 +396,23 @@ func (p *AzureProvider) NewRecordSet(endpoint *endpoint.Endpoint) (dns.RecordSet
 				},
 			},
 		}, nil
+	case dns.RecordTypeNS:
+		nsRecords := make([]*dns.NsRecord, len(endpoint.Targets))
+		for i, target := range endpoint.Targets {
+			// Azure DNS requires NS record targets in FQDN format with trailing dot.
+			// Targets are stored internally without trailing dots (stripped by endpoint.NewEndpointWithTTL),
+			// so we add them here when writing to Azure.
+			nsTarget := provider.EnsureTrailingDot(target)
+			nsRecords[i] = &dns.NsRecord{
+				Nsdname: to.Ptr(nsTarget),
+			}
+		}
+		return dns.RecordSet{
+			Properties: &dns.RecordSetProperties{
+				TTL:       to.Ptr(ttl),
+				NsRecords: nsRecords,
+			},
+		}, nil
 	}
 	return dns.RecordSet{}, fmt.Errorf("unsupported record type '%s'", endpoint.RecordType)
 }
@@ -459,6 +476,19 @@ func ExtractAzureTargets(recordSet *dns.RecordSet) []string {
 			return []string{*(values)[0]}
 		}
 	}
+
+	// Check for NS records
+	// Note: Azure returns NS targets with trailing dots (FQDN format).
+	// These will be stripped by endpoint.NewEndpointWithTTL when creating endpoint objects.
+	nsRecords := properties.NsRecords
+	if len(nsRecords) > 0 && nsRecords[0].Nsdname != nil {
+		targets := make([]string, len(nsRecords))
+		for i, nsRecord := range nsRecords {
+			targets[i] = *nsRecord.Nsdname
+		}
+		return targets
+	}
+
 	return []string{}
 }
 
