@@ -951,7 +951,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 						"Status":             Equal(metav1.ConditionFalse),
 						"Reason":             Equal("DNSProviderError"),
-						"Message":            Equal("Unable to find suitable zone in provider: no valid zone found for host: foo.noexist.com"),
+						"Message":            And(ContainSubstring("Unable to find suitable zone in provider"), ContainSubstring("foo.noexist.com")),
 						"ObservedGeneration": Equal(dnsRecord.Generation),
 					})),
 				)
@@ -988,7 +988,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 						"Status":             Equal(metav1.ConditionFalse),
 						"Reason":             Equal("DNSProviderError"),
-						"Message":            ContainSubstring("is an apex domain"),
+						"Message":            And(ContainSubstring("Unable to find suitable zone in provider"), ContainSubstring("apex domain not allowed")),
 						"ObservedGeneration": Equal(dnsRecord.Generation),
 					})),
 				)
@@ -1029,7 +1029,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 						"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
 						"Status":             Equal(metav1.ConditionFalse),
 						"Reason":             Equal("DNSProviderError"),
-						"Message":            Equal(fmt.Sprintf("Unable to find suitable zone in provider: no valid zone found for host: %s", testHostname2)),
+						"Message":            And(ContainSubstring("Unable to find suitable zone in provider"), ContainSubstring(testHostname2)),
 						"ObservedGeneration": Equal(dnsRecord.Generation),
 					})),
 				)

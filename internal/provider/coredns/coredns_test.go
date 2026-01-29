@@ -2,6 +2,7 @@ package coredns_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -54,7 +55,22 @@ func TestCoreDNSProvider_DNSZoneForHost(t *testing.T) {
 			},
 			ExpectedZoneRoot: "",
 			ExpectedErr: func(err error) bool {
-				return err == provider.ErrNoZoneForHost
+				// FindDNSZoneForHost consistently wraps ErrNoZoneForHost
+				return errors.Is(err, provider.ErrNoZoneForHost)
+			},
+		},
+		{
+			Name: "test error when multiple zones with same name found",
+			Host: "api.k.example.com",
+			Secret: &v1.Secret{
+				Data: map[string][]byte{
+					"ZONES": []byte("k.example.com,k.example.com,example.com"),
+				},
+			},
+			ExpectedZoneRoot: "",
+			ExpectedErr: func(err error) bool {
+				// FindDNSZoneForHost should return ErrMultipleZonesFound for duplicate zones
+				return errors.Is(err, provider.ErrMultipleZonesFound)
 			},
 		},
 	}
