@@ -241,10 +241,12 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	// process unpublish of inactive groups once active cluster has no changes to publish
 	// not to be processed by ungrouped clusters.
 	if !hadChanges && dnsRecord.GetGroup() != "" {
-		err = r.unpublishInactiveGroups(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord, dnsProvider)
-		if err != nil {
-			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-				"ProviderError", fmt.Sprintf("The DNS provider failed to unpublish inactive groups: %v", provider.SanitizeError(err)))
+		if groupAdapter, ok := dnsRecord.(*GroupAdapter); ok {
+			err = groupAdapter.UnpublishInactiveGroups(ctx, dnsProvider)
+			if err != nil {
+				dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+					"ProviderError", fmt.Sprintf("The DNS provider failed to unpublish inactive groups: %v", provider.SanitizeError(err)))
+			}
 		}
 	}
 
