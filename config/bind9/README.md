@@ -2,7 +2,7 @@
 
 This directory contains Kubernetes deployment manifests for BIND9, used as an example authoritative DNS server for testing zone delegation scenarios with CoreDNS.
 
-## What's Included
+## What is Included
 
 - **`deployment.yaml`** - BIND9 pod deployment
 - **`service.yaml`** - LoadBalancer service exposing BIND9 on port 53

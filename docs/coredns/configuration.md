@@ -985,7 +985,40 @@ k.example.com {
 
 **Algorithm**: The plugin builds a list of available records and applies a weighting algorithm. Selection is based on a random number between 0 and the sum of all weights.
 
-**Example**: If you have endpoints with weights 70 and 30, approximately 70% of queries return the first endpoint and 30% return the second.
+**Configuration**: Set `weight` in DNSRecord `providerSpecific` fields.
+
+**Example DNSRecord**:
+```yaml
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: weighted-example
+  labels:
+    kuadrant.io/coredns-zone-name: k.example.com
+spec:
+  rootHost: api.k.example.com
+  endpoints:
+    - dnsName: api.k.example.com
+      recordType: A
+      recordTTL: 60
+      providerSpecific:
+        - name: weight
+          value: "70"
+      setIdentifier: cluster-1
+      targets:
+        - 1.1.1.1
+    - dnsName: api.k.example.com
+      recordType: A
+      recordTTL: 60
+      providerSpecific:
+        - name: weight
+          value: "30"
+      setIdentifier: cluster-2
+      targets:
+        - 2.2.2.2
+```
+
+**Behavior**: With the above configuration, approximately 70% of queries return `1.1.1.1` and 30% return `2.2.2.2`.
 
 #### Combined Routing
 
@@ -1063,17 +1096,37 @@ k.example.com {
 
 #### ServiceMonitor Integration
 
-For Prometheus Operator integration, enable ServiceMonitor via helm values:
+**Default Configuration**: When deploying CoreDNS using the DNS Operator's kustomize configuration ([`config/coredns/kustomization.yaml`](../../config/coredns/kustomization.yaml)), Prometheus monitoring is **already enabled by default**:
 
 ```yaml
 prometheus:
+  service:
+    enabled: true
   monitor:
     enabled: true
+    namespace: kuadrant-coredns
 ```
 
-This creates:
-- ServiceMonitor resource for automatic scraping
-- Metrics service deployment
+This automatically creates:
+- ServiceMonitor resource for Prometheus Operator scraping
+- Metrics service on port 9153
+
+**Customizing Configuration**:
+
+If you need to modify the default settings (e.g., change namespace, add labels, or disable monitoring), edit [`config/coredns/kustomization.yaml`](../../config/coredns/kustomization.yaml) in the `valuesInline` section.
+
+**Using Helm directly** (without DNS Operator's kustomize):
+
+The base CoreDNS helm chart ([`config/coredns/charts/coredns/values.yaml`](../../config/coredns/charts/coredns/values.yaml)) has Prometheus disabled by default. Enable it in your values file:
+
+```yaml
+prometheus:
+  service:
+    enabled: true
+  monitor:
+    enabled: true
+    namespace: kuadrant-coredns
+```
 
 #### Grafana Dashboards
 

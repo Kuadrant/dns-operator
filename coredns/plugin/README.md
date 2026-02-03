@@ -8,11 +8,11 @@
 
 The *kuadrant* plugin enables CoreDNS to serve DNS records from Kubernetes DNSRecord custom resources, providing an alternative to cloud-based DNS services by allowing you to host DNS records in your own CoreDNS instances running in Kubernetes.
 
-The plugin sets up watchers and listers on DNSRecord resources in the Kubernetes cluster. As it discovers them, it processes and adds the endpoints to the appropriate DNS zone with GEO and weighted routing capabilities. The plugin uses logic from the [CoreDNS file plugin](https://github.com/coredns/coredns/tree/master/plugin/file) to create a functioning DNS server.
+The plugin sets up watchers and listeners on DNSRecord resources in the Kubernetes cluster. As it discovers them, it processes and adds the endpoints to the appropriate DNS zone with GEO and weighted routing capabilities. The plugin uses logic from the [CoreDNS file plugin](https://github.com/coredns/coredns/tree/master/plugin/file) to create a functioning DNS server.
 
 **Weighted Routing:** The plugin builds a list of all available records that could be provided as the answer to a given query from within the identified zone. It then applies a weighting algorithm to decide on a single response depending on the individual record weighting, using a random number between 0 and the sum of all weights. This provides probabilistic load distribution across endpoints.
 
-**Geographic Routing:** GEO data is sourced from a geo database such as MaxMind and made available via the [CoreDNS geoip plugin](https://coredns.io/plugins/geoip/), which must execute before the Kuadrant plugin. With this enabled, the plugin uses GEO data to decide which record to return based on the client's geographic location.
+**Geographic Routing:** GEO data is sourced from a geographical database such as MaxMind and made available with the [CoreDNS `geoip` plugin](https://coredns.io/plugins/geoip/), which must execute before the Kuadrant plugin. With this enabled, the plugin uses GEO data to decide which record to return based on the client's geographic location.
 
 **Combined Routing:** When multiple endpoints exist within a single geographic region, the plugin first applies the GEO filter and then uses the weighting algorithm on the result, enabling both geographic distribution and load balancing within regions.
 

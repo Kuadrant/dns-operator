@@ -382,7 +382,7 @@ Common issues:
 
 **Verify the DNSRecord has the zone label:**
 ```shell
-kubectl get dnsrecord -n dnstest -o jsonpath='{.items[*].metadata.labels}' | grep kuadrant.io/coredns-zone-name
+kubectl get dnsrecords.kuadrant.io -n dnstest -o jsonpath='{.items[*].metadata.labels}' | grep kuadrant.io/coredns-zone-name
 ```
 
 Should include `kuadrant.io/coredns-zone-name: k.example.com`.
@@ -439,7 +439,7 @@ Should be `primary` on primary clusters and `secondary` on secondary clusters.
 
 ```shell
 # Delete test DNSRecord
-kubectl delete dnsrecord -n dnstest --all
+kubectl delete dnsrecords.kuadrant.io -n dnstest --all
 
 # Delete test namespace
 kubectl delete ns dnstest
@@ -452,9 +452,9 @@ kind delete cluster --name kuadrant-dns-local
 
 ```shell
 # Delete DNSRecords from all clusters
-kubectl delete dnsrecord -n dnstest --all --context kind-kuadrant-dns-local-1
-kubectl delete dnsrecord -n dnstest --all --context kind-kuadrant-dns-local-2
-kubectl delete dnsrecord -n dnstest --all --context kind-kuadrant-dns-local-3
+kubectl delete dnsrecords.kuadrant.io -n dnstest --all --context kind-kuadrant-dns-local-1
+kubectl delete dnsrecords.kuadrant.io -n dnstest --all --context kind-kuadrant-dns-local-2
+kubectl delete dnsrecords.kuadrant.io -n dnstest --all --context kind-kuadrant-dns-local-3
 
 # Delete test namespace from all clusters
 kubectl delete ns dnstest --context kind-kuadrant-dns-local-1

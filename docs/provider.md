@@ -184,7 +184,7 @@ You will need to grant read and contributor access to the zone(s) you want manag
 
 ### CoreDNS Provider
 
-CoreDNS provider enables self-hosted DNS using CoreDNS in Kubernetes. Unlike cloud providers, it requires configuration (zones and nameservers) rather than authentication credentials.
+CoreDNS provider enables self-hosted DNS using CoreDNS in Kubernetes. Unlike cloud providers, it requires configuration (zones and nameservers) rather than only supplying authentication credentials.
 
 Kuadrant expects a `Secret` with zone and nameserver configuration. Below is an example for CoreDNS. It is important to set the secret type to `coredns`:
 

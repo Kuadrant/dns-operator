@@ -600,7 +600,7 @@ The BIND9 deployment includes:
 **Solution**:
 Add the label to tell CoreDNS to serve this record:
 ```bash
-kubectl label dnsrecord/<name> -n <namespace> \
+kubectl label dnsrecords.kuadrant.io/<name> -n <namespace> \
   kuadrant.io/coredns-zone-name=k.example.com
 ```
 
