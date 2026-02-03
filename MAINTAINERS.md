@@ -4,5 +4,5 @@
 |---------------------|----------|-----------------|
 | Michael Nairn       | Red Hat  | mikenairn       |
 | Phil Brookes        | Red Hat  | philbrookes     |
-| Maksym Vavilov      | Red Hat  | makslion        |
+| Maksym Vavilov      | Red Hat  | maksymvavilov        |
 | Craig Brookes       | Red Hat  | maleck13        |
