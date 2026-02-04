@@ -640,7 +640,42 @@ When using CoreDNS locally with DNS Groups, you need to configure CoreDNS to for
 
 > **Note**: If using parent zone delegation with BIND9, see the [Zone Delegation Guide - Step 6](zone-delegation.md#step-6-configure-dns-groups-active-groups-resolution-optional) for the BIND9-specific variant of this configuration.
 
-**Modify the Corefile**:
+**Option A: Using a CNAME DNSRecord (Recommended)**
+
+Create a DNSRecord with a CNAME that points to the external active-groups TXT record host. This approach is more Kubernetes-native and doesn't require Corefile modifications.
+
+```yaml
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: kuadrant-active-groups-cname
+  namespace: kuadrant-coredns
+  labels:
+    kuadrant.io/coredns-zone-name: k.example.com
+spec:
+  rootHost: kuadrant-active-groups.k.example.com
+  providerRef:
+    name: dns-provider-credentials-coredns
+  endpoints:
+  - dnsName: kuadrant-active-groups.k.example.com
+    recordType: CNAME
+    recordTTL: 60
+    targets:
+    - kuadrant-active-groups.hcpapps.net
+```
+
+Replace:
+- `k.example.com` with your actual zone domain
+- `kuadrant-active-groups.hcpapps.net` with your external TXT record host
+
+**Key Points**:
+- The `kuadrant.io/coredns-zone-name` label ensures CoreDNS picks up this record
+- The CNAME allows CoreDNS to resolve the active-groups query without Corefile changes
+- No CoreDNS restart required
+
+**Option B: Using Corefile Rewrite and Forward Directives**
+
+Alternatively, you can modify the Corefile to rewrite and forward the active-groups query. **Note: This approach requires modifying the Corefile and restarting CoreDNS.**
 
 The Corefile is located in the `kuadrant-coredns` ConfigMap in the `kuadrant-coredns` namespace.
 
@@ -662,7 +697,7 @@ Replace:
 - `k.example.com` with your actual zone domain
 - `kuadrant-active-groups.hcpapps.net` with your external TXT record host
 
-**Restart CoreDNS**:
+**After modifying the Corefile, restart CoreDNS**:
 ```bash
 kubectl -n kuadrant-coredns rollout restart deployment kuadrant-coredns
 ```
@@ -893,10 +928,10 @@ kubectl rollout restart deployment/kuadrant-coredns -n kuadrant-coredns
 
 ```bash
 # Query from IE locale
-dig @127.0.0.1 api.k.example.com -p 1053 -b 127.0.100.1
+dig @127.0.0.1 api.k.example.com -p 1053 +subnet=127.0.100.0/24
 
 # Query from US locale
-dig @127.0.0.1 api.k.example.com -p 1053 -b 127.0.200.1
+dig @127.0.0.1 api.k.example.com -p 1053 +subnet=127.0.200.0/24
 ```
 
 **When running CoreDNS in Kind cluster**:

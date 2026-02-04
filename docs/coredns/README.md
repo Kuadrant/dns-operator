@@ -337,9 +337,9 @@ The demo database contains sets of local subnets typical for Kind deployments th
 ### Testing Geographic Routing
 
 **When running CoreDNS locally** (from terminal with `make run` in `coredns/plugin/` directory):
-You can use the `-b` option with dig to specify a source IP address. For example:
-- `dig @127.0.0.1 api.k.example.com -p 1053 -b 127.0.100.1` will be associated with IE locale
-- `dig @127.0.0.1 api.k.example.com -p 1053 -b 127.0.200.1` will be associated with US locale
+You can use the `+subnet` option with dig to specify a client subnet. For example:
+- `dig @127.0.0.1 api.k.example.com -p 1053 +subnet=127.0.100.0/24` will be associated with IE locale
+- `dig @127.0.0.1 api.k.example.com -p 1053 +subnet=127.0.200.0/24` will be associated with US locale
 
 **When running CoreDNS in Kind cluster:**
 The demo DB contains only localhost addresses which aren't routable in Kind. Instead, use the `+subnet` parameter with dig to simulate client location (replace `$NS1` with your CoreDNS service IP):
