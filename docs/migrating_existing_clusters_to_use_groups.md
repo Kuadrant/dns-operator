@@ -144,7 +144,7 @@ This configmap exists in the same namespace as the dns-operator.
 
 By using kubectl patch, the configmap can be updated with affecting other env vars that may be configured.
 ```sh
-kubectl patch configmap dns-operator-controller-env --namespace <namespace> --type merge --patch '{"data:{"GROUP":"<GROUP ID>"}}'
+kubectl patch configmap dns-operator-controller-env --namespace <namespace> --type merge --patch '{"data":{"GROUP":"<GROUP ID>"}}'
 ```
 Once the configmap has being patched, the deployment needs to be redeployed for the changes to take effect.
 ```sh
@@ -155,10 +155,10 @@ kubectl rollout restart deployment dns-operator-controller-manager --namespace <
 
 It can take some time for the all the dnsrecords to be fully reconciled to use the new group setting.
 However, by checking the logs of the operator, it can be confirmed that the group was configured correctly.
-There is are two setup log messages that confirm the group was correctly configured.
+There are two setup log messages that confirm the group was correctly configured.
 These log messages can be retrieved from the cluster with the following command.
 ```sh
-NS=<namespace> kubectl logs $(kubectl get pods -l control-plane=dns-operator-controller-manager --sort-by=.metadata.creationTimestamp -o name --namespace $NS | tail -n 1) --namespace $NS | head -n 20 | grep group
+NS=<namespace>; kubectl logs $(kubectl get pods -l control-plane=dns-operator-controller-manager --sort-by=.metadata.creationTimestamp -o name --namespace $NS | tail -n 1) --namespace $NS | head -n 20 | grep group
 
 # expected output
 {"level":"info","ts":"2006-1-2T15:4:5","logger":"setup","msg":"overriding group flag with \"group1\" value"}
