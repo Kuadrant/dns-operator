@@ -2,7 +2,7 @@
 
 ## Why
 
-The DNS fail-over via groups allows switching traffic from one group of clusters to a second set of clusters in an outage. 
+The DNS fail-over via groups allows switching traffic from one set of clusters to a second set of clusters in an outage. 
 
 ## How 
 ### Starting Point
@@ -15,12 +15,12 @@ For this example use case the follow configuration will be assumed.
 Cluster_A goes offline for some reason.
 Now traffic needs to be diverted from the group that Cluster_A is a member of to the group that Cluster_B is a member of, at the DNS level.
 
-For the example Cluster_A is configured in group\_1, and Cluster_B is configured in group\_2.
+For the example Cluster\_A is configured in group\_1, and Cluster\_B is configured in group\_2.
 
 ### Note for CoreDNS users
 When using CoreDNS the active groups TXT record can proxy to any user defined TXT.
-Meaning `kudarant-active-groups.<domain>` could point to `company-kuadrant-record-for-groups.<company domain>` TXT record.
-In the case of CoreDNS, the record ca be read from the Corefile configmap
+Meaning `kuadrant-active-groups.<domain>` could point to `company-kuadrant-record-for-groups.<company domain>` TXT record.
+In the case of CoreDNS, the record can be read from the Corefile configmap
 
 Within this guide when the `kuadrant-active-groups.<domain>` TXT record is referred, it is the top level TXT record that being talk about, which may be proxied in the CoreDNS configuration.
 
@@ -29,8 +29,8 @@ Within this guide when the `kuadrant-active-groups.<domain>` TXT record is refer
 #### Via CLI
 To get which groups are currently configured as the active groups the `kubectl-kuadrant_dns` CLI can be used.
 For this we will need 2 pieces of information.
-The domain that is covered by the providerRef secret, and a reference to the providerRef secret.
-The providerRef has the format of \<namespace\>/\<name\>.
+The domain that is covered by the `providerRef` secret, and a reference to the `providerRef` secret.
+The `providerRef` has the format of `<namespace>/<name>`.
 Using the below command the current group can be confirmed.
 
 ```sh
@@ -67,10 +67,10 @@ But also the active groups can be modified by updating the TXT record in the DNS
 In order to configure the groups via the CLI we will need 3 pieces of information.
 
 - GROUP_ID this is the name of the group that is to be added to the list of active groups.
-- \<domain\>, root domain of the zone to add the group to.
-- \<providerRef\>, reference to the secret with provider credentials. Format: \<namespace\>/\<name\>.
+- `<domain>`, root domain of the zone to add the group to.
+- `<providerRef>`, reference to the secret with provider credentials. Format: `<namespace>/<name>`.
 
-**Note:** An active connection to the cluster with the \<providerRef\> is assumed.
+**Note:** An active connection to the cluster with the `<providerRef>` is assumed.
 
 With this information adding the new group can be done using the following command.
 
@@ -104,12 +104,12 @@ It is recommended to always have at least one cluster in an active group.
 In order to remove groups via the CLI three pieces of information is required.
 
 - GROUP_ID this is the name of the group that is to be removed from the list of active groups.
-- \<domain\>, root domain of the zone to add the group to.
-- \<providerRef\>, reference to the secret with provider credentials. Format: \<namespace\>/\<name\>.
+- `<domain>`, root domain of the zone to add the group to.
+- `<providerRef>`, reference to the secret with provider credentials. Format: `<namespace>/<name>`.
 
-**Note:** An active connection to the cluster with the \<providerRef\> is assumed.
+**Note:** An active connection to the cluster with the `<providerRef>` is assumed.
 
-With this information adding the new group can be done using the following command.
+With this information removing the new group can be done using the following command.
 
 ```sh
 kubectl-kuadrant_dns remove-active-group GROUP_ID --domain <domain> --providerRef <providerRef>
@@ -130,7 +130,7 @@ In dev preview this delay can be up to 15 minutes by default.
 This value can be modified by setting `--max-requeue-time` argument on the dns-operator deployment, or `MAX_REQUEUE_TIME` in the `dns-operator-controller-env` configmap.
 
 ### Confirming fail-over successful
-To confirm the fail-over has being successful the dnsrecords on the cluster_B can be monitored for a ready status.
+To confirm the fail-over has been successful the dnsrecords on the cluster_B can be monitored for a ready status.
 The following will list the state of all the dnsrecords on the cluster. 
 Optionally the `--watch` flag can be added to the command to get updates on the resources
 
