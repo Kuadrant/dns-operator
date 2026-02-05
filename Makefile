@@ -623,7 +623,8 @@ RELEASE_FILE = $(shell pwd)/make/release.mk
 prepare-release: IMG_TAG=v$(VERSION)
 prepare-release: ## Generates a makefile that will override environment variables for a specific release and runs bundle.
 	echo -e "#Release default values\\nIMG=$(IMAGE_TAG_BASE):$(IMG_TAG)\nBUNDLE_IMG=$(IMAGE_TAG_BASE)-bundle:$(IMG_TAG)\n\
-	CATALOG_IMG=$(IMAGE_TAG_BASE)-catalog:$(IMG_TAG)\nCHANNELS=$(CHANNELS)\nBUNDLE_CHANNELS=--channels=$(CHANNELS)" > $(RELEASE_FILE)
+	CATALOG_IMG=$(IMAGE_TAG_BASE)-catalog:$(IMG_TAG)\nCHANNELS=$(CHANNELS)\nBUNDLE_CHANNELS=--channels=$(CHANNELS)\n\
+	VERSION=$(VERSION)" > $(RELEASE_FILE)
 	$(MAKE) bundle
 	$(MAKE) helm-build VERSION=$(VERSION)
 
