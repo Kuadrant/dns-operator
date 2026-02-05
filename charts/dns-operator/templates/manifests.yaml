@@ -938,7 +938,7 @@ spec:
         envFrom:
         - configMapRef:
             name: dns-operator-controller-env
-        image: quay.io/kuadrant/dns-operator:0.16.0
+        image: quay.io/kuadrant/dns-operator:v0.16.0
         livenessProbe:
           httpGet:
             path: /healthz
