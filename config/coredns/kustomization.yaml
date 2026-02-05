@@ -5,32 +5,29 @@ resources:
   - namespace.yaml
 helmCharts:
   - name: coredns
-    repo: https://coredns.github.io/helm
     releaseName: kuadrant
+    repo: https://coredns.github.io/helm
     valuesInline:
+      deployment:
+        skipConfig: true
       env:
         - name: WATCH_NAMESPACES
           value: kuadrant-coredns
+      image:
+        pullPolicy: Always
+        repository: quay.io/kuadrant/coredns-kuadrant
+        tag: latest
       isClusterService: false
-      serviceType: LoadBalancer
-      deployment:
-        skipConfig: true
       prometheus:
-        service:
-          enabled: true
         monitor:
           enabled: true
           namespace: kuadrant-coredns
-      image:
-        repository: quay.io/kuadrant/coredns-kuadrant
-        tag: latest
-        pullPolicy: Always
+        service:
+          enabled: true
+      serviceType: LoadBalancer
 patches:
   - path: k8s_prometheus_patch.yaml
-  - target:
-      kind: ClusterRole
-      name: kuadrant-coredns
-    patch: |
+  - patch: |
       - op: add
         path: /rules/-
         value:
@@ -42,6 +39,9 @@ patches:
             - get
             - list
             - watch
+    target:
+      kind: ClusterRole
+      name: kuadrant-coredns
   - patch: |
       - op: add
         path: /spec/template/spec/containers/0/env
@@ -50,22 +50,25 @@ patches:
             value: ""
     target:
       kind: Deployment
-  - target:
-      kind: Service
-      name: kuadrant-coredns
-    patch: |
+  - patch: |
       - op: add
         path: /spec/externalTrafficPolicy
         value: Local
-
+    target:
+      kind: Service
+      name: kuadrant-coredns
 configMapGenerator:
-  - name: kuadrant-coredns
-    behavior: create
+  - behavior: create
     files:
       - Corefile
+    name: kuadrant-coredns
     options:
       disableNameSuffixHash: true
       labels:
-        app.kubernetes.io/name: coredns
         app.kubernetes.io/instance: kuadrant
         app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: coredns
+images:
+  - name: quay.io/kuadrant/coredns-kuadrant
+    newName: quay.io/kuadrant/coredns-kuadrant
+    newTag: latest
