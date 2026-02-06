@@ -61,6 +61,12 @@ OPERATOR_SDK_VERSION ?= v1.33.0
 # Image URL to use all building/pushing image targets
 DEFAULT_IMG ?= $(IMAGE_TAG_BASE):latest
 IMG ?= $(DEFAULT_IMG)
+
+# CoreDNS image targets
+COREDNS_IMAGE_TAG_BASE ?= quay.io/kuadrant/coredns-kuadrant
+COREDNS_DEFAULT_IMG ?= $(COREDNS_IMAGE_TAG_BASE):latest
+COREDNS_IMG ?= $(COREDNS_DEFAULT_IMG)
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.27.1
 
@@ -205,6 +211,7 @@ local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependenci
 			$(MAKE) -s install-bind9 ;\
 			echo "local-setup: installing coredns" ;\
 			$(MAKE) -s coredns-docker-build coredns-kind-load-image;\
+			$(MAKE) -s set-image-refs ;\
 			$(MAKE) -s install-coredns COREDNS_KUSTOMIZATION=config/local-setup/coredns ;\
 		fi ;\
 		if [ ${DEPLOY} = "true" ]; then\
@@ -277,6 +284,11 @@ local-deploy: docker-build kind-load-image ## Deploy the dns operator into local
 local-deploy-namespaced: docker-build kind-load-image ## Deploy the dns operator(s) into local kind cluster using the generated deployment overlays
 	$(KUBECTL) config use-context kind-$(KIND_CLUSTER_NAME)
 	$(MAKE) deploy-namespaced
+
+.PHONY: set-image-refs
+set-image-refs: kustomize yq ## Update controller and CoreDNS image references in kustomization files.
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG} && $(YQ) -i '.' kustomization.yaml
+	cd config/coredns && $(KUSTOMIZE) edit set image ${COREDNS_IMAGE_TAG_BASE}=${COREDNS_IMG} && $(YQ) -i '.' kustomization.yaml
 
 ##@ Build
 
@@ -363,13 +375,11 @@ deploy: DEPLOY_KUSTOMIZATION=config/local-setup/dns-operator/secondary
 else
 deploy: DEPLOY_KUSTOMIZATION=config/deploy/local
 endif
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+deploy: manifests set-image-refs ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build ${DEPLOY_KUSTOMIZATION} | $(KUBECTL) apply -f -
 
 .PHONY: deploy-namespaced
-deploy-namespaced: manifests kustomize remove-cluster-overlay generate-cluster-overlay ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+deploy-namespaced: manifests set-image-refs remove-cluster-overlay generate-cluster-overlay ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build --enable-helm $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
@@ -532,9 +542,8 @@ $(KUBECTL_DNS):
 
 
 .PHONY: bundle
-bundle: manifests manifests-gen-base-csv kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
+bundle: manifests manifests-gen-base-csv set-image-refs operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q
-	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
 	$(MAKE) bundle-post-generate
 	$(OPERATOR_SDK) bundle validate ./bundle
@@ -623,8 +632,9 @@ RELEASE_FILE = $(shell pwd)/make/release.mk
 prepare-release: IMG_TAG=v$(VERSION)
 prepare-release: ## Generates a makefile that will override environment variables for a specific release and runs bundle.
 	echo -e "#Release default values\\nIMG=$(IMAGE_TAG_BASE):$(IMG_TAG)\nBUNDLE_IMG=$(IMAGE_TAG_BASE)-bundle:$(IMG_TAG)\n\
-	CATALOG_IMG=$(IMAGE_TAG_BASE)-catalog:$(IMG_TAG)\nCHANNELS=$(CHANNELS)\nBUNDLE_CHANNELS=--channels=$(CHANNELS)\n\
-	VERSION=$(VERSION)" > $(RELEASE_FILE)
+	CATALOG_IMG=$(IMAGE_TAG_BASE)-catalog:$(IMG_TAG)\nCOREDNS_IMG=$(COREDNS_IMAGE_TAG_BASE):$(IMG_TAG)\nCHANNELS=$(CHANNELS)\n\
+	BUNDLE_CHANNELS=--channels=$(CHANNELS)\nVERSION=$(VERSION)" > $(RELEASE_FILE)
+	$(MAKE) set-image-refs
 	$(MAKE) bundle
 	$(MAKE) helm-build VERSION=$(VERSION)
 
