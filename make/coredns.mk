@@ -23,16 +23,16 @@ coredns-run: ## Run coredns from your host.
 
 .PHONY: coredns-docker-build
 coredns-docker-build: ## Build docker image.
-	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) docker-build
+	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) docker-build COREDNS_IMG=$(COREDNS_IMG)
 
 .PHONY: coredns-docker-push
 coredns-docker-push: ## Push docker image.
-	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) docker-push
+	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) docker-push COREDNS_IMG=$(COREDNS_IMG)
 
 .PHONY: coredns-docker-run
 coredns-docker-run: DNS_PORT=1053
 coredns-docker-run: ## Build docker image and run coredns in a container.
-	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) docker-run
+	cd ${COREDNS_PLUGIN_DIR} && $(MAKE) docker-run COREDNS_IMG=$(COREDNS_IMG)
 
 .PHONY: coredns-generate-demo-geo-db
 coredns-generate-demo-geo-db: ## Generate demo geo db embedded in coredns image.
@@ -40,4 +40,4 @@ coredns-generate-demo-geo-db: ## Generate demo geo db embedded in coredns image.
 
 .PHONY: coredns-kind-load-image
 coredns-kind-load-image: ## Load image to kind cluster.
-	$(MAKE) kind-load-image IMG=quay.io/kuadrant/coredns-kuadrant:latest
+	$(MAKE) kind-load-image IMG=$(COREDNS_IMG)

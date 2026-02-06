@@ -6,9 +6,7 @@ CHART_NAME ?= dns-operator
 CHART_DIRECTORY ?= charts/$(CHART_NAME)
 
 .PHONY: helm-build
-helm-build: yq manifests kustomize operator-sdk ## Build the helm chart from kustomize manifests
-	# Replace the controller image (Should remain consistent with what `make bundle` does)
-	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+helm-build: manifests set-image-refs operator-sdk ## Build the helm chart from kustomize manifests
 	# Build the helm chart templates from kustomize manifests
 	$(KUSTOMIZE) build config/helm > $(CHART_DIRECTORY)/templates/manifests.yaml
 	V="$(VERSION)" $(YQ) eval '.version = strenv(V)' -i $(CHART_DIRECTORY)/Chart.yaml
