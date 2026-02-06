@@ -1,92 +1,95 @@
-# CoreDNS Integration
+# CoreDNS Local Development Guide
+
+This guide provides step-by-step instructions for setting up and testing CoreDNS integration locally using Kind clusters. This is intended for local development and testing purposes only.
+
+**For conceptual overview and production deployment**, see the [CoreDNS Integration Guide](https://github.com/Kuadrant/kuadrant-operator/blob/main/doc/overviews/coredns-integration.md).
+
+**For quick-start examples and plugin syntax**, see the [CoreDNS Plugin README](../../coredns/plugin/README.md).
+
+**For parent zone delegation setup (using BIND9)**, see the [Zone Delegation Guide](zone-delegation.md).
+
+**Prerequisites:**
+- `kubectl` - Kubernetes command-line tool
+- `kind` - Tool for running local Kubernetes clusters
+- `make` - Build automation tool
+- `yq` - YAML processor for querying Kubernetes resources
+- `dig` - DNS lookup utility for testing DNS resolution
+
+## Table of Contents
+
+1. [Single Cluster Setup](#setup-single-cluster-local-environment-kind)
+2. [Multi-Cluster Setup](#setup-multi-cluster-local-environment-kind)
+3. [GeoIP Testing](#geo)
+4. [Troubleshooting](#troubleshooting)
+5. [Cleanup](#cleanup)
 
 ## Setup single cluster local environment (kind)
 
-Create a kind cluster
+Create a kind cluster with DNS Operator deployed:
 ```shell
-(cd ../.. && make local-setup DEPLOY=true)
+# Run from dns-operator repository root
+# DEPLOY=true installs DNS Operator and CoreDNS into the cluster
+make local-setup DEPLOY=true
 ```
 
-Configure observability stack (Optional)
+Configure observability stack (optional):
 ```shell
-(cd ../.. && make install-observability)
+# Run from dns-operator repository root
+make install-observability
 ```
 
-Forward port for grafana (Optional)
+Forward port for Grafana (optional):
 ```shell
 kubectl -n monitoring port-forward service/grafana 3000:3000
 ```
-Access dashboards http://127.0.0.1:3000
 
-> **_NOTE:_** default user/password is admin/admin
+Access dashboards at http://127.0.0.1:3000
 
-### Default CoreDNS
+> **Note:** Default credentials are `admin`/`admin`
 
-Local setup will deploy a single instance of CoreDNS with the kuadrant plugin enabled, configured to watch all namespaces for DNSRecord resources and zones configured for demo/test purposes.
+### Understanding the Setup
 
-The Corefile configmap data can be viewed with:
+Local setup deploys a single instance of CoreDNS with the kuadrant plugin enabled, configured to watch all namespaces for DNSRecord resources and zones configured for demo/test purposes.
+
+View the Corefile ConfigMap data:
 ```shell
 kubectl get configmap/kuadrant-coredns -n kuadrant-coredns -o yaml | yq .data
 ```
 
-Tail CoreDNS logs
+View CoreDNS logs:
 ```shell
 kubectl logs -f deployments/kuadrant-coredns -n kuadrant-coredns
 ```
 
-#### Customizing SOA RNAME Email
+### Optional Configuration
 
-The default SOA (Start of Authority) RNAME field uses `hostmaster.{zone}` format. You can customize this to use a specific email address by modifying the Corefile configuration.
+#### Enable Monitoring
 
-To set a custom RNAME email, edit the Corefile in the `kuadrant-coredns` configmap:
-```corefile
-k.example.com {
-   debug
-   errors
-   log
-   kuadrant {
-      rname admin@example.com
-   }
-}
-```
-
-After updating the configmap, restart CoreDNS:
+Monitoring is not enabled by default. If you configured the observability stack above, update the CoreDNS instance to enable monitoring:
 ```shell
-kubectl -n kuadrant-coredns rollout restart deployment kuadrant-coredns
+# Run from dns-operator repository root
+bin/kustomize build --enable-helm config/coredns/ | kubectl apply -f -
 ```
 
-Verify the SOA record contains the custom email (converted to DNS mailbox format):
+#### Redeploy CoreDNS
+
+To apply changes to the Corefile or deployment configuration:
 ```shell
-NS1=`kubectl get service/kuadrant-coredns -n kuadrant-coredns -o yaml | yq '.status.loadBalancer.ingress[0].ip'`
-dig @${NS1} k.example.com SOA +short
-```
-Expected output with custom RNAME:
-```
-ns1.k.example.com. admin.example.com. 12345 7200 1800 86400 60
-```
-Note: `admin@example.com` is converted to `admin.example.com.` in DNS mailbox format. According to RFC 1035 and RFC 2142, any dots in the local part (before @) are escaped with backslash (e.g., `dns.admin@example.com` becomes `dns\.admin.example.com.`).
-
-#### Enable Monitoring:
-
-Monitoring is not enabled by default, if you configured the observability stack above, the CoreDNS instance can be  updated to enable it with:
-```shell
-../../bin/kustomize build --enable-helm ../../config/coredns/ | kubectl apply -f -
-```
-
-#### Redeploy CoreDNS:
-
-Changes can be made to the Corefile or any deployment by modifying and redeploying the appropriate configuration. 
-Depending on whether you enabled monitoring or not, different config will need to be applied.
-```shell
-../../bin/kustomize build --enable-helm ../../config/coredns[-unmonitored]/ | kubectl apply -f -
+# Run from dns-operator repository root
+# Use config/coredns/ if monitoring is enabled, config/coredns-unmonitored/ if not
+bin/kustomize build --enable-helm config/coredns/ | kubectl apply -f -
 ```
 
 ### Verify
 
-Create DNSRecord:
-```bash
-(cd ../.. && kubectl apply -n dnstest -f config/local-setup/dnsrecords/basic/coredns/simple/dnsrecord-simple-coredns.yaml)
-````
+Create test namespace and DNSRecord:
+```shell
+# Create dnstest namespace
+kubectl create ns dnstest
+
+# Run from dns-operator repository root
+kubectl apply -n dnstest -f config/local-setup/dnsrecords/basic/coredns/simple/dnsrecord-simple-coredns.yaml
+```
 
 Verify zone (k.example.com) has updated records in the CoreDNS instance:
 ```shell
@@ -94,7 +97,7 @@ NS1=`kubectl get service/kuadrant-coredns -n kuadrant-coredns -o yaml | yq '.sta
 echo $NS1
 dig @${NS1} -t AXFR k.example.com
 ```
-Expected:
+Expected output (IP addresses, hashes, and timestamps will differ in your environment):
 ```
 ; <<>> DiG 9.18.28 <<>> @172.18.0.17 -t AXFR k.example.com
 ; (1 server found)
@@ -116,26 +119,32 @@ NS1=`kubectl get service/kuadrant-coredns -n kuadrant-coredns -o yaml | yq '.sta
 echo $NS1
 dig @${NS1} simple.k.example.com +short
 ```
-Expected:
+Expected output (IP address might differ in your environment):
 ```
 172.18.200.1
 ```
 
 ## Setup multi cluster local environment (kind)
 
-Create three kind clusters (2 primary and 1 secondary)
+Create three kind clusters (2 primary and 1 secondary):
 ```shell
-(cd ../.. && make multicluster-local-setup PRIMARY_CLUSTER_COUNT=2 CLUSTER_COUNT=3)
+# Run from dns-operator repository root
+# PRIMARY_CLUSTER_COUNT=2 creates 2 primary clusters (with CoreDNS deployed)
+# CLUSTER_COUNT=3 creates 3 clusters total (CLUSTER_COUNT - PRIMARY_CLUSTER_COUNT = 1 secondary)
+# Primary clusters can reconcile delegated DNSRecords, secondary clusters cannot
+make multicluster-local-setup PRIMARY_CLUSTER_COUNT=2 CLUSTER_COUNT=3
 ```
 
-### Verify primary cluster setup 
+### Verify Primary Cluster Setup
+
+Check that CoreDNS, provider secrets, and cluster interconnection secrets are properly configured. 
 
 CoreDNS is deployed and running:
 ```shell
 kubectl get deployments,service -A -l app.kubernetes.io/name=coredns --context kind-kuadrant-dns-local-1
 kubectl get deployments,service -A -l app.kubernetes.io/name=coredns --context kind-kuadrant-dns-local-2
 ```
-Expected:
+Expected output:
 ```
 NAMESPACE          NAME                               READY   UP-TO-DATE   AVAILABLE   AGE
 kuadrant-coredns   deployment.apps/kuadrant-coredns   1/1     1            1           10m
@@ -144,7 +153,7 @@ NAMESPACE          NAME                       TYPE           CLUSTER-IP      EXT
 kuadrant-coredns   service/kuadrant-coredns   LoadBalancer   10.96.253.138   172.18.0.17   53:30494/UDP,53:30494/TCP   10m
 ```
 
-Test zone (k.example.com) accessible in CoreDNS instances:
+Test zone transfer (AXFR) capability for k.example.com zone in both CoreDNS instances:
 ```shell
 NS1=`kubectl get service -n kuadrant-coredns -l app.kubernetes.io/name=coredns,app.kubernetes.io/component!=metrics --context kind-kuadrant-dns-local-1 -o yaml | yq '.items[0].status.loadBalancer.ingress[0].ip'`
 NS2=`kubectl get service -n kuadrant-coredns -l app.kubernetes.io/name=coredns,app.kubernetes.io/component!=metrics --context kind-kuadrant-dns-local-2 -o yaml | yq '.items[0].status.loadBalancer.ingress[0].ip'`
@@ -152,7 +161,7 @@ NS2=`kubectl get service -n kuadrant-coredns -l app.kubernetes.io/name=coredns,a
 dig @${NS1} -t AXFR k.example.com
 dig @${NS2} -t AXFR k.example.com
 ```
-Expected:
+Expected output (empty zone before adding DNSRecords):
 ```
 ; <<>> DiG 9.18.28 <<>> @172.18.0.33 -t AXFR k.example.com
 ; (1 server found)
@@ -166,58 +175,62 @@ k.example.com.          60      IN      SOA     ns1.k.example.com. hostmaster.k.
 ;; XFR size: 3 records (messages 1, bytes 278)
 ```
 
-CoreDNS secret exists in the "dnstest" namespace with test zone (k.example.com) configured:
+CoreDNS provider secret exists in the "dnstest" namespace with test zone (k.example.com) configured (namespace is created automatically on primary clusters):
 ```shell
 kubectl get secret/dns-provider-credentials-coredns -n dnstest -o jsonpath='{.data.ZONES}' --context kind-kuadrant-dns-local-1 | base64 --decode
 kubectl get secret/dns-provider-credentials-coredns -n dnstest -o jsonpath='{.data.ZONES}' --context kind-kuadrant-dns-local-2 | base64 --decode
 ```
-Expected:
+Expected output:
 ```
 k.example.com
 ```
 
-Cluster secrets exists on kind-kuadrant-dns-local-1(primary 1) for kind-kuadrant-dns-local-2(primary 2) and kind-kuadrant-dns-local-3(secondary):
+Cluster interconnection secrets exist on kind-kuadrant-dns-local-1(primary 1) for kind-kuadrant-dns-local-2(primary 2) and kind-kuadrant-dns-local-3(secondary):
 ```shell
 kubectl get secrets -A -l kuadrant.io/multicluster-kubeconfig=true --show-labels --context kind-kuadrant-dns-local-1
 ```
-Expected:
+Expected output:
 ```
 NAMESPACE             NAME                        TYPE     DATA   AGE   LABELS
 dns-operator-system   kind-kuadrant-dns-local-2   Opaque   1      19m   kuadrant.io/multicluster-kubeconfig=true
 dns-operator-system   kind-kuadrant-dns-local-3   Opaque   1      19m   kuadrant.io/multicluster-kubeconfig=true
 ```
 
-Cluster secrets exists on kind-kuadrant-dns-local-2(primary 2) for kind-kuadrant-dns-local-1(primary 1) and kind-kuadrant-dns-local-3(secondary):
+Cluster interconnection secrets exist on kind-kuadrant-dns-local-2(primary 2) for kind-kuadrant-dns-local-1(primary 1) and kind-kuadrant-dns-local-3(secondary):
 ```shell
-kubectl get secrets -A -l kuadrant.io/multicluster-kubeconfig=true --show-labels --context kind-kuadrant-dns-local-1
+kubectl get secrets -A -l kuadrant.io/multicluster-kubeconfig=true --show-labels --context kind-kuadrant-dns-local-2
 ```
-Expected:
+Expected output:
 ```
 NAMESPACE             NAME                        TYPE     DATA   AGE   LABELS
 dns-operator-system   kind-kuadrant-dns-local-1   Opaque   1      19m   kuadrant.io/multicluster-kubeconfig=true
 dns-operator-system   kind-kuadrant-dns-local-3   Opaque   1      19m   kuadrant.io/multicluster-kubeconfig=true
 ```
 
-### Verify
+### Verify Multi-Cluster DNS Records
 
-Create "dnstest" namespace on kind-kuadrant-dns-local-3(secondary):
+Create "dnstest" namespace on kind-kuadrant-dns-local-3 (secondary cluster - not created automatically):
 ```shell
 kubectl create ns dnstest --context kind-kuadrant-dns-local-3
 ```
 
 Set CoreDNS provider as the default in the "dnstest" namespace on both primary clusters:
 ```shell
+# The kuadrant.io/default-provider=true label allows DNSRecords and DNSPolicy
+# to use this provider without explicitly specifying providerRef
 kubectl label secret/dns-provider-credentials-coredns -n dnstest kuadrant.io/default-provider=true --context kind-kuadrant-dns-local-1
 kubectl label secret/dns-provider-credentials-coredns -n dnstest kuadrant.io/default-provider=true --context kind-kuadrant-dns-local-2
 ```
-Apply example dnsrecords:
+
+Apply example DNSRecords with delegation enabled:
 ```shell
-(cd ../.. && kubectl apply -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster1.yaml --context kind-kuadrant-dns-local-1)
-(cd ../.. && kubectl apply -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster2.yaml --context kind-kuadrant-dns-local-2)
-(cd ../.. && kubectl apply -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster3.yaml --context kind-kuadrant-dns-local-3)
+# Run from dns-operator repository root
+kubectl apply -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster1.yaml --context kind-kuadrant-dns-local-1
+kubectl apply -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster2.yaml --context kind-kuadrant-dns-local-2
+kubectl apply -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster3.yaml --context kind-kuadrant-dns-local-3
 ```
 
-Verify zone (k.example.com) has updated records in both primary cluster CoreDNS instances:
+Verify zone (k.example.com) has updated records in both primary cluster CoreDNS instances (after delegation reconciliation):
 ```shell
 NS1=`kubectl get service -n kuadrant-coredns -l app.kubernetes.io/name=coredns,app.kubernetes.io/component!=metrics --context kind-kuadrant-dns-local-1 -o yaml | yq '.items[0].status.loadBalancer.ingress[0].ip'`
 NS2=`kubectl get service -n kuadrant-coredns -l app.kubernetes.io/name=coredns,app.kubernetes.io/component!=metrics --context kind-kuadrant-dns-local-2 -o yaml | yq '.items[0].status.loadBalancer.ingress[0].ip'`
@@ -228,7 +241,7 @@ echo $NS2
 dig @${NS1} -t AXFR k.example.com
 dig @${NS2} -t AXFR k.example.com
 ```
-Expected:
+Expected output (IP addresses, hashes, and timestamps will differ in your environment):
 ```
 ; <<>> DiG 9.18.28 <<>> @172.18.0.33 -t AXFR k.example.com
 ; (1 server found)
@@ -279,9 +292,10 @@ echo "Dig command: dig @$NS1 loadbalanced.k.example.com"
 dig @$NS1 loadbalanced.k.example.com +short
 
 echo "Dig command: dig @$NS2 loadbalanced.k.example.com"
+# +subnet parameter simulates client location for GEO routing (127.0.100.0/24 = Ireland in demo DB)
 dig @$NS2 loadbalanced.k.example.com +short +subnet=127.0.100.0/24
 ```
-Expected:
+Expected output (from NS2 with Ireland subnet, routing to IE geo endpoint):
 ```
 klb.loadbalanced.k.example.com.
 ie.klb.loadbalanced.k.example.com.
@@ -289,29 +303,173 @@ cluster1-gw1-ns1.klb.loadbalanced.k.example.com.
 172.18.200.1
 ```
 
-Delete example dnsrecords:
+Delete example DNSRecords:
 ```shell
-(cd ../.. && kubectl delete -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster1.yaml --context kind-kuadrant-dns-local-1)
-(cd ../.. && kubectl delete -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster2.yaml --context kind-kuadrant-dns-local-2)
-(cd ../.. && kubectl delete -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster3.yaml --context kind-kuadrant-dns-local-3)
+# Run from dns-operator repository root
+kubectl delete -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster1.yaml --context kind-kuadrant-dns-local-1
+kubectl delete -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster2.yaml --context kind-kuadrant-dns-local-2
+kubectl delete -n dnstest -f config/local-setup/dnsrecords/delegating/coredns/loadbalanced/dnsrecord-loadbalanced-coredns-cluster3.yaml --context kind-kuadrant-dns-local-3
 ```
 
 ## GEO
-The geo functionality is provided by the [geoip](https://coredns.io/plugins/geoip/) plugin from CoreDNS. 
-The kuadrant CoreDNS container image has a mock db embedded at it's root (GeoLite2-City-demo.mmdb), generated using `coredns/plugin/geoip/db-generator.go`, that can be used for testing purposes.
-The mock database contains sets of "local" subnets that are typical for kind deployments on mac and linux that are pointing at IE and US locales:
+
+This section describes how to test CoreDNS geographic routing capabilities using the embedded demo GeoIP database.
+
+### GeoIP Database
+
+The geo functionality is provided by the [geoip](https://coredns.io/plugins/geoip/) plugin from CoreDNS. The kuadrant CoreDNS container image has a demo database embedded at its root (`/GeoLite2-City-demo.mmdb`), generated using `coredns/plugin/geoip/db-generator.go`, for testing purposes.
+
+**Note:** The database path differs between deployment contexts:
+- **Container deployment** (Kind/Kubernetes): Use `/GeoLite2-City-demo.mmdb` (absolute path from container root)
+- **Local development** (running from `coredns/plugin/` directory): Use `geoip/GeoLite2-City-demo.mmdb` (relative path to the plugin directory)
+
+Ensure your Corefile uses the correct path for your deployment context.
+
+The demo database contains sets of local subnets typical for Kind deployments that map to IE and US locales:
 
 | Subnet           | Continent          | Country            |
 |------------------|--------------------|--------------------|
 | 127.0.100.0/24 	 | Europe / EU        | Ireland / IE       |
-| 27.0.200.0/24  	 | North America / NA | United States / US |
+| 127.0.200.0/24  	 | North America / NA | United States / US |
 | 10.89.100.0/24 	 | Europe / EU        | Ireland / IE       |
 | 10.89.200.0/24 	 | North America / NA | United States / US |
 
-You can use `-b` option with dig to use any available to host machine IP addresses as a "source". E.G `dig @[nameserver] [hostname] -p [exposed-port] -b 127.0.100.1` will be associated with IE locale and `-b 127.0.200.1` with US
+### Testing Geographic Routing
 
-> **_NOTE:_** the demo DB contains only localhost addresses. I.E. will work only with CoreDNS instance running with `make coredns-run` (not in kind cluster) unless you specify desired subnet in dig with `+subnet=[subnet]`
+**When running CoreDNS locally** (from terminal with `make run` in `coredns/plugin/` directory):
+You can use the `+subnet` option with dig to specify a client subnet. For example:
+- `dig @127.0.0.1 api.k.example.com -p 1053 +subnet=127.0.100.0/24` will be associated with IE locale
+- `dig @127.0.0.1 api.k.example.com -p 1053 +subnet=127.0.200.0/24` will be associated with US locale
 
-To add more subnets, it is the best to generate a new DB file. Add your desired CIDR range to the constants and at the end of the file associate it with the desired record (IE or US). 
+**When running CoreDNS in Kind cluster:**
+The demo DB contains only localhost addresses which aren't routable in Kind. Instead, use the `+subnet` parameter with dig to simulate client location (replace `$NS1` with your CoreDNS service IP):
+- `dig @$NS1 api.k.example.com +subnet=127.0.100.0/24` simulates a client from Ireland
+- `dig @$NS1 api.k.example.com +subnet=127.0.200.0/24` simulates a client from United States
 
-For a deployment using a real-world database you could refer to the [maxmind](https://dev.maxmind.com/geoip/) for their free db. Once obtained it must be mounted and referenced in the Corefile instead of the demo-db.
+### Customizing the GeoIP Database
+
+To add more subnets, generate a new database file by editing `coredns/plugin/geoip/db-generator.go`. Add your desired CIDR range to the constants and associate it with the desired record (IE or US).
+
+For production deployments using a real-world database, refer to [MaxMind](https://dev.maxmind.com/geoip/) for their free database. Once obtained, it must be mounted and referenced in the Corefile instead of the demo database.
+
+## Troubleshooting
+
+### Kind Cluster Issues
+
+**LoadBalancer IP not assigned:**
+
+Check that MetalLB is installed and running (required for LoadBalancer services in Kind):
+```shell
+kubectl get pods -n metallb-system
+```
+
+If not present, MetalLB should be installed as part of `make local-setup`. Check the setup logs.
+
+**CoreDNS pod not starting:**
+
+Check pod status and logs:
+```shell
+kubectl get pods -n kuadrant-coredns
+kubectl logs -n kuadrant-coredns deployment/kuadrant-coredns
+```
+
+Common issues:
+- RBAC permissions missing (check ClusterRole and ClusterRoleBinding)
+- Invalid Corefile configuration
+- GeoIP database file not found
+
+### DNSRecord Not Appearing in Zone
+
+**Verify the DNSRecord has the zone label:**
+```shell
+kubectl get dnsrecords.kuadrant.io -n dnstest -o jsonpath='{.items[*].metadata.labels}' | grep kuadrant.io/coredns-zone-name
+```
+
+Should include `kuadrant.io/coredns-zone-name: k.example.com`.
+
+If the label is missing, DNS Operator hasn't processed the record yet. Check:
+```shell
+# Check DNS Operator is running
+kubectl get pods -n dns-operator-system
+
+# Check DNS Operator logs
+kubectl logs -n dns-operator-system deployment/dns-operator-controller-manager
+```
+
+**Zone transfer (AXFR) shows no records:**
+
+Ensure the `transfer` plugin is enabled in the Corefile:
+```corefile
+k.example.com {
+    transfer {
+        to *
+    }
+    kuadrant
+}
+```
+
+### Multi-Cluster Issues
+
+**Cluster interconnection secrets not working:**
+
+Verify secrets exist and have correct labels:
+```shell
+kubectl get secret -A -l kuadrant.io/multicluster-kubeconfig=true
+```
+
+For Kind clusters, ensure you used the correct multicluster setup command:
+```shell
+make multicluster-local-setup PRIMARY_CLUSTER_COUNT=2 CLUSTER_COUNT=3
+```
+
+**Authoritative DNSRecord not created on primary cluster:**
+
+Check DNS Operator delegation role:
+```shell
+kubectl get configmap dns-operator-controller-env -n dns-operator-system -o jsonpath='{.data.DELEGATION_ROLE}'
+```
+
+Should be `primary` on primary clusters and `secondary` on secondary clusters.
+
+**For general CoreDNS integration troubleshooting**, see the [Integration Guide Troubleshooting Section](https://github.com/Kuadrant/kuadrant-operator/blob/main/doc/overviews/coredns-integration.md#troubleshooting).
+
+## Cleanup
+
+### Single Cluster Cleanup
+
+```shell
+# Delete test DNSRecord
+kubectl delete dnsrecords.kuadrant.io -n dnstest --all
+
+# Delete test namespace
+kubectl delete ns dnstest
+
+# Delete the kind cluster
+kind delete cluster --name kuadrant-dns-local
+```
+
+### Multi-Cluster Cleanup
+
+```shell
+# Delete DNSRecords from all clusters
+kubectl delete dnsrecords.kuadrant.io -n dnstest --all --context kind-kuadrant-dns-local-1
+kubectl delete dnsrecords.kuadrant.io -n dnstest --all --context kind-kuadrant-dns-local-2
+kubectl delete dnsrecords.kuadrant.io -n dnstest --all --context kind-kuadrant-dns-local-3
+
+# Delete test namespace from all clusters
+kubectl delete ns dnstest --context kind-kuadrant-dns-local-1
+kubectl delete ns dnstest --context kind-kuadrant-dns-local-2
+kubectl delete ns dnstest --context kind-kuadrant-dns-local-3
+
+# Delete all kind clusters
+kind delete cluster --name kuadrant-dns-local-1
+kind delete cluster --name kuadrant-dns-local-2
+kind delete cluster --name kuadrant-dns-local-3
+```
+
+## Related Documentation
+
+- **[Zone Delegation Guide](zone-delegation.md)** - Parent zone delegation setup using BIND9 as an example authoritative DNS server
+- **[CoreDNS Configuration Reference](configuration.md)** - Comprehensive configuration options for CoreDNS integration
+- **[CoreDNS Plugin README](../../coredns/plugin/README.md)** - Plugin syntax and quick-start examples
+- **[CoreDNS Integration Guide](https://github.com/Kuadrant/kuadrant-operator/blob/main/doc/overviews/coredns-integration.md)** - Conceptual overview and production deployment

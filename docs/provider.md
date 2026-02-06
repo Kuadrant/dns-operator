@@ -11,6 +11,7 @@ Kuadrant Supports the following DNS providers currently
 - AWS Route 53 (aws)
 - Google Cloud DNS (gcp)
 - Azure (azure)
+- CoreDNS (coredns)
 
 ### AWS Route 53 Provider
 
@@ -180,3 +181,43 @@ You will need to grant read and contributor access to the zone(s) you want manag
       --type=kuadrant.io/azure \
       --from-file=azure.json=/local/path/to/azure.json
     ```
+
+### CoreDNS Provider
+
+CoreDNS provider enables self-hosted DNS using CoreDNS in Kubernetes. Unlike cloud providers, it requires configuration (zones and nameservers) rather than only supplying authentication credentials.
+
+Kuadrant expects a `Secret` with zone and nameserver configuration. Below is an example for CoreDNS. It is important to set the secret type to `coredns`:
+
+```bash
+kubectl create secret generic my-coredns-credentials \
+  --namespace=kuadrant-dns-system \
+  --type=kuadrant.io/coredns \
+  --from-literal=ZONES=example.com \
+  --from-literal=NAMESERVERS=ns1.example.com,ns2.example.com
+```
+
+| Key           | Example Value                      | Description                                    |
+|---------------|------------------------------------|------------------------------------------------|
+| `ZONES`       | `example.com`                      | (Required) DNS zone this provider manages                 |
+| `NAMESERVERS` | `ns1.example.com,ns2.example.com`  | (Optional) Comma-separated list of authoritative nameservers for the zone. Only required for DNS Groups feature (active-passive failover). |
+
+**Note:** The CoreDNS provider does not require authentication credentials. It only needs to know which zone it manages (`ZONES` field is required). 
+
+For setting the secret as the default provider in a namespace, add the `kuadrant.io/default-provider=true` label:
+
+```bash
+kubectl label secret my-coredns-credentials \
+  -n kuadrant-dns-system \
+  kuadrant.io/default-provider=true
+```
+
+#### CoreDNS Integration Setup
+
+For comprehensive CoreDNS integration setup including:
+- CoreDNS deployment with the Kuadrant plugin
+- Corefile configuration
+- Multi-cluster delegation
+- Local development with Kind
+- Geographic and weighted routing
+
+See the [CoreDNS Configuration Reference](coredns/configuration.md).
