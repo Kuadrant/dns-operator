@@ -505,6 +505,8 @@ roleRef:
 
 CoreDNS provider secrets enable DNS Operator to match DNSRecords to zones and coordinate with CoreDNS.
 
+**Important**: At least one provider secret is always required for CoreDNS integration. Setting up the zone itself requires non-delegating DNSRecords, which need a provider secret (see "When Provider Secrets Are Needed" below).
+
 #### When Provider Secrets Are Needed
 
 Provider secrets are **only required for non-delegating DNSRecords**:
