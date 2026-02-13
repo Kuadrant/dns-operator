@@ -264,9 +264,30 @@ func CreateNamespace(name string, client client.Client) {
 	}, time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
 }
 
-// setupEnv creates a new controller runtime envTest environment with the required controllers running for the given delegation role.
+// createTestEnv creates and starts a new controller runtime envTest environment.
+// It returns the environment and the rest.Config for connecting to its API server.
+// The caller is responsible for stopping the environment when done.
+func createTestEnv() (*envtest.Environment, *rest.Config) {
+	testEnv := &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	cfg, err := testEnv.Start()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(cfg).NotTo(BeNil())
+
+	err = v1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	return testEnv, cfg
+}
+
+// setupManager creates a ctrl.Manager with the required controllers registered for the given delegation role,
+// using the provided rest.Config (typically from an existing envtest environment).
+// The manager is NOT started - the caller must start it (e.g., via startManager).
 //
-// The setup of controllers here should be the same how they are configured in the main application.
+// The setup of controllers here should be the same as how they are configured in the main application.
 //
 // Primary:
 //   - create multicluster-controller-runtime manager
@@ -277,22 +298,7 @@ func CreateNamespace(name string, client client.Client) {
 // Secondary:
 //   - create controller-runtime manager
 //   - setup DNSRecordReconciler
-func setupEnv(delegationRole string, count int, group string, txtResolver TXTResolver) (*envtest.Environment, ctrl.Manager) {
-	testEnv := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
-		ErrorIfCRDPathMissing: true,
-	}
-
-	var err error
-	var cfg *rest.Config
-
-	cfg, err = testEnv.Start()
-	Expect(err).NotTo(HaveOccurred())
-	Expect(cfg).NotTo(BeNil())
-
-	err = v1alpha1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-
+func setupManager(ctx context.Context, cfg *rest.Config, delegationRole string, count int, group string, txtResolver TXTResolver) ctrl.Manager {
 	dynClient, err := dynamic.NewForConfig(cfg)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(dynClient).NotTo(BeNil())
@@ -372,6 +378,32 @@ func setupEnv(delegationRole string, count int, group string, txtResolver TXTRes
 		Expect(err).ToNot(HaveOccurred())
 	}
 
+	return mgr
+}
+
+// startManager starts the given manager in a goroutine with a new child context.
+// Returns a stop function that cancels the manager context and waits for the
+// manager to fully shut down. The stop function is safe to call multiple times.
+func startManager(parentCtx context.Context, mgr ctrl.Manager) func() {
+	mgrCtx, mgrCancel := context.WithCancel(parentCtx)
+	done := make(chan struct{})
+	go func() {
+		defer GinkgoRecover()
+		defer close(done)
+		err := mgr.Start(mgrCtx)
+		Expect(err).ToNot(HaveOccurred())
+	}()
+	return func() {
+		mgrCancel()
+		<-done
+	}
+}
+
+// setupEnv creates a new controller runtime envTest environment with the required controllers running for the given delegation role.
+// This is a convenience wrapper that combines createTestEnv and setupManager.
+func setupEnv(delegationRole string, count int, group string, txtResolver TXTResolver) (*envtest.Environment, ctrl.Manager) {
+	testEnv, cfg := createTestEnv()
+	mgr := setupManager(ctx, cfg, delegationRole, count, group, txtResolver)
 	return testEnv, mgr
 }
 
