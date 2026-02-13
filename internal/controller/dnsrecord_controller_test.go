@@ -676,11 +676,32 @@ var _ = Describe("DNSRecordReconciler", func() {
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(1)))
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
+			// During conflict, records actively reconcile and oscillate between
+			// AwaitingValidation (after publishing) and ProviderSuccess (after validating).
+			// Verify the Ready condition is in one of these active states, not an error.
+			g.Expect(dnsRecord.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type": Equal(string(v1alpha1.ConditionTypeReady)),
+					"Reason": BeElementOf(
+						string(v1alpha1.ConditionReasonAwaitingValidation),
+						string(v1alpha1.ConditionReasonProviderSuccess),
+					),
+				})),
+			)
 
 			err = primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(dnsRecord2.Status.WriteCounter).To(BeNumerically(">", int64(1)))
 			g.Expect(dnsRecord2.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
+			g.Expect(dnsRecord2.Status.Conditions).To(
+				ContainElement(MatchFields(IgnoreExtras, Fields{
+					"Type": Equal(string(v1alpha1.ConditionTypeReady)),
+					"Reason": BeElementOf(
+						string(v1alpha1.ConditionReasonAwaitingValidation),
+						string(v1alpha1.ConditionReasonProviderSuccess),
+					),
+				})),
+			)
 		}, TestTimeoutLong, time.Second).Should(Succeed())
 
 		By("fixing conflict with dnsrecord " + dnsRecord2.Name + " with endpoint dnsName: " + testHostname + " and TTL: `60`")
