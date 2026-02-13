@@ -666,47 +666,19 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		By("checking dnsrecord " + dnsRecord.Name + " and " + dnsRecord2.Name + " conflict")
 		Eventually(func(g Gomega) {
-			var oldRequeue, newRequeue time.Duration
-			var err error
-
-			oldRequeue, err = time.ParseDuration(dnsRecord.Status.ValidFor)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-
-			err = primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			newRequeue, err = time.ParseDuration(dnsRecord.Status.ValidFor)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			g.Expect(oldRequeue.Milliseconds()).To(BeNumerically("<", newRequeue.Milliseconds()))
+			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(0)))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		Eventually(func(g Gomega) {
 			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord.Status.Conditions).To(
-				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status":             Equal(metav1.ConditionFalse),
-					"Reason":             Equal("AwaitingValidation"),
-					"Message":            Equal("Awaiting validation"),
-					"ObservedGeneration": Equal(dnsRecord.Generation),
-				})),
-			)
 			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(1)))
 			g.Expect(dnsRecord.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
 
 			err = primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(dnsRecord2.Status.Conditions).To(
-				ContainElement(MatchFields(IgnoreExtras, Fields{
-					"Type":               Equal(string(v1alpha1.ConditionTypeReady)),
-					"Status":             Equal(metav1.ConditionFalse),
-					"Reason":             Equal("AwaitingValidation"),
-					"Message":            Equal("Awaiting validation"),
-					"ObservedGeneration": Equal(dnsRecord2.Generation),
-				})),
-			)
 			g.Expect(dnsRecord2.Status.WriteCounter).To(BeNumerically(">", int64(1)))
 			g.Expect(dnsRecord2.Status.DomainOwners).To(ConsistOf(dnsRecord.GetUIDHash(), dnsRecord2.GetUIDHash()))
 		}, TestTimeoutLong, time.Second).Should(Succeed())

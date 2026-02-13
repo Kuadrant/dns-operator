@@ -142,9 +142,6 @@ type DNSRecordStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// QueuedAt is a time when DNS record was received for the reconciliation
-	QueuedAt metav1.Time `json:"queuedAt,omitempty"`
-
 	// ValidFor indicates duration since the last reconciliation we consider data in the record to be valid
 	ValidFor string `json:"validFor,omitempty"`
 
