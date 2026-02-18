@@ -98,7 +98,9 @@ apply geoip lookup.
 
 ```corefile
 example.org {
-   geoip GeoLite2-City-demo.mmdb
+   geoip GeoLite2-City-demo.mmdb {
+      edns-subnet
+   }
    metadata
    kuadrant
 }

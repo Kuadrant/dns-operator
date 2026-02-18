@@ -297,7 +297,26 @@ Delete example dnsrecords:
 ```
 
 ## GEO
-The geo functionality is provided by the [geoip](https://coredns.io/plugins/geoip/) plugin from CoreDNS. 
+The geo functionality is provided by the [geoip](https://coredns.io/plugins/geoip/) plugin from CoreDNS.
+
+### EDNS Client Subnet
+
+The CoreDNS Service uses `externalTrafficPolicy: Cluster` (the default), which provides cluster-wide load balancing but means kube-proxy replaces the original client IP with an internal cluster IP when forwarding packets between nodes. As a result, CoreDNS sees a cluster node IP as the source, not the original client IP.
+
+To preserve GeoIP accuracy, the `geoip` plugin is configured with `edns-subnet`:
+
+```corefile
+geoip GeoLite2-City-demo.mmdb {
+    edns-subnet
+}
+```
+
+This tells the plugin to use the [EDNS Client Subnet (ECS)](https://datatracker.ietf.org/doc/html/rfc7871) option from the DNS query to determine client location, rather than relying on the source IP. When a recursive resolver queries this authoritative CoreDNS, it typically includes the client's subnet in the ECS option. The `geoip` plugin reads this and performs the geo lookup against that subnet, falling back to the source IP only if ECS is absent.
+
+Most major recursive resolvers (Google Public DNS, Cloudflare, OpenDNS, ISP resolvers) send ECS when querying authoritative servers, so GeoIP routing works correctly for the vast majority of DNS traffic. Queries from resolvers that strip or omit ECS will be geo-located based on the cluster node IP rather than the client's actual location.
+
+### Mock GeoIP Database
+
 The kuadrant CoreDNS container image has a mock db embedded at it's root (GeoLite2-City-demo.mmdb), generated using `coredns/plugin/geoip/db-generator.go`, that can be used for testing purposes.
 The mock database contains sets of "local" subnets that are typical for kind deployments on mac and linux that are pointing at IE and US locales:
 

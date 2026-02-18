@@ -50,13 +50,6 @@ patches:
             value: ""
     target:
       kind: Deployment
-  - patch: |
-      - op: add
-        path: /spec/externalTrafficPolicy
-        value: Local
-    target:
-      kind: Service
-      name: kuadrant-coredns
 configMapGenerator:
   - behavior: create
     files:
