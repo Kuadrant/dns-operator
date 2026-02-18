@@ -1,6 +1,9 @@
 package output
 
+import "io"
+
 type JSONOutputFormatter struct {
+	_ io.Writer
 }
 
 var _ OutputFormatter = &JSONOutputFormatter{}

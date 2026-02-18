@@ -2,12 +2,14 @@ package output
 
 import (
 	"fmt"
+	"io"
 	"reflect"
 
 	"gopkg.in/yaml.v3"
 )
 
 type TextOutputFormatter struct {
+	w io.Writer
 }
 
 var _ OutputFormatter = &TextOutputFormatter{}
@@ -17,16 +19,17 @@ const (
 )
 
 func init() {
-	RegisterOutputFormatter("text", &TextOutputFormatter{})
+	RegisterOutputFormatter("text", func(w io.Writer) OutputFormatter {
+		return &TextOutputFormatter{w: w}
+	})
 }
 
 func (f *TextOutputFormatter) Print(message string) {
-	fmt.Println(message)
+	fmt.Fprintln(f.w, message)
 }
 
 func (f *TextOutputFormatter) Error(err error, message string) {
-	fmt.Println(fmt.Sprintf("%s: %s", message, err.Error()))
-
+	fmt.Fprintf(f.w, "%s: %s\n", message, err.Error())
 }
 
 func (f *TextOutputFormatter) PrintObject(object any) {
@@ -40,7 +43,7 @@ func (f *TextOutputFormatter) PrintObject(object any) {
 	case reflect.Struct, reflect.Ptr:
 		f.printStruct(object)
 	default:
-		fmt.Printf("%+v\n", object)
+		fmt.Fprintf(f.w, "%+v\n", object)
 	}
 }
 
@@ -53,7 +56,7 @@ func (f *TextOutputFormatter) PrintTable(table PrintableTable) {
 	}
 	for rowIndex, row := range table.Data {
 		if len(row) != len(table.Headers) {
-			fmt.Printf("Can't print table. Expecting %d columns but row %d contains %d elements\n", len(table.Headers), rowIndex, len(table.Headers))
+			fmt.Fprintf(f.w, "Can't print table. Expecting %d columns but row %d contains %d elements\n", len(table.Headers), rowIndex, len(table.Headers))
 			return
 		}
 
@@ -66,22 +69,22 @@ func (f *TextOutputFormatter) PrintTable(table PrintableTable) {
 	}
 
 	for columnIndex, header := range table.Headers {
-		fmt.Printf("%-*s", columnPadding[columnIndex]+minTablePadding, header)
+		fmt.Fprintf(f.w, "%-*s", columnPadding[columnIndex]+minTablePadding, header)
 	}
-	fmt.Println()
+	fmt.Fprintln(f.w)
 
 	for _, row := range table.Data {
 		for columnIndex, cell := range row {
-			fmt.Printf("%-*s", columnPadding[columnIndex]+minTablePadding, cell)
+			fmt.Fprintf(f.w, "%-*s", columnPadding[columnIndex]+minTablePadding, cell)
 		}
-		fmt.Println()
+		fmt.Fprintln(f.w)
 	}
 }
 
 func (f *TextOutputFormatter) printArray(object any) {
 	s := reflect.ValueOf(object)
 	for i := 0; i < s.Len(); i++ {
-		fmt.Printf("%+v\n", s.Index(i))
+		fmt.Fprintf(f.w, "%+v\n", s.Index(i))
 	}
 }
 
@@ -100,15 +103,15 @@ func (f *TextOutputFormatter) printMap(object any) {
 
 	// Print with padding
 	for _, key := range keys {
-		fmt.Printf("%-*s : %+v\n", maxKeyWidth, fmt.Sprintf("%v", key.Interface()), m.MapIndex(key).Interface())
+		fmt.Fprintf(f.w, "%-*s : %+v\n", maxKeyWidth, fmt.Sprintf("%v", key.Interface()), m.MapIndex(key).Interface())
 	}
 }
 
 func (f *TextOutputFormatter) printStruct(object any) {
 	out, err := yaml.Marshal(object)
 	if err != nil {
-		fmt.Printf("%+v\n", object)
+		fmt.Fprintf(f.w, "%+v\n", object)
 		return
 	}
-	fmt.Println(string(out))
+	fmt.Fprintln(f.w, string(out))
 }

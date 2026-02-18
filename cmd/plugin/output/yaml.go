@@ -2,68 +2,67 @@ package output
 
 import (
 	"fmt"
+	"io"
 
 	"gopkg.in/yaml.v3"
 )
 
 const (
 	fileSeparator = "---"
-
-	printTypeText   = "text"
-	printTypeObject = "object"
 )
 
 type YAMLOutputFormatter struct {
-	lastPrintType string
+	w io.Writer
 }
 
 var _ OutputFormatter = &YAMLOutputFormatter{}
 
 func init() {
-	RegisterOutputFormatter("yaml", &YAMLOutputFormatter{})
+	RegisterOutputFormatter("yaml", func(w io.Writer) OutputFormatter {
+		return &YAMLOutputFormatter{w: w}
+	})
 }
-func (f *YAMLOutputFormatter) Print(message string) {
-	if f.lastPrintType == printTypeObject {
-		fmt.Println(fileSeparator)
-	}
-	fmt.Printf("- message: %s\n", message)
-	f.lastPrintType = printTypeText
 
+func (f *YAMLOutputFormatter) Print(message string) {
+	fmt.Fprintln(f.w, fileSeparator)
+	out, err := yaml.Marshal(map[string]string{"message": message})
+	if err != nil {
+		fmt.Fprintf(f.w, "message: %s\n", message)
+		return
+	}
+	fmt.Fprint(f.w, string(out))
 }
 
 func (f *YAMLOutputFormatter) Error(err error, message string) {
-	if f.lastPrintType == printTypeObject {
-		fmt.Println(fileSeparator)
+	fmt.Fprintln(f.w, fileSeparator)
+	out, marshalErr := yaml.Marshal(map[string]string{"error": err.Error(), "message": message})
+	if marshalErr != nil {
+		fmt.Fprintf(f.w, "error: %s\nmessage: %s\n", err.Error(), message)
+		return
 	}
-	fmt.Printf("- error: %s\n  message: %s\n", err.Error(), message)
-	f.lastPrintType = printTypeText
+	fmt.Fprint(f.w, string(out))
 }
 
 func (f *YAMLOutputFormatter) PrintObject(object any) {
-	fmt.Println(fileSeparator)
+	fmt.Fprintln(f.w, fileSeparator)
 	out, err := yaml.Marshal(object)
 	if err != nil {
-		fmt.Printf("- error marshalling object: %s\n", err)
-		f.lastPrintType = printTypeText
+		fmt.Fprintf(f.w, "error marshalling object: %s\n", err)
 		return
 	}
-	fmt.Println(string(out))
-	f.lastPrintType = printTypeObject
+	fmt.Fprint(f.w, string(out))
 }
 
 func (f *YAMLOutputFormatter) PrintTable(table PrintableTable) {
+	fmt.Fprintln(f.w, fileSeparator)
+
 	// validate table
 	for rowIndex, row := range table.Data {
 		if len(row) != len(table.Headers) {
-			if f.lastPrintType != printTypeText {
-				fmt.Println(fileSeparator)
-			}
-			fmt.Printf("- error printing table. Expecting %d columns but row %d contains %d elements\n", len(table.Headers), rowIndex, len(row))
+			fmt.Fprintf(f.w, "error printing table. Expecting %d columns but row %d contains %d elements\n", len(table.Headers), rowIndex, len(row))
 			return
 		}
 	}
-
-	fmt.Println(fileSeparator)
 
 	// Convert each row into a map keyed by header names
 	var items []map[string]string
@@ -77,11 +76,8 @@ func (f *YAMLOutputFormatter) PrintTable(table PrintableTable) {
 
 	out, err := yaml.Marshal(items)
 	if err != nil {
-		fmt.Printf("- error marshalling table: %s\n", err)
-		f.lastPrintType = printTypeText
+		fmt.Fprintf(f.w, "error marshalling table: %s\n", err)
 		return
 	}
-	fmt.Print(string(out))
-	f.lastPrintType = printTypeObject
-
+	fmt.Fprint(f.w, string(out))
 }

@@ -1,5 +1,10 @@
 package output
 
+import (
+	"io"
+	"os"
+)
+
 type OutputFormatter interface {
 	Print(message string)
 	Error(err error, message string)
@@ -14,22 +19,22 @@ type PrintableTable struct {
 
 var (
 	Formatter            OutputFormatter
-	registeredFormatters = make(map[string]OutputFormatter)
+	registeredFormatters = make(map[string]func(io.Writer) OutputFormatter)
 )
 
 func init() {
-	Formatter = &TextOutputFormatter{}
+	Formatter = &TextOutputFormatter{w: os.Stdout}
 }
 
-// RegisterOutputFormatter registers formatter under the specific option. E.g. "json" for JsonFormatter
-func RegisterOutputFormatter(option string, formatter OutputFormatter) {
-	registeredFormatters[option] = formatter
+// RegisterOutputFormatter registers a formatter factory under the specific option. E.g. "json" for JsonFormatter
+func RegisterOutputFormatter(option string, factory func(io.Writer) OutputFormatter) {
+	registeredFormatters[option] = factory
 }
 
 // SetOutputFormatter will override default formatter with one of the registered providers
-func SetOutputFormatter(option string) {
-	formatter, ok := registeredFormatters[option]
+func SetOutputFormatter(option string, w io.Writer) {
+	factory, ok := registeredFormatters[option]
 	if ok {
-		Formatter = formatter
+		Formatter = factory(w)
 	}
 }
