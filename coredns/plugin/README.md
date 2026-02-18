@@ -6,29 +6,17 @@
 
 ## Description
 
-The *kuadrant* plugin sets up watch and listers on kuadrant's DNSRecord resources in the k8s cluster and as it discovers
-them processes them and adds the endpoints to the appropriate DNS zone with the correct GEO and Weighted data.
-The plugin uses logic from the [CoreDNS file plugin](https://github.com/coredns/coredns/tree/master/plugin/file) to create a functioning DNS server.
+The *kuadrant* plugin enables CoreDNS to serve DNS records from Kubernetes DNSRecord custom resources, providing an alternative to cloud-based DNS services by allowing you to host DNS records in your own CoreDNS instances running in Kubernetes.
 
-**Weighting**
+The plugin sets up watchers and listeners on DNSRecord resources in the Kubernetes cluster. As it discovers them, it processes and adds the endpoints to the appropriate DNS zone with GEO and weighted routing capabilities. The plugin uses logic from the [CoreDNS file plugin](https://github.com/coredns/coredns/tree/master/plugin/file) to create a functioning DNS server.
 
-For weighted responses, the *kuadrant* plugin builds a list of all the available records that could be provided as the
-answer to a given query from within the identified zone. It then applies a weighting algorithm to decide on a single
-response depending on the individual record weighting. It is effectively decided each time based on a random number
-between 0 and the sum of all the weights. So it is not a super predictable response but is a correctly weighted response.
+**Weighted Routing:** The plugin builds a list of all available records that could be provided as the answer to a given query from within the identified zone. It then applies a weighting algorithm to decide on a single response depending on the individual record weighting, using a random number between 0 and the sum of all weights. This provides probabilistic load distribution across endpoints.
 
-**GEO**
+**Geographic Routing:** GEO data is sourced from a geographical database such as MaxMind and made available with the [CoreDNS `geoip` plugin](https://coredns.io/plugins/geoip/), which must execute before the Kuadrant plugin. With this enabled, the plugin uses GEO data to decide which record to return based on the client's geographic location.
 
-GEO data is sourced from a geo database such as MaxMind. This is then made available via the existing
-[CoreDNS geoip plugin](https://coredns.io/plugins/geoip/). This plugin must execute before the Kuadrant plugin in order
-for GEO based responses to be provided. With this plugin enabled, Kuadrant can use the GEO data to decide which record
-to return to the DNS query.
+**Combined Routing:** When multiple endpoints exist within a single geographic region, the plugin first applies the GEO filter and then uses the weighting algorithm on the result, enabling both geographic distribution and load balancing within regions.
 
-**Weighting within a GEO**
-
-It can be the case that you have multiple endpoints within a single GEO and want to weight traffic across those
-endpoints. In this case the Kuadrant plugin will first apply the GEO filter and then use the weighting filter on the
-result if there is more than one endpoint within a given GEO.
+For a complete overview of CoreDNS integration with DNS Operator, see the [CoreDNS Integration Guide](../../docs/coredns/coredns-integration.md).
 
 ## Syntax
 
@@ -47,10 +35,10 @@ kuadrant [ZONES...] {
 }
 ```
 
-* `kubeconfig` **KUBECONFIG [CONTEXT]** authenticates the connection to a remote k8s cluster using a kubeconfig file.
+* `kubeconfig` **KUBECONFIG [CONTEXT]** authenticates the connection to a remote Kubernetes cluster using a kubeconfig file.
   **[CONTEXT]** is optional, if not set, then the current context specified in kubeconfig will be used.
 * `rname` **EMAIL** sets the email address (RNAME) in the SOA record for the zone. The email format (e.g., `admin@example.com`)
-  will be converted to DNS mailbox format (e.g., `admin.example.com.`). According to RFC 1035 and RFC 2142, any dots in the
+  will be converted to DNS mailbox format (e.g., `admin.example.com.`). According to [RFC 1035](https://www.rfc-editor.org/rfc/rfc1035.html) and [RFC 2142](https://www.rfc-editor.org/rfc/rfc2142.html), any dots in the
   local part (before @) will be escaped with backslash (e.g., `dns.admin@example.com` becomes `dns\.admin.example.com.`).
   If not specified, defaults to `hostmaster.{zone}`.
 
@@ -58,14 +46,18 @@ For enabling zone transfers look at the *transfer* plugin.
 
 ## Examples
 
-Load the `example.org` zone from DNSRecord resources on cluster with the label `kuadrant.io/coredns-zone-name: example.org`
+### Example 1: Basic DNS Record Serving
 
+Load the `example.org` zone from DNSRecord resources on the cluster with the label `kuadrant.io/coredns-zone-name: example.org`.
+
+**Corefile:**
 ```corefile
 example.org {
     kuadrant
 }
 ```
 
+**DNSRecord:**
 ```yaml
 apiVersion: kuadrant.io/v1alpha1
 kind: DNSRecord
@@ -83,19 +75,11 @@ spec:
         - 1.1.1.1
 ```
 
-Load the `example.org` zone with a custom SOA RNAME email address:
+### Example 2: Geographic Routing with GeoIP
 
-```corefile
-example.org {
-   kuadrant {
-      rname admin@example.com
-   }
-}
-```
+Load the `example.org` zone from DNSRecord resources on the cluster with the label `kuadrant.io/coredns-zone-name: example.org` and apply geoip lookup to route clients to region-specific endpoints.
 
-Load the `example.org` zone from DNSRecord resources on cluster with the label `kuadrant.io/coredns-zone-name: example.org` and
-apply geoip lookup.
-
+**Corefile:**
 ```corefile
 example.org {
    geoip GeoLite2-City-demo.mmdb {
@@ -106,6 +90,7 @@ example.org {
 }
 ```
 
+**DNSRecord:**
 ```yaml
 apiVersion: kuadrant.io/v1alpha1
 kind: DNSRecord
@@ -129,21 +114,23 @@ spec:
       recordType: A
       providerSpecific:
         - name: geo-code
-          value: GEO-EU
+          value: GEO-US
       recordTTL: 300
-      setIdentifier: GEO-EU
+      setIdentifier: GEO-US
       targets:
         - 2.2.2.2
 ```
 
 ## Development
 
-Make targets to aid development can be viewed with:
-```shell
-make help
-```
+Quick start for testing plugin changes locally:
 
-Create a Corefile for local development that references your local kubeconfig:
+**Prerequisites:**
+- Running Kubernetes cluster with kubectl configured
+- A `Corefile` in the `coredns/plugin/` directory (see below)
+
+When you run `make run` from the `coredns/plugin/` directory, CoreDNS will look for a `Corefile` in the current working directory. Create a `Corefile` in `coredns/plugin/` with the following content (see `coredns/examples/Corefile` for reference):
+
 ```corefile
 k.example.com {
    debug
@@ -154,27 +141,50 @@ k.example.com {
    }
    metadata
    kuadrant {
-      kubeconfig <path to kubeconfig>/.kube/config
+      kubeconfig <path-to-your-home>/.kube/config
    }
 }
 ```
 
-Run Kuadrant build of CoreDNS locally:
-```shell
-make run
-```
+**Note:** The `geoip` line is optional and only needed for testing geographic routing. For basic DNS record testing, you can omit it.
 
-Create a DNSRecord resource and label it with the correct zone name:
+Then run CoreDNS locally:
+
 ```shell
+# Run from coredns/plugin directory
+make run
+
+# In another terminal, apply a test DNSRecord and label it
 kubectl apply -f ../examples/dnsrecord-api-k-example-com_geo_weight.yaml
 kubectl label dnsrecord/api-k-example-com kuadrant.io/coredns-zone-name=k.example.com
+
+# Verify DNS resolution
+dig @127.0.0.1 api.k.example.com -p 1053 +short
 ```
 
-Verify you can access the server:
+For comprehensive local development and testing instructions, see the [CoreDNS Local Development Guide](../../docs/coredns/local-development.md).
+
+## Troubleshooting
+
+**DNSRecords not appearing in DNS queries:**
+
+Verify the DNSRecord has the required label:
 ```shell
-dig @127.0.0.1 api.k.example.com -p 1053 +subnet=127.0.100.100 +short
-klb.api.k.example.com.
-geo-eu.klb.api.k.example.com.
-cluster3.klb.api.k.example.com.
-127.0.0.3
+kubectl get dnsrecord -o jsonpath='{.items[*].metadata.labels}' | grep kuadrant.io/coredns-zone-name
 ```
+
+**Plugin not loading or errors during startup:**
+
+Check the terminal output where you ran `make run` for error messages. The plugin logs errors and warnings directly to stdout/stderr.
+
+For more troubleshooting guidance:
+- Local environment issues: [Local Development Guide Troubleshooting](../../docs/coredns/local-development.md#troubleshooting)
+- General CoreDNS integration issues: [Integration Guide Troubleshooting](../../docs/coredns/coredns-integration.md#troubleshooting)
+
+## See Also
+
+- [CoreDNS Integration Guide](../../docs/coredns/coredns-integration.md) - Complete overview and production deployment
+- [CoreDNS Local Development Guide](../../docs/coredns/local-development.md) - Local testing with Kind clusters
+- [CoreDNS Configuration Reference](../../docs/coredns/configuration.md) - Detailed configuration options
+- [CoreDNS Official Documentation](https://coredns.io/manual/toc/) - General CoreDNS plugins and configuration
+- [CoreDNS GeoIP Plugin](https://coredns.io/plugins/geoip/) - Geographic routing plugin
