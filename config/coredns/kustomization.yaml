@@ -64,4 +64,4 @@ configMapGenerator:
 images:
   - name: quay.io/kuadrant/coredns-kuadrant
     newName: quay.io/kuadrant/coredns-kuadrant
-    newTag: latest
+    newTag: v0.16.1
