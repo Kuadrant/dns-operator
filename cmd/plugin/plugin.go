@@ -26,7 +26,7 @@ var rootCMD = &cobra.Command{
 	Long:  "DNS Operator command line utility",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		logf.SetLogger(output.NewLogger(verbose))
-		output.SetOutputFormatter(outputFormat)
+		output.SetOutputFormatter(outputFormat, os.Stdout)
 	},
 }
 
