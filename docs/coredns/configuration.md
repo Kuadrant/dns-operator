@@ -824,7 +824,7 @@ kubectl logs -n dns-operator-system deployment/dns-operator-controller-manager |
 #### Additional Resources
 
 **For procedural guides:**
-- [Exercising DNS Failover via Groups](../exercising_DNS_failover_via_groups.md) - Step-by-step failover exercise and use cases
+- [Exercising DNS Failover via Groups](../exercising_dns_failover_via_groups.md) - Step-by-step failover exercise and use cases
 - [Migrating Existing Clusters to Use Groups](../migrating_existing_clusters_to_use_groups.md) - Migration from non-groups setup
 
 ---
@@ -1152,19 +1152,6 @@ This automatically creates:
 **Customizing Configuration**:
 
 If you need to modify the default settings (e.g., change namespace, add labels, or disable monitoring), edit [`config/coredns/kustomization.yaml`](../../config/coredns/kustomization.yaml) in the `valuesInline` section.
-
-**Using Helm directly** (without DNS Operator's kustomize):
-
-The base CoreDNS helm chart ([`config/coredns/charts/coredns/values.yaml`](../../config/coredns/charts/coredns/values.yaml)) has Prometheus disabled by default. Enable it in your values file:
-
-```yaml
-prometheus:
-  service:
-    enabled: true
-  monitor:
-    enabled: true
-    namespace: kuadrant-coredns
-```
 
 #### Grafana Dashboards
 
