@@ -353,7 +353,7 @@ func setupEnv(delegationRole string, count int, group string, txtResolver TXTRes
 		},
 	}
 
-	err = dnsRecordController.SetupWithManager(mgr, RequeueDuration, ValidityDuration, DefaultValidationDuration, true, true)
+	err = dnsRecordController.SetupWithManager(mgr, RequeueDuration, DefaultValidationDuration, true, true)
 	Expect(err).ToNot(HaveOccurred())
 
 	if delegationRole == DelegationRolePrimary {

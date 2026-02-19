@@ -142,9 +142,6 @@ type DNSRecordStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// QueuedAt is a time when DNS record was received for the reconciliation
-	QueuedAt metav1.Time `json:"queuedAt,omitempty"`
-
 	// ValidFor indicates duration since the last reconciliation we consider data in the record to be valid
 	ValidFor string `json:"validFor,omitempty"`
 
@@ -246,9 +243,10 @@ func (s *DNSRecordStatus) ProviderEndpointsRemoved() bool {
 }
 
 // ProviderEndpointsDeletion return true if the ready status condition has the reason set to "ProviderEndpointsDeletion"
+// or "ProviderEndpointsRemoved" (a progression past deletion)
 func (s *DNSRecordStatus) ProviderEndpointsDeletion() bool {
 	readyCond := meta.FindStatusCondition(s.Conditions, string(ConditionTypeReady))
-	if readyCond == nil || readyCond.Reason == string(ConditionReasonProviderEndpointsDeletion) {
+	if readyCond == nil || readyCond.Reason == string(ConditionReasonProviderEndpointsDeletion) || readyCond.Reason == string(ConditionReasonProviderEndpointsRemoved) {
 		return true
 	}
 	return false
