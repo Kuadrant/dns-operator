@@ -437,7 +437,7 @@ kubectl delete pod -n default test-dns
 > - Configuring DNS Operator with group identifiers
 > - Creating and managing active groups TXT records
 >
-> **For failover procedures**, see [Exercising DNS Failover via Groups](../exercising_DNS_failover_via_groups.md)
+> **For failover procedures**, see [Exercising DNS Failover via Groups](../exercising_dns_failover_via_groups.md)
 
 **Prerequisites for this step:**
 - Understanding of DNS Groups concept (see link above)

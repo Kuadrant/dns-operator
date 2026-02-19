@@ -210,14 +210,3 @@ kubectl label secret my-coredns-credentials \
   -n kuadrant-dns-system \
   kuadrant.io/default-provider=true
 ```
-
-#### CoreDNS Integration Setup
-
-For comprehensive CoreDNS integration setup including:
-- CoreDNS deployment with the Kuadrant plugin
-- Corefile configuration
-- Multi-cluster delegation
-- Local development with Kind
-- Geographic and weighted routing
-
-See the [CoreDNS Configuration Reference](coredns/configuration.md).
