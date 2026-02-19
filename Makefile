@@ -437,7 +437,7 @@ KUBE_BURNER_VERSION = v1.11.1
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
-$(KUSTOMIZE): $(LOCALBIN)
+$(KUSTOMIZE): | $(LOCALBIN)
 	@if test -x $(LOCALBIN)/kustomize && ! $(LOCALBIN)/kustomize version | grep -q $(KUSTOMIZE_VERSION); then \
 		echo "$(LOCALBIN)/kustomize version is not expected $(KUSTOMIZE_VERSION). Removing it before installing."; \
 		rm -rf $(LOCALBIN)/kustomize; \
@@ -446,18 +446,18 @@ $(KUSTOMIZE): $(LOCALBIN)
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary. If wrong version is installed, it will be overwritten.
-$(CONTROLLER_GEN): $(LOCALBIN)
+$(CONTROLLER_GEN): | $(LOCALBIN)
 	test -s $(LOCALBIN)/controller-gen && $(LOCALBIN)/controller-gen --version | grep -q $(CONTROLLER_TOOLS_VERSION) || \
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
-$(ENVTEST): $(LOCALBIN)
+$(ENVTEST): | $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 .PHONY: govulncheck
 govulncheck: $(GOVULNCHECK) ## Download govulncheck locally if necessary.
-$(GOVULNCHECK): $(LOCALBIN)
+$(GOVULNCHECK): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install golang.org/x/vuln/cmd/govulncheck@latest
 
 .PHONY: operator-sdk
@@ -479,22 +479,22 @@ endif
 
 .PHONY: openshift-goimports
 openshift-goimports: $(OPENSHIFT_GOIMPORTS) ## Download openshift-goimports locally if necessary
-$(OPENSHIFT_GOIMPORTS): $(LOCALBIN)
+$(OPENSHIFT_GOIMPORTS): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/openshift-eng/openshift-goimports@$(OPENSHIFT_GOIMPORTS_VERSION)
 
 .PHONY: kind
 kind: $(KIND) ## Download kind locally if necessary.
-$(KIND): $(LOCALBIN)
+$(KIND): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kind@$(KIND_VERSION)
 
 .PHONY: act
 act: $(ACT) ## Download act locally if necessary.
-$(ACT): $(LOCALBIN)
+$(ACT): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/nektos/act@$(ACT_VERSION)
 
 .PHONY: yq
 yq: $(YQ) ## Download yq locally if necessary.
-$(YQ): $(LOCALBIN)
+$(YQ): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@$(YQ_VERSION)
 
 .PHONY: helm
@@ -513,12 +513,12 @@ $(HELM):
 
 .PHONY: ginkgo
 ginkgo: $(GINKGO) ## Download ginkgo locally if necessary
-$(GINKGO): $(LOCALBIN)
+$(GINKGO): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@$(GINKGO_VERSION)
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
-$(GOLANGCI_LINT): $(LOCALBIN)
+$(GOLANGCI_LINT): | $(LOCALBIN)
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
 
 .PHONY: kube-burner
