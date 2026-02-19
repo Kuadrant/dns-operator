@@ -17,11 +17,14 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	externaldns "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/types"
 )
 
@@ -56,6 +59,7 @@ type DNSRecordAccessor interface {
 	HasProviderSecretAssigned() bool
 	IsDeleting() bool
 	IsActive() bool
+	FinalizeReconciliation(ctx context.Context, dnsProvider provider.Provider) error
 }
 
 type DNSRecord struct {
@@ -151,6 +155,11 @@ func (s *DNSRecord) SetStatusGroup(group types.Group) {
 
 func (s *DNSRecord) SetStatusActiveGroups(groups types.Groups) {
 	s.GetStatus().ActiveGroups = groups.String()
+}
+
+func (s *DNSRecord) FinalizeReconciliation(_ context.Context, _ provider.Provider) error {
+	// Base implementation does nothing
+	return nil
 }
 
 type RemoteDNSRecord struct {
@@ -269,4 +278,9 @@ func (s *RemoteDNSRecord) setStatus() {
 
 func (s *RemoteDNSRecord) HasDNSZoneAssigned() bool {
 	return s.GetStatus().ZoneID != "" && s.GetStatus().ZoneDomainName != ""
+}
+
+func (s *RemoteDNSRecord) FinalizeReconciliation(_ context.Context, _ provider.Provider) error {
+	// Base implementation does nothing
+	return nil
 }

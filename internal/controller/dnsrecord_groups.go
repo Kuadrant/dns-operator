@@ -54,7 +54,7 @@
 //
 // - TXTResolver: Interface for looking up the active groups TXT record from DNS
 // - GroupAdapter: Wraps DNSRecordAccessor to add group-aware IsActive() behavior
-// - unpublishInactiveGroups(): Cleans up DNS records from inactive groups
+// - GroupAdapter.UnpublishInactiveGroups(): Cleans up DNS records from inactive groups
 // - getActiveGroups(): Queries DNS for the current active groups list
 package controller
 
@@ -129,7 +129,7 @@ func (d *DefaultTXTResolver) LookupTXT(ctx context.Context, host string, nameser
 			// No port specified, add default port 53
 			nsAddr = net.JoinHostPort(ns, "53")
 		}
-		logger.V(1).Info("using nameserver", "nameserver", ns, "resolved", nsAddr)
+		logger.Info("using nameserver", "nameserver", ns, "resolved", nsAddr)
 
 		resolver := &net.Resolver{
 			PreferGo: true,
@@ -145,10 +145,10 @@ func (d *DefaultTXTResolver) LookupTXT(ctx context.Context, host string, nameser
 		records, err := resolver.LookupTXT(ctx, host)
 
 		if err == nil && len(records) > 0 {
-			logger.V(1).Info("successfully resolved txt record", "nameserver", nsAddr, "records", records)
+			logger.Info("successfully resolved txt record", "nameserver", nsAddr, "records", records)
 			return records, nil
 		}
-		logger.V(1).Info("failed to resolve txt record", "nameserver", nsAddr, "error", err)
+		logger.Info("failed to resolve txt record", "nameserver", nsAddr, "error", err)
 	}
 
 	// Fall back to default net.LookupTXT if no custom nameservers resolved.
@@ -203,153 +203,111 @@ func (s *GroupAdapter) GetActiveGroups() types.Groups {
 func (s *GroupAdapter) SetStatusConditions(hadChanges bool) {
 	s.DNSRecordAccessor.SetStatusConditions(hadChanges)
 
-	if s.GetGroup() != "" {
-		if s.IsActive() {
-			s.SetStatusCondition(string(v1alpha1.ConditionTypeActive), metav1.ConditionTrue, string(v1alpha1.ConditionReasonInActiveGroup), "Group is included in active groups")
-		} else {
-			s.SetStatusCondition(string(v1alpha1.ConditionTypeActive), metav1.ConditionFalse, string(v1alpha1.ConditionReasonNotInActiveGroup), "Group is not included in active groups")
-			s.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonInInactiveGroup), "No further actions to take while in inactive group")
-		}
-	} else {
+	if s.GetGroup() == "" {
 		s.ClearStatusCondition(string(v1alpha1.ConditionTypeActive))
+		return
+	}
+
+	if s.IsActive() {
+		s.SetStatusCondition(string(v1alpha1.ConditionTypeActive), metav1.ConditionTrue, string(v1alpha1.ConditionReasonInActiveGroup), "Group is included in active groups")
+	} else {
+		s.SetStatusCondition(string(v1alpha1.ConditionTypeActive), metav1.ConditionFalse, string(v1alpha1.ConditionReasonNotInActiveGroup), "Group is not included in active groups")
+		s.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonInInactiveGroup), "No further actions to take while in inactive group")
 	}
 }
 
-// getActiveGroups queries DNS for the current list of active groups.
-//
-// It looks up a special TXT record at: kuadrant-active-groups.<zone-domain-name>
-// The TXT record contains semicolon-separated key=value pairs, where the "groups"
-// key contains double-ampersand separated group names.
-//
-// Example TXT record format: "groups=us-east&&us-west;version=1"
-//
-// This function:
-//  1. Constructs the active groups hostname from the zone domain
-//  2. Retrieves custom nameservers from the provider secret (if configured)
-//  3. Queries those nameservers (or defaults) for the TXT record
-//  4. Parses the "groups=..." entry and returns the list of active groups
-//
-// Returns an empty Groups list if:
-//   - The TXT record doesn't exist
-//   - The TXT record is malformed
-//   - DNS lookup fails
-//   - No "groups" key is found in the record
-func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) types.Groups {
-	logger := log.FromContext(ctx).WithName("active-groups")
-	activeGroups := types.Groups{}
-	activeGroupsHost := ActiveGroupsTXTRecordName + "." + dnsRecord.GetZoneDomainName()
+// FinalizeReconciliation is called after apply changes or when a record is found to be inactive.
+// For records without a group, this is a no-op.
+// For inactive records, it ensures TXT registry entries have accurate group values (gh-637).
+// For active records, it unpublishes DNS records from inactive groups.
+func (s *GroupAdapter) FinalizeReconciliation(ctx context.Context, dnsProvider provider.Provider) error {
+	// If this record does not have a group, do not process
+	if s.GetGroup() == "" {
+		return nil
+	}
 
-	nameservers, err := r.getNameserversFromProvider(ctx, c, dnsRecord)
-	if err != nil {
-		logger.Error(err, "error getting custom nameservers from provider")
-		return activeGroups
+	logger := log.FromContext(ctx).WithName("active-groups").WithName("finalize-reconciliation")
+
+	if !s.IsActive() {
+		// For inactive records, ensure TXT registry entries have accurate group values (gh-637)
+		// We need to update existing TXT records without creating new DNS records
+		logger.Info("Record is inactive, updating TXT registry entries with group values")
+		return s.updateInactiveGroupTXTRecords(ctx, dnsProvider)
 	}
-	values, err := r.TXTResolver.LookupTXT(ctx, activeGroupsHost, nameservers)
+
+	// For active records, unpublish DNS records from inactive groups
+	logger.Info("Record is active, unpublishing inactive groups")
+	return s.UnpublishInactiveGroups(ctx, dnsProvider)
+}
+
+// updateInactiveGroupTXTRecords updates TXT registry entries for this inactive record
+// to ensure they have accurate group values. This allows active groups to correctly
+// identify and clean up records from inactive groups (gh-637).
+func (s *GroupAdapter) updateInactiveGroupTXTRecords(ctx context.Context, dnsProvider provider.Provider) error {
+	logger := log.FromContext(ctx).WithName("update-txt-records")
+
+	// Get all endpoints in the zone
+	allZoneEndpoints, err := dnsProvider.Records(ctx)
 	if err != nil {
-		logger.Error(err, "error looking up active groups")
-		return activeGroups
+		return err
 	}
-	// Parse the TXT record to extract active groups
-	// Expected format: "groups=group1&&group2&&group3;version=1;other=value"
-	// We're looking for the "groups" key and splitting on "&&" to get individual group names
-	if len(values) > 0 {
-		activeGroupsStr := strings.Join(values, "")
-		for _, pairStr := range strings.Split(activeGroupsStr, TXTRecordKeysSeparator) {
-			sections := strings.Split(pairStr, "=")
-			if len(sections) != 2 {
-				logger.V(1).Info("found badly formed data in the active groups TXT record, skipping", "pairStr", pairStr)
+
+	changes := &plan.Changes{}
+
+	// Find TXT records that belong to this owner and update them with the group label
+	for _, e := range allZoneEndpoints {
+		// Only process TXT records
+		if e.RecordType != endpoint.RecordTypeTXT {
+			continue
+		}
+
+		// Check if this TXT record belongs to this owner
+		var isOwner bool
+		updatedTargets := []string{}
+		for _, target := range e.Targets {
+			ownerID, _, labels, err := registry.NewLabelsFromString(target, []byte(txtRegistryEncryptAESKey))
+			if err != nil {
+				logger.Info("failed to parse labels from TXT target", "target", target, "error", err)
+				updatedTargets = append(updatedTargets, target)
 				continue
 			}
-			if sections[0] == TXTRecordGroupKey {
-				for g := range strings.SplitSeq(sections[1], externaldnsplan.LabelDelimiter) {
-					group := types.Group(g)
-					if len(g) > 0 && !activeGroups.HasGroup(group) {
-						activeGroups = append(activeGroups, group)
-					}
+
+			// Check if this TXT record belongs to this owner
+			if ownerID == s.GetOwnerID() {
+				isOwner = true
+				// Update the group label if not already set correctly
+				currentGroup := labels[types.GroupLabelKey]
+				expectedGroup := string(s.GetGroup())
+				if currentGroup != expectedGroup {
+					labels[types.GroupLabelKey] = expectedGroup
+					// Rebuild the TXT record with the updated labels by serializing
+					serialized := labels.Serialize(true, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
+					updatedTargets = append(updatedTargets, serialized)
+				} else {
+					updatedTargets = append(updatedTargets, target)
 				}
-			}
-
-		}
-	}
-
-	logger.V(1).Info("got active groups", "groups", activeGroups)
-	// no answers, return empty
-	return activeGroups
-}
-
-// getNameserversFromProvider extracts custom nameserver addresses from the provider secret.
-//
-// Provider secrets can optionally include a NAMESERVERS field containing a comma-separated
-// list of DNS server addresses to use for active groups lookups. This is useful when:
-//   - Using CoreDNS or other custom DNS servers in development
-//   - DNS providers host the active groups record on specific nameservers
-//   - You need to bypass public DNS for the active groups query
-//
-// The function looks for the NAMESERVERS data key in either:
-//  1. The provider secret referenced by dnsRecord.GetProviderRef(), OR
-//  2. The default provider secret (labeled kuadrant.io/default-provider=true)
-//
-// Returns a list of nameserver addresses (e.g., ["10.96.0.10:53", "10.96.0.11"])
-// Returns an empty list if no NAMESERVERS field is found or the secret doesn't exist.
-func (r *BaseDNSRecordReconciler) getNameserversFromProvider(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) ([]string, error) {
-	var nameservers []string
-	var providerSecret v1.Secret
-	providerRef := dnsRecord.GetProviderRef()
-
-	if providerRef.Name != "" {
-		secretKey := client.ObjectKey{
-			Name:      providerRef.Name,
-			Namespace: dnsRecord.GetNamespace(),
-		}
-
-		if err := c.Get(ctx, secretKey, &providerSecret); err == nil {
-			nameservers = r.extractNameserversFromSecret(&providerSecret)
-		} else {
-			return nameservers, err
-		}
-	} else {
-		secretList := &v1.SecretList{}
-		err := c.List(ctx, secretList, &client.ListOptions{
-			LabelSelector: labels.SelectorFromSet(map[string]string{
-				v1alpha1.DefaultProviderSecretLabel: "true",
-			}),
-			Namespace: dnsRecord.GetNamespace(),
-		})
-
-		if err == nil && len(secretList.Items) == 1 {
-			nameservers = r.extractNameserversFromSecret(&secretList.Items[0])
-		}
-	}
-	return nameservers, nil
-}
-
-// extractNameserversFromSecret extracts and parses the NAMESERVERS field from a secret.
-// The NAMESERVERS field should contain a comma-separated list of DNS server addresses.
-// Each address is trimmed of whitespace and empty entries are ignored.
-//
-// Example secret data:
-//
-//	NAMESERVERS: "10.96.0.10:53, 10.96.0.11:53"
-//	NAMESERVERS: "coredns.kube-system.svc.cluster.local"
-func (r *BaseDNSRecordReconciler) extractNameserversFromSecret(secret *v1.Secret) []string {
-	var nameservers []string
-	if secret == nil {
-		return nameservers
-	}
-	if nameserversData, ok := secret.Data["NAMESERVERS"]; ok && len(nameserversData) > 0 {
-		nameserversStr := string(nameserversData)
-		for _, ns := range strings.Split(nameserversStr, ",") {
-			ns = strings.TrimSpace(ns)
-			if ns != "" {
-				nameservers = append(nameservers, ns)
+			} else {
+				updatedTargets = append(updatedTargets, target)
 			}
 		}
+
+		// If this TXT record belongs to this owner and we updated the targets, add it to changes
+		if isOwner && !slices.Equal(e.Targets, updatedTargets) {
+			changes.UpdateOld = append(changes.UpdateOld, e.DeepCopy())
+			e.Targets = updatedTargets
+			changes.UpdateNew = append(changes.UpdateNew, e)
+		}
 	}
 
-	return nameservers
+	if changes.HasChanges() {
+		logger.Info("Updating TXT records with group labels", "updates", len(changes.UpdateNew))
+		return dnsProvider.ApplyChanges(ctx, changes)
+	}
+
+	return nil
 }
 
-// unpublishInactiveGroups removes DNS records from inactive groups in the DNS provider zone.
+// UnpublishInactiveGroups removes DNS records from inactive groups in the DNS provider zone.
 //
 // This function is called by active group controllers after they successfully publish
 // their own records. It ensures that when a group becomes active, any leftover DNS
@@ -377,19 +335,19 @@ func (r *BaseDNSRecordReconciler) extractNameserversFromSecret(secret *v1.Secret
 //   - Does not run for ungrouped or authoritative records
 //   - Applies changes directly to the provider (bypassing the registry to avoid conflicts)
 //   - TXT record cleanup happens AFTER DNS record cleanup (required for Azure)
-func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) error {
+func (s *GroupAdapter) UnpublishInactiveGroups(ctx context.Context, dnsProvider provider.Provider) error {
 	logger := log.FromContext(ctx).WithName("active-groups").WithName("unpublish")
 	managedDNSRecordTypes := []string{externaldnsendpoint.RecordTypeA, externaldnsendpoint.RecordTypeAAAA, externaldnsendpoint.RecordTypeCNAME}
 
 	// if this record does not have a group, do not process unpublish
-	if dnsRecord.GetGroup() == "" {
+	if s.GetGroup() == "" {
 		return nil
 	}
 
-	activeGroups := r.getActiveGroups(ctx, c, dnsRecord)
+	activeGroups := s.GetActiveGroups()
 
 	// only process unpublish when we are reconciling a record from an active group
-	if !dnsRecord.IsActive() || dnsRecord.GetGroup() == "" {
+	if !s.IsActive() || s.GetGroup() == "" {
 		return nil
 	}
 
@@ -486,4 +444,138 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c
 	}
 
 	return nil
+}
+
+// getActiveGroups queries DNS for the current list of active groups.
+//
+// It looks up a special TXT record at: kuadrant-active-groups.<zone-domain-name>
+// The TXT record contains semicolon-separated key=value pairs, where the "groups"
+// key contains double-ampersand separated group names.
+//
+// Example TXT record format: "groups=us-east&&us-west;version=1"
+//
+// This function:
+//  1. Constructs the active groups hostname from the zone domain
+//  2. Retrieves custom nameservers from the provider secret (if configured)
+//  3. Queries those nameservers (or defaults) for the TXT record
+//  4. Parses the "groups=..." entry and returns the list of active groups
+//
+// Returns an empty Groups list if:
+//   - The TXT record doesn't exist
+//   - The TXT record is malformed
+//   - DNS lookup fails
+//   - No "groups" key is found in the record
+func (r *BaseDNSRecordReconciler) getActiveGroups(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) types.Groups {
+	logger := log.FromContext(ctx).WithName("active-groups")
+	activeGroups := types.Groups{}
+	activeGroupsHost := ActiveGroupsTXTRecordName + "." + dnsRecord.GetZoneDomainName()
+
+	nameservers, err := r.getNameserversFromProvider(ctx, c, dnsRecord)
+	if err != nil {
+		logger.Error(err, "error getting custom nameservers from provider")
+		return activeGroups
+	}
+	values, err := r.TXTResolver.LookupTXT(ctx, activeGroupsHost, nameservers)
+	if err != nil {
+		logger.Error(err, "error looking up active groups")
+		return activeGroups
+	}
+	// Parse the TXT record to extract active groups
+	// Expected format: "groups=group1&&group2&&group3;version=1;other=value"
+	// We're looking for the "groups" key and splitting on "&&" to get individual group names
+	if len(values) > 0 {
+		activeGroupsStr := strings.Join(values, "")
+		for _, pairStr := range strings.Split(activeGroupsStr, TXTRecordKeysSeparator) {
+			sections := strings.Split(pairStr, "=")
+			if len(sections) != 2 {
+				logger.Info("found badly formed data in the active groups TXT record, skipping", "pairStr", pairStr)
+				continue
+			}
+			if sections[0] == TXTRecordGroupKey {
+				for g := range strings.SplitSeq(sections[1], externaldnsplan.LabelDelimiter) {
+					group := types.Group(g)
+					if len(g) > 0 && !activeGroups.HasGroup(group) {
+						activeGroups = append(activeGroups, group)
+					}
+				}
+			}
+
+		}
+	}
+
+	logger.Info("got active groups", "groups", activeGroups)
+	// no answers, return empty
+	return activeGroups
+}
+
+// getNameserversFromProvider extracts custom nameserver addresses from the provider secret.
+//
+// Provider secrets can optionally include a NAMESERVERS field containing a comma-separated
+// list of DNS server addresses to use for active groups lookups. This is useful when:
+//   - Using CoreDNS or other custom DNS servers in development
+//   - DNS providers host the active groups record on specific nameservers
+//   - You need to bypass public DNS for the active groups query
+//
+// The function looks for the NAMESERVERS data key in either:
+//  1. The provider secret referenced by dnsRecord.GetProviderRef(), OR
+//  2. The default provider secret (labeled kuadrant.io/default-provider=true)
+//
+// Returns a list of nameserver addresses (e.g., ["10.96.0.10:53", "10.96.0.11"])
+// Returns an empty list if no NAMESERVERS field is found or the secret doesn't exist.
+func (r *BaseDNSRecordReconciler) getNameserversFromProvider(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) ([]string, error) {
+	var nameservers []string
+	var providerSecret v1.Secret
+	providerRef := dnsRecord.GetProviderRef()
+
+	if providerRef.Name != "" {
+		secretKey := client.ObjectKey{
+			Name:      providerRef.Name,
+			Namespace: dnsRecord.GetNamespace(),
+		}
+
+		if err := c.Get(ctx, secretKey, &providerSecret); err == nil {
+			nameservers = r.extractNameserversFromSecret(&providerSecret)
+		} else {
+			return nameservers, err
+		}
+	} else {
+		secretList := &v1.SecretList{}
+		err := c.List(ctx, secretList, &client.ListOptions{
+			LabelSelector: labels.SelectorFromSet(map[string]string{
+				v1alpha1.DefaultProviderSecretLabel: "true",
+			}),
+			Namespace: dnsRecord.GetNamespace(),
+		})
+
+		if err == nil && len(secretList.Items) == 1 {
+			nameservers = r.extractNameserversFromSecret(&secretList.Items[0])
+		}
+	}
+	return nameservers, nil
+}
+
+// extractNameserversFromSecret extracts and parses the NAMESERVERS field from a secret.
+// The NAMESERVERS field should contain a comma-separated list of DNS server addresses.
+// Each address is trimmed of whitespace and empty entries are ignored.
+//
+// Example secret data:
+//
+//	NAMESERVERS: "10.96.0.10:53, 10.96.0.11:53"
+//	NAMESERVERS: "coredns.kube-system.svc.cluster.local"
+func (r *BaseDNSRecordReconciler) extractNameserversFromSecret(secret *v1.Secret) []string {
+	var nameservers []string
+	if secret == nil {
+		return nameservers
+	}
+	if nameserversData, ok := secret.Data["NAMESERVERS"]; ok && len(nameserversData) > 0 {
+		nameserversStr := string(nameserversData)
+		for _, ns := range strings.Split(nameserversStr, ",") {
+			ns = strings.TrimSpace(ns)
+			if ns != "" {
+				nameservers = append(nameservers, ns)
+			}
+		}
+	}
+
+	return nameservers
 }

@@ -139,7 +139,7 @@ func (im *TXTRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, error
 	// If we have the zones cached AND we have refreshed the cache since the
 	// last given interval, then just use the cached results.
 	if im.recordsCache != nil && time.Since(im.recordsCacheRefreshTime) < im.cacheInterval {
-		im.logger.V(1).Info("Using cached records")
+		im.logger.Info("Using cached records")
 		return im.recordsCache, nil
 	}
 
@@ -487,7 +487,7 @@ func NewLabelsFromString(labelText string, aesKey []byte) (owner, version string
 
 	// extract owner and version
 	for key, value := range labels {
-		if key == endpoint.OwnerLabelKey && strings.Contains(value, kuadrantPlan.LabelDelimiter) {
+		if key == endpoint.OwnerLabelKey {
 			// if that's an old format we will have multiple owners here - we will deal with that later
 			// we aren't sure who owns all the labels
 			owner = value

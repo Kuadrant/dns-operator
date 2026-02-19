@@ -317,8 +317,19 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	dnsRecord = r.applyGroupAdapter(ctx, r.Client, dnsRecord)
 
-	// If this grouped record is not active, exit early (only active groups process unpublishing)
+	// If this grouped record is not active, perform finalize-reconciliation actions and exit early
 	if !dnsRecord.IsActive() {
+		// Create a dns provider for the current record if zone is assigned
+		if dnsRecord.HasDNSZoneAssigned() {
+			dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
+			if err != nil {
+				return r.updateStatus(ctx, previous, dnsRecord, false, err)
+			}
+			err = dnsRecord.FinalizeReconciliation(ctx, dnsProvider)
+			if err != nil {
+				return r.updateStatus(ctx, previous, dnsRecord, false, err)
+			}
+		}
 		dnsRecord.SetStatusConditions(false)
 		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
 	}
@@ -350,13 +361,13 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatus(ctx, previous, dnsRecord, hadChanges, err)
 	}
 
-	// process unpublish of inactive groups once active cluster has no changes to publish
-	if !hadChanges && dnsRecord.GetGroup() != "" {
-		err = r.unpublishInactiveGroups(ctx, r.Client, dnsRecord, dnsProvider)
+	// Process finalize-reconciliation changes (unpublish inactive groups for active records)
+	if !hadChanges {
+		err = dnsRecord.FinalizeReconciliation(ctx, dnsProvider)
 		if err != nil {
-			logger.Error(err, "Failed to unpublish inactive groups")
+			logger.Error(err, "Failed to process finalize-reconciliation changes")
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-				"ProviderError", fmt.Sprintf("The DNS provider failed to unpublish inactive groups: %v", provider.SanitizeError(err)))
+				"ProviderError", fmt.Sprintf("The DNS provider failed to process finalize-reconciliation changes: %v", provider.SanitizeError(err)))
 		}
 	}
 
