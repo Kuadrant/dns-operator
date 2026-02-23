@@ -1,6 +1,6 @@
-## Release
+# Release
 
-### New Major.Minor version
+## New Major.Minor version
 
 1. Create a new minor release branch from the HEAD of main:
 ```sh
@@ -36,7 +36,7 @@ git push upstream v0.2.0
 
 9. Verify the new version can be installed from the catalog image, see [Verify OLM Deployment](#verify-olm-deployment)
 
-### New Patch version
+## New Patch version
 
 1. Checkout minor release branch:
 ```sh
@@ -58,7 +58,49 @@ git push upstream v0.2.1
 
 5. Verify the new version can be installed from the catalog image, see [Verify OLM Deployment](#verify-olm-deployment)
 
-### Verify OLM Deployment
+## Generated Files
+
+During the release process a number of files will be generated, or modified.
+
+### Modified files
+- bundle.Dockerfile
+- bundle/manifests/dns-operator.clusterserviceversion.yaml
+- bundle/metadata/annotations.yaml
+- charts/dns-operator/Chart.yaml
+- charts/dns-operator/templates/manifests.yaml
+- config/deploy/olm/catalogsource.yaml
+- config/deploy/olm/subscription.yaml
+- config/manager/kustomization.yaml
+- config/manifests/bases/dns-operator.clusterserviceversion.yaml
+
+### Generated files
+- make/release.mk (modified during patch releases)
+
+The `make/release.mk` contains the variables for the modifications of the modified files listed above.
+Below is a sample of this file.
+```sh
+#Release default values
+IMG=quay.io/kuadrant/dns-operator:v0.16.0
+BUNDLE_IMG=quay.io/kuadrant/dns-operator-bundle:v0.16.0
+CATALOG_IMG=quay.io/kuadrant/dns-operator-catalog:v0.16.0
+CHANNELS=stable
+BUNDLE_CHANNELS=--channels=stable
+VERSION=0.16.0
+```
+Points to note.
+The `VERSION` number is **not** prefixed with a `v`, 0.16.0.
+Image tags for released version **are** prefixed with a `v`, v0.16.0.
+Without the `v` prefix the [release tag workflow](https://github.com/Kuadrant/dns-operator/actions/workflows/build-images-for-tag-release.yaml) will fail.
+
+
+## Create GitHub Release
+
+Once the images have been published to quay.io, a GitHub Release is also required.
+There are a number of workflows that depend on the release being created.
+- [Release Helm Chart](https://github.com/Kuadrant/dns-operator/actions/workflows/release-helm-chart.yaml)
+- [Upload CLI binary](https://github.com/Kuadrant/dns-operator/actions/workflows/upload-cli.yml)
+
+## Verify OLM Deployment
 
 1. Deploy the OLM catalog image:
 ```sh
@@ -86,7 +128,7 @@ control-plane=dns-operator-controller-manager,olm.deployment-spec-hash=1jPe8AuMp
 olm.owner.namespace=dns-operator-system,olm.owner=dns-operator.v0.2.0-dev,operators.coreos.com/dns-operator.dns-operator-system=
 ```
 
-### Community Operator Index Catalogs
+## Community Operator Index Catalogs
 
 - [Operatorhub Community Operators](https://github.com/k8s-operatorhub/community-operators/tree/main/operators/dns-operator)
 - [Openshift Community Operators](https://github.com/redhat-openshift-ecosystem/community-operators-prod/tree/main/operators/dns-operator)
