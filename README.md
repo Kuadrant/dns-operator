@@ -148,7 +148,7 @@ The DNS Operator includes a CoreDNS plugin that enables serving DNS zone data fr
 ### CoreDNS Plugin Configuration
 
 For detailed CoreDNS configuration and integration documentation, see:
-- [CoreDNS Integration Guide](./docs/coredns/README.md)
+- [CoreDNS Integration Guide](./docs/coredns/coredns-integration.md)
 
 ## Development
 
