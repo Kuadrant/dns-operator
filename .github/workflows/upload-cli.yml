@@ -20,9 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # build and publish in parallel: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64
+        # build and publish in parallel: linux/amd64, linux/arm64, linux/s390x, darwin/amd64, darwin/arm64
         goos: [linux, darwin]
-        goarch: [amd64, arm64]
+        goarch: [amd64, arm64, s390x]
+        exclude:
+          - goos: darwin
+            goarch: s390x
     steps:
       - uses: actions/checkout@v4
       - uses: wangyoucao577/go-release-action@v1
