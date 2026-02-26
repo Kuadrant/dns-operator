@@ -125,6 +125,14 @@ func TestToTXTName(t *testing.T) {
 			txtDomain:  "foo-2tqs20a7-a-example.com",
 			id:         "owner1",
 		},
+		{
+			name:       "prefix with wildcard",
+			mapper:     newKuadrantAffixMapper(legacyMapperTemplate{}, "foo-", "wc"),
+			domain:     "*.example.com",
+			recordType: "A",
+			txtDomain:  "foo-2tqs20a7-a-wc.example.com",
+			id:         "owner1",
+		},
 	}
 
 	for _, tc := range tests {
@@ -132,6 +140,16 @@ func TestToTXTName(t *testing.T) {
 			assert.Equal(t, tc.txtDomain, tc.mapper.ToTXTName(tc.domain, tc.id, tc.recordType))
 		})
 	}
+}
+
+func TestToTXTNameRoundTrip(t *testing.T) {
+	mapper := newKuadrantAffixMapper(legacyMapperTemplate{}, "foo-", "wc")
+
+	txtName := mapper.ToTXTName("*.example.com", "owner1", "A")
+	endpointName, recordType := mapper.ToEndpointName(txtName, "1")
+
+	assert.Equal(t, "*.example.com", endpointName)
+	assert.Equal(t, "A", recordType)
 }
 
 func TestToEndpointsName(t *testing.T) {
@@ -150,6 +168,14 @@ func TestToEndpointsName(t *testing.T) {
 			txtName:            "foo-11111111-cname-example.com",
 			expectedDomain:     "example.com",
 			expectedRecordType: "CNAME",
+			version:            "1",
+		},
+		{
+			name:               "prefix with wildcard replacement",
+			mapper:             newKuadrantAffixMapper(legacyMapperTemplate{}, "foo-", "wc"),
+			txtName:            "foo-11111111-a-wc.example.com",
+			expectedDomain:     "*.example.com",
+			expectedRecordType: "A",
 			version:            "1",
 		},
 		// old "V2" records - type and affix. In codebase has no version associated. Calling them V2 here to simplify maintenance

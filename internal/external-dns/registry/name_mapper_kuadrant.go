@@ -67,8 +67,8 @@ func (pr kuadrantAffixNameMapper) ToEndpointName(txtDNSName, version string) (en
 	endpointName = dnsNameSplit[2]
 
 	// undo wc replacement
-	if strings.HasPrefix(endpointName, pr.wildcardReplacement) {
-		strings.Replace(endpointName, pr.wildcardReplacement, "*", 1)
+	if pr.wildcardReplacement != "" && strings.HasPrefix(endpointName, pr.wildcardReplacement) {
+		endpointName = strings.Replace(endpointName, pr.wildcardReplacement, "*", 1)
 	}
 
 	return endpointName, recordType
