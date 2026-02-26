@@ -195,6 +195,11 @@ func (im *TXTRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, error
 		// convert TXT record name into the name of endpoint and recordType
 		endpointName, recordType := im.mapper.ToEndpointName(record.DNSName, version)
 		// compose endpoint key; this is an actual endpoint in the provider.
+		// If wildcard replacement is configured, replace leading asterisk to match lookup key format
+		if im.wildcardReplacement != "" && strings.HasPrefix(endpointName, "*.") {
+			// * can only be one on the leftmost side - otherwise it is an invalid dns name
+			endpointName = strings.Replace(endpointName, "*", im.wildcardReplacement, 1)
+		}
 
 		key := endpoint.EndpointKey{
 			DNSName:       endpointName,
