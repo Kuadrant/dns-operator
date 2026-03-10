@@ -44,7 +44,7 @@ jobs:
         with:
           image: ${{ env.OPERATOR_NAME }}
           tags: ${{ github.ref_name }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/s390x
           build-args: |
             GIT_SHA=${{ github.sha }}
             DIRTY=false
@@ -106,7 +106,7 @@ jobs:
         with:
           image: ${{ env.OPERATOR_NAME }}-bundle
           tags: ${{ needs.build.outputs.build-tags }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/s390x
           dockerfiles: |
             ./bundle.Dockerfile
 
@@ -164,7 +164,7 @@ jobs:
         with:
           image: ${{ env.OPERATOR_NAME }}-catalog
           tags: ${{ needs.build.outputs.build-tags }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/s390x
           context: ./tmp/catalog
           dockerfiles: |
             ./tmp/catalog/index.Dockerfile
