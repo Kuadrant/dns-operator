@@ -146,14 +146,8 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone, denyApex boo
 		return nil, "", fmt.Errorf("%w: %s", ErrNoZoneForHost, host)
 	}
 	host = strings.ToLower(host)
-	// Bail out only if the host equals an ICANN TLD (e.g. `com`, `org`). The
-	// Go public suffix list also contains privately-managed domains such as
-	// `httpbin.org`, `github.io`, `amazonaws.com`, `azurewebsites.net` - for
-	// those, PublicSuffix returns the host itself but the second return
-	// value (`icann`) is false. Ignoring that flag rejected any DNSRecord
-	// whose rootHost happened to appear in the private suffix list, even
-	// when a matching zone was explicitly provisioned in the provider
-	// secret.
+	// Only reject if the host is an ICANN TLD. Private suffixes (e.g.
+	// `s3.amazonaws.com`, `github.io`) should proceed to zone matching.
 	tld, icann := publicsuffix.PublicSuffix(host)
 	if icann && host == tld {
 		return nil, "", fmt.Errorf("%w: %s", ErrNoZoneForHost, originalHost)
