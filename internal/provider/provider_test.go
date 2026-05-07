@@ -210,6 +210,74 @@ func Test_findDNSZoneForHost(t *testing.T) {
 			wantErr:       true,
 			expectedErrIs: ErrMultipleZonesFound,
 		},
+
+		// Private suffix coverage. The Go public suffix list also contains
+		// privately-managed suffixes such as `httpbin.org`, `github.io`, and
+		// `s3.amazonaws.com`. These should NOT be rejected as TLDs — only
+		// ICANN suffixes (e.g. `com`, `co.uk`) are rejected.
+		{
+			name: "private suffix as host with matching zone (httpbin.org)",
+			host: "httpbin.org",
+			zones: []DNSZone{
+				{DNSName: "httpbin.org", ID: "zone-1"},
+			},
+			denyApex:      false,
+			wantZone:      "httpbin.org",
+			wantSubdomain: "",
+			wantErr:       false,
+		},
+		{
+			name: "subdomain of a private suffix matches its parent zone",
+			host: "sub.httpbin.org",
+			zones: []DNSZone{
+				{DNSName: "httpbin.org", ID: "zone-1"},
+			},
+			denyApex:      false,
+			wantZone:      "httpbin.org",
+			wantSubdomain: "sub",
+			wantErr:       false,
+		},
+		{
+			name: "multi-label private suffix as host with matching zone (s3.amazonaws.com)",
+			host: "s3.amazonaws.com",
+			zones: []DNSZone{
+				{DNSName: "s3.amazonaws.com", ID: "zone-1"},
+			},
+			denyApex:      false,
+			wantZone:      "s3.amazonaws.com",
+			wantSubdomain: "",
+			wantErr:       false,
+		},
+		{
+			name: "private suffix host with no matching zone returns ErrNoZoneForHost",
+			host: "httpbin.org",
+			zones: []DNSZone{
+				{DNSName: "example.com"},
+			},
+			denyApex:      false,
+			wantErr:       true,
+			expectedErrIs: ErrNoZoneForHost,
+		},
+		{
+			name: "private suffix as host with denyApex=true returns ErrApexDomainNotAllowed",
+			host: "httpbin.org",
+			zones: []DNSZone{
+				{DNSName: "httpbin.org", ID: "zone-1"},
+			},
+			denyApex:      true,
+			wantErr:       true,
+			expectedErrIs: ErrApexDomainNotAllowed,
+		},
+		{
+			name: "ICANN TLD `co.uk` still rejected as host (no regression)",
+			host: "co.uk",
+			zones: []DNSZone{
+				{DNSName: "example.co.uk"},
+			},
+			denyApex:      false,
+			wantErr:       true,
+			expectedErrIs: ErrNoZoneForHost,
+		},
 	}
 
 	for _, tt := range testCases {
