@@ -146,11 +146,10 @@ func findDNSZoneForHost(originalHost, host string, zones []DNSZone, denyApex boo
 		return nil, "", fmt.Errorf("%w: %s", ErrNoZoneForHost, host)
 	}
 	host = strings.ToLower(host)
-	//get the TLD from this host
-	tld, _ := publicsuffix.PublicSuffix(host)
-
-	//The host is a TLD, so we now know `originalHost` can't possibly have a valid `DNSZone` available.
-	if host == tld {
+	// Only reject if the host is an ICANN TLD. Private suffixes (e.g.
+	// `s3.amazonaws.com`, `github.io`) should proceed to zone matching.
+	tld, icann := publicsuffix.PublicSuffix(host)
+	if icann && host == tld {
 		return nil, "", fmt.Errorf("%w: %s", ErrNoZoneForHost, originalHost)
 	}
 
