@@ -134,7 +134,7 @@ func main() {
 
 	flag.StringVar(&metricsAddr, metricsAddrKey.Flag(), ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, probeAddrKey.Flag(), ":8081", "The address the probe endpoint binds to.")
-	flag.StringVar(&pprofAddr, pprofAddressKey.Flag(), ":8082", "The address the pprof endpoints can be reached at.")
+	flag.StringVar(&pprofAddr, pprofAddressKey.Flag(), ":8084", "The address the pprof endpoints can be reached at.")
 	flag.BoolVar(&enableLeaderElection, enableLeaderElectionKey.Flag(), false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")

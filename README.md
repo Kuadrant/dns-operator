@@ -184,7 +184,7 @@ The controller can be started with any of the following flags or environmental v
 |---------------------------|---------------|---------------------------|-----------------------------------------------------------------------------------------------------------------------|---------------------------------------|
 | metrics-bind-address      | string        | METRICS_BIND_ADDRESS      | The address the metric endpoint binds to.                                                                             | ":8080"                               |
 | health-probe-bind-address | string        | HEALTH_PROBE_BIND_ADDRESS | The address the probe endpoint binds to.                                                                              | ":8081"                               |
-| pprof-bind-address        | string        | PPROF_BIND_ADDRESS        | The address the pprof endpoint binds to.                                                                              | ":8082"                               |
+| pprof-bind-address        | string        | PPROF_BIND_ADDRESS        | The address the pprof endpoint binds to.                                                                              | ":8084"                               |
 | leader-elect              | bool          | LEADER_ELECT              | Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager. | "false"                               |
 | min-requeue-time          | time.Duration | MIN_REQUEUE_TIME          | The minimal timeout between calls to the DNS Provider. Controls if we commit to the full reconcile loop               | "5s"                                  |
 | max-requeue-time          | time.Duration | MAX_REQUEUE_TIME          | The maximum times it takes between reconciliations of DNS Record. Controls how ofter record is reconciled.            | "15m"                                 |
@@ -253,6 +253,18 @@ kubectl logs -l control-plane=dns-operator-controller-manager -n dns-operator-sy
 ```
 You could use selector in the `jq` with `and`/`not`/`or` to restrict.
 
+
+## Profiling
+
+The operator supports runtime profiling via Go's built-in [pprof](https://pkg.go.dev/net/http/pprof) tooling. Enabled by default on `:8084`.
+
+Connect to a running instance:
+
+```bash
+kubectl port-forward -n dns-operator-system deploy/dns-operator-controller-manager 8084:8084
+go tool pprof -http=:8080 http://localhost:8084/debug/pprof/profile?seconds=30
+go tool pprof -http=:8080 http://localhost:8084/debug/pprof/heap
+```
 
 ## License
 
