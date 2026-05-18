@@ -44,7 +44,7 @@ jobs:
         with:
           image: ${{ env.OPERATOR_NAME }}
           tags: ${{ github.ref_name }}
-          platforms: linux/amd64,linux/arm64,linux/s390x
+          platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
           build-args: |
             GIT_SHA=${{ github.sha }}
             DIRTY=false
@@ -106,7 +106,7 @@ jobs:
         with:
           image: ${{ env.OPERATOR_NAME }}-bundle
           tags: ${{ needs.build.outputs.build-tags }}
-          platforms: linux/amd64,linux/arm64,linux/s390x
+          platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
           build-args: QUAY_IMAGE_EXPIRY=never
           dockerfiles: |
             ./bundle.Dockerfile
@@ -165,7 +165,7 @@ jobs:
         with:
           image: ${{ env.OPERATOR_NAME }}-catalog
           tags: ${{ needs.build.outputs.build-tags }}
-          platforms: linux/amd64,linux/arm64,linux/s390x
+          platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
           context: ./tmp/catalog
           dockerfiles: |
             ./tmp/catalog/index.Dockerfile

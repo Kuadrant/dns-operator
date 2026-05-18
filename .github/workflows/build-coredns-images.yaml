@@ -44,7 +44,7 @@ jobs:
         with:
           image: ${{ env.COREDNS_PLUGIN_NAME }}
           tags: ${{ env.IMG_TAGS }}
-          platforms: linux/amd64,linux/arm64,linux/s390x
+          platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
           context: ./coredns/plugin
           dockerfiles: |
             ./coredns/plugin/Dockerfile
