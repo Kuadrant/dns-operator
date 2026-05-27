@@ -36,3 +36,7 @@ tmp
 config/local-setup/**/*.env
 
 *.log
+
+# Catalogs
+/catalog/dns-operator-catalog
+/catalog/dns-operator-catalog.Dockerfile
