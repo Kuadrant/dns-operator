@@ -6,4 +6,4 @@ kind: Kustomization
 images:
   - name: controller
     newName: quay.io/kuadrant/dns-operator
-    newTag: latest
+    newTag: v0.17.0
