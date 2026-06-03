@@ -39,9 +39,12 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 # quay.io/kuadrant/dns-operator-bundle:$VERSION and quay.io/kuadrant/dns-operator-catalog:$VERSION.
 IMAGE_TAG_BASE ?= quay.io/kuadrant/dns-operator
 
+# IMAGE_TAG defines the image tag for bundle and catalog images.
+IMAGE_TAG ?= latest
+
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:latest
+BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:$(IMAGE_TAG)
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
 BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
@@ -59,7 +62,7 @@ endif
 OPERATOR_SDK_VERSION ?= v1.33.0
 
 # Image URL to use all building/pushing image targets
-DEFAULT_IMG ?= $(IMAGE_TAG_BASE):latest
+DEFAULT_IMG ?= $(IMAGE_TAG_BASE):$(IMAGE_TAG)
 IMG ?= $(DEFAULT_IMG)
 
 # CoreDNS image targets
@@ -394,12 +397,6 @@ install-olm: operator-sdk
 uninstall-olm: operator-sdk
 	$(OPERATOR_SDK) olm uninstall
 
-deploy-catalog: kustomize yq ## Deploy operator to the K8s cluster specified in ~/.kube/config using OLM catalog image.
-	$(KUSTOMIZE) build config/deploy/olm | $(KUBECTL) apply -f -
-
-undeploy-catalog: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config using OLM catalog image.
-	$(KUSTOMIZE) build config/deploy/olm | $(KUBECTL) delete -f -
-
 ##@ Build Dependencies
 
 ## Location to install dependencies to
@@ -549,6 +546,7 @@ bundle: manifests manifests-gen-base-csv set-image-refs operator-sdk ## Generate
 	$(MAKE) bundle-post-generate
 	$(OPERATOR_SDK) bundle validate ./bundle
 	$(MAKE) bundle-ignore-createdAt
+	echo "$$QUAY_EXPIRY_TIME_LABEL" >> bundle.Dockerfile
 
 bundle-operator-image-url: $(YQ) ## Read operator image reference URL from the manifest bundle.
 	@$(YQ) '.metadata.annotations.containerImage' bundle/manifests/dns-operator.clusterserviceversion.yaml
@@ -571,10 +569,14 @@ bundle-post-generate:
 	@if [ "$(CHANNELS)" != "" ]; then\
 		V="$(CHANNELS)" $(YQ) eval '.spec.channel = strenv(V)' -i config/deploy/olm/subscription.yaml; \
 	fi
+ifeq ($(USE_IMAGE_DIGESTS),true)
+	# Deduplicate relatedImages and remove name field (operator-sdk --use-image-digests creates duplicates)
+	$(YQ) -i '.spec.relatedImages |= unique_by(.image) | del(.spec.relatedImages[].name)' bundle/manifests/dns-operator.clusterserviceversion.yaml
+endif
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
-	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	$(CONTAINER_TOOL) build --build-arg QUAY_IMAGE_EXPIRY=$(QUAY_IMAGE_EXPIRY) -f bundle.Dockerfile -t $(BUNDLE_IMG) .
 
 .PHONY: bundle-push
 bundle-push: ## Push the bundle image.
@@ -597,34 +599,9 @@ OPM = $(shell which opm)
 endif
 endif
 
-# A comma-separated list of bundle images (e.g. make catalog-build BUNDLE_IMGS=example.com/operator-bundle:v0.1.0,example.com/operator-bundle:v0.2.0).
-# These images MUST exist in a registry and be pull-able.
-BUNDLE_IMGS ?= $(BUNDLE_IMG)
-
-# The image tag given to the resulting catalog image (e.g. make catalog-build CATALOG_IMG=example.com/operator-catalog:v0.2.0).
-CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:latest
-
-# Set CATALOG_BASE_IMG to an existing catalog image tag to add $BUNDLE_IMGS to that image.
-ifneq ($(origin CATALOG_BASE_IMG), undefined)
-FROM_INDEX_OPT := --from-index $(CATALOG_BASE_IMG)
-endif
-
-# Build a catalog image by adding bundle images to an empty catalog using the operator package manager tool, 'opm'.
-# This recipe invokes 'opm' in 'semver' bundle add mode. For more information on add modes, see:
-# https://github.com/operator-framework/community-operators/blob/7f1438c/docs/packaging-operator.md#updating-your-existing-operator
-.PHONY: catalog-build
-catalog-build: opm ## Build a catalog image.
-	mkdir -p tmp/catalog
-	cd tmp/catalog && $(OPM) index add --container-tool docker --mode semver --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT) --generate
-	cd tmp/catalog && docker build -t $(CATALOG_IMG) -f index.Dockerfile .
-
-print-bundle-image: ## Pring bundle images.
+.PHONY: print-bundle-image
+print-bundle-image: ## Print bundle image.
 	@echo $(BUNDLE_IMG)
-
-# Push the catalog image.
-.PHONY: catalog-push
-catalog-push: ## Push a catalog image.
-	$(MAKE) docker-push IMG=$(CATALOG_IMG)
 
 ##@ Release
 

@@ -107,6 +107,7 @@ jobs:
           image: ${{ env.OPERATOR_NAME }}-bundle
           tags: ${{ needs.build.outputs.build-tags }}
           platforms: linux/amd64,linux/arm64,linux/s390x
+          build-args: QUAY_IMAGE_EXPIRY=never
           dockerfiles: |
             ./bundle.Dockerfile
 
