@@ -9,19 +9,15 @@ We now will constantly reconcile DNS records. The reasoning is that other contro
 
 
 # Details
-There are a few new fields on the DNS Record status:
-* QueuedAt is a time when the DNS record was received for the reconciliation
-* ValidFor indicates the duration since the last reconciliation we consider data in the record to be valid
+There are a few fields on the DNS Record status:
+* ValidFor indicates the current requeue interval for the record, used for exponential backoff
 * WriteCounter represents a number of consecutive write attempts on the same generation of the record. It is being reset to 0 when the generation changes or there are no changes to write.
 
 
-There is an option to override the `ValidFor` and `DefaultRequeueTime` with `valid-for` and `requeue-time` flags respectively.
+There is an option to override the `DefaultRequeueTime` with the `requeue-time` flag.
 
 
-The `DefaultRequeueTime` is the duration between successful validation and the next reconciliation to ensure that the record is still up-to-date.
-
-
-The `ValidFor` is used to determine if we should do a full reconciliation when we get the record. If the record is still valid we will only update finalizers and validate the record itself. It will not perform anything that involves a DNS provider.
+The `DefaultRequeueTime` is the maximum duration between reconciliations to ensure that the record is still up-to-date. The requeue interval grows exponentially from `MinRequeueTime` up to `DefaultRequeueTime`.
 
 
 ## DNS Record normal lifecycle
@@ -35,13 +31,10 @@ The `validationRequeueTime` duration is randomized +/- 50%.
 
 
 ## When things go south
-If the record is received prematurely - the `ValidFor` + `QueuedAt` is more than the current time - we requeue it again for the `ValidFor` duration.
+Every reconciliation runs the full reconciliation flow. The requeue interval uses exponential backoff to limit DNS provider API calls.
 
 
 When we encounter an error during the reconciliation we will not requeue the record and will put in an appropriate error message in the log and on the record. In order for it to reconcile again there must be a change to the DNS Record CR.
-
-
-It is possible for a user to mess with the timestamps field or the `ValidFor` field. Kubernetes will not let setting an invalid value to the timestamp fields. Once the timestamp fields are set manually it will trigger reconciliation since there is a change in the record CR. The only one that could impact the controller is the `QueuedAt` field and the controller will believe that to be the last time the record was reconciled. As for the `ValidFor`: since it is a simple string it is possible to set an incorrect value. If we fail to parse it we treat the `ValidFor` as 0. This means that the controller will believe that the information in the record is expired and will probe the DNS provider for an update. If a valid value is provided controller will obey it. Eventually, the controller will naturally enqueue the record and those values will be overridden.
 
 In case the controller fails to retain changes in the DNS Provider: write are successful, but the validation fails again and the `WriteCounter` reaches the `WriteCounterLimit` we give up on the reconciliation. The appropriate message will be put under the `Ready - false` condition as well as in the logs of the controller. The reconciliation will resume once the generation of the DNS Record is changed.
 

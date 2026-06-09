@@ -359,7 +359,7 @@ func setupManager(ctx context.Context, cfg *rest.Config, delegationRole string, 
 		},
 	}
 
-	err = dnsRecordController.SetupWithManager(mgr, RequeueDuration, ValidityDuration, DefaultValidationDuration, true, true)
+	err = dnsRecordController.SetupWithManager(mgr, RequeueDuration, DefaultValidationDuration, true, true)
 	Expect(err).ToNot(HaveOccurred())
 
 	if delegationRole == DelegationRolePrimary {
