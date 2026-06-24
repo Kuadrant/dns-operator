@@ -52,7 +52,7 @@ catalog: opm ## Generate catalog content and validate.
 # Build a catalog image by adding bundle images to an empty catalog using the operator package manager tool, 'opm'.
 # Ref https://olm.operatorframework.io/docs/tasks/creating-a-catalog/#catalog-creation-with-raw-file-based-catalogs
 .PHONY: catalog-build
-catalog-build: ## Build a catalog image.
+catalog-build: catalog ## Build a catalog image.
 	# Build the Catalog
 	$(CONTAINER_TOOL) build catalog -f catalog/dns-operator-catalog.Dockerfile -t $(CATALOG_IMG)
 
