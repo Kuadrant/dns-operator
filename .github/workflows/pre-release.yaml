@@ -17,13 +17,11 @@ concurrency:
   group: pre-release
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   setup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.validate.outputs.version }}
       release-branch: ${{ steps.validate.outputs.release-branch }}
@@ -65,6 +63,8 @@ jobs:
   prepare-release:
     needs: setup
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -120,6 +120,8 @@ jobs:
   open-pr:
     needs: [setup, prepare-release]
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
