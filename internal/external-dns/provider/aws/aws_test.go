@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/route53"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
+	"github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -53,9 +53,9 @@ var _ Route53API = &Route53APIStub{}
 // of all of its methods.
 // mostly taken from: https://github.com/kubernetes/kubernetes/blob/853167624edb6bc0cfdcdfb88e746e178f5db36c/federation/pkg/dnsprovider/providers/aws/route53/stubs/route53api.go
 type Route53APIStub struct {
-	zones      map[string]*route53.HostedZone
-	recordSets map[string]map[string][]*route53.ResourceRecordSet
-	zoneTags   map[string][]*route53.Tag
+	zones      map[string]types.HostedZone
+	recordSets map[string]map[string][]types.ResourceRecordSet
+	zoneTags   map[string][]types.Tag
 	m          dynamicMock
 	t          *testing.T
 }
@@ -71,29 +71,27 @@ func (r *Route53APIStub) MockMethod(method string, args ...interface{}) *mock.Ca
 // NewRoute53APIStub returns an initialized Route53APIStub
 func NewRoute53APIStub(t *testing.T) *Route53APIStub {
 	return &Route53APIStub{
-		zones:      make(map[string]*route53.HostedZone),
-		recordSets: make(map[string]map[string][]*route53.ResourceRecordSet),
-		zoneTags:   make(map[string][]*route53.Tag),
+		zones:      make(map[string]types.HostedZone),
+		recordSets: make(map[string]map[string][]types.ResourceRecordSet),
+		zoneTags:   make(map[string][]types.Tag),
 		t:          t,
 	}
 }
 
-func (r *Route53APIStub) ListResourceRecordSetsPagesWithContext(ctx context.Context, input *route53.ListResourceRecordSetsInput, fn func(p *route53.ListResourceRecordSetsOutput, lastPage bool) (shouldContinue bool), opts ...request.Option) error {
-	output := route53.ListResourceRecordSetsOutput{} // TODO: Support optional input args.
+func (r *Route53APIStub) ListResourceRecordSets(ctx context.Context, input *route53.ListResourceRecordSetsInput, optFns ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error) {
+	output := &route53.ListResourceRecordSetsOutput{}
 	require.NotNil(r.t, input.MaxItems)
-	assert.EqualValues(r.t, route53PageSize, *input.MaxItems)
+	assert.EqualValues(r.t, int32(300), *input.MaxItems)
 	if len(r.recordSets) == 0 {
-		output.ResourceRecordSets = []*route53.ResourceRecordSet{}
-	} else if _, ok := r.recordSets[aws.StringValue(input.HostedZoneId)]; !ok {
-		output.ResourceRecordSets = []*route53.ResourceRecordSet{}
+		output.ResourceRecordSets = []types.ResourceRecordSet{}
+	} else if _, ok := r.recordSets[aws.ToString(input.HostedZoneId)]; !ok {
+		output.ResourceRecordSets = []types.ResourceRecordSet{}
 	} else {
-		for _, rrsets := range r.recordSets[aws.StringValue(input.HostedZoneId)] {
+		for _, rrsets := range r.recordSets[aws.ToString(input.HostedZoneId)] {
 			output.ResourceRecordSets = append(output.ResourceRecordSets, rrsets...)
 		}
 	}
-	lastPage := true
-	fn(&output, lastPage)
-	return nil
+	return output, nil
 }
 
 type Route53APICounter struct {
@@ -108,29 +106,29 @@ func NewRoute53APICounter(w Route53API) *Route53APICounter {
 	}
 }
 
-func (c *Route53APICounter) ListResourceRecordSetsPagesWithContext(ctx context.Context, input *route53.ListResourceRecordSetsInput, fn func(resp *route53.ListResourceRecordSetsOutput, lastPage bool) (shouldContinue bool), opts ...request.Option) error {
+func (c *Route53APICounter) ListResourceRecordSets(ctx context.Context, input *route53.ListResourceRecordSetsInput, optFns ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error) {
 	c.calls["ListResourceRecordSetsPages"]++
-	return c.wrapped.ListResourceRecordSetsPagesWithContext(ctx, input, fn)
+	return c.wrapped.ListResourceRecordSets(ctx, input)
 }
 
-func (c *Route53APICounter) ChangeResourceRecordSetsWithContext(ctx context.Context, input *route53.ChangeResourceRecordSetsInput, opts ...request.Option) (*route53.ChangeResourceRecordSetsOutput, error) {
+func (c *Route53APICounter) ChangeResourceRecordSets(ctx context.Context, input *route53.ChangeResourceRecordSetsInput, optFns ...func(*route53.Options)) (*route53.ChangeResourceRecordSetsOutput, error) {
 	c.calls["ChangeResourceRecordSets"]++
-	return c.wrapped.ChangeResourceRecordSetsWithContext(ctx, input)
+	return c.wrapped.ChangeResourceRecordSets(ctx, input)
 }
 
-func (c *Route53APICounter) CreateHostedZoneWithContext(ctx context.Context, input *route53.CreateHostedZoneInput, opts ...request.Option) (*route53.CreateHostedZoneOutput, error) {
+func (c *Route53APICounter) CreateHostedZone(ctx context.Context, input *route53.CreateHostedZoneInput, optFns ...func(*route53.Options)) (*route53.CreateHostedZoneOutput, error) {
 	c.calls["CreateHostedZone"]++
-	return c.wrapped.CreateHostedZoneWithContext(ctx, input)
+	return c.wrapped.CreateHostedZone(ctx, input)
 }
 
-func (c *Route53APICounter) ListHostedZonesPagesWithContext(ctx context.Context, input *route53.ListHostedZonesInput, fn func(resp *route53.ListHostedZonesOutput, lastPage bool) (shouldContinue bool), opts ...request.Option) error {
+func (c *Route53APICounter) ListHostedZones(ctx context.Context, input *route53.ListHostedZonesInput, optFns ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error) {
 	c.calls["ListHostedZonesPages"]++
-	return c.wrapped.ListHostedZonesPagesWithContext(ctx, input, fn)
+	return c.wrapped.ListHostedZones(ctx, input)
 }
 
-func (c *Route53APICounter) ListTagsForResourceWithContext(ctx context.Context, input *route53.ListTagsForResourceInput, opts ...request.Option) (*route53.ListTagsForResourceOutput, error) {
+func (c *Route53APICounter) ListTagsForResource(ctx context.Context, input *route53.ListTagsForResourceInput, optFns ...func(*route53.Options)) (*route53.ListTagsForResourceOutput, error) {
 	c.calls["ListTagsForResource"]++
-	return c.wrapped.ListTagsForResourceWithContext(ctx, input)
+	return c.wrapped.ListTagsForResource(ctx, input)
 }
 
 // Route53 stores wildcards escaped: http://docs.aws.amazon.com/Route53/latest/DeveloperGuide/DomainNameFormat.html?shortFooter=true#domain-name-format-asterisk
@@ -141,11 +139,11 @@ func wildcardEscape(s string) string {
 	return s
 }
 
-func (r *Route53APIStub) ListTagsForResourceWithContext(ctx context.Context, input *route53.ListTagsForResourceInput, opts ...request.Option) (*route53.ListTagsForResourceOutput, error) {
-	if aws.StringValue(input.ResourceType) == "hostedzone" {
-		tags := r.zoneTags[aws.StringValue(input.ResourceId)]
+func (r *Route53APIStub) ListTagsForResource(ctx context.Context, input *route53.ListTagsForResourceInput, optFns ...func(*route53.Options)) (*route53.ListTagsForResourceOutput, error) {
+	if input.ResourceType == types.TagResourceTypeHostedzone {
+		tags := r.zoneTags[aws.ToString(input.ResourceId)]
 		return &route53.ListTagsForResourceOutput{
-			ResourceTagSet: &route53.ResourceTagSet{
+			ResourceTagSet: &types.ResourceTagSet{
 				ResourceId:   input.ResourceId,
 				ResourceType: input.ResourceType,
 				Tags:         tags,
@@ -155,14 +153,14 @@ func (r *Route53APIStub) ListTagsForResourceWithContext(ctx context.Context, inp
 	return &route53.ListTagsForResourceOutput{}, nil
 }
 
-func (r *Route53APIStub) ChangeResourceRecordSetsWithContext(ctx context.Context, input *route53.ChangeResourceRecordSetsInput, opts ...request.Option) (*route53.ChangeResourceRecordSetsOutput, error) {
+func (r *Route53APIStub) ChangeResourceRecordSets(ctx context.Context, input *route53.ChangeResourceRecordSetsInput, optFns ...func(*route53.Options)) (*route53.ChangeResourceRecordSetsOutput, error) {
 	if r.m.isMocked("ChangeResourceRecordSets", input) {
 		return r.m.ChangeResourceRecordSets(input)
 	}
 
-	_, ok := r.zones[aws.StringValue(input.HostedZoneId)]
+	_, ok := r.zones[aws.ToString(input.HostedZoneId)]
 	if !ok {
-		return nil, fmt.Errorf("Hosted zone doesn't exist: %s", aws.StringValue(input.HostedZoneId))
+		return nil, fmt.Errorf("Hosted zone doesn't exist: %s", aws.ToString(input.HostedZoneId))
 	}
 
 	if len(input.ChangeBatch.Changes) == 0 {
@@ -170,72 +168,71 @@ func (r *Route53APIStub) ChangeResourceRecordSetsWithContext(ctx context.Context
 	}
 
 	output := &route53.ChangeResourceRecordSetsOutput{}
-	recordSets, ok := r.recordSets[aws.StringValue(input.HostedZoneId)]
+	recordSets, ok := r.recordSets[aws.ToString(input.HostedZoneId)]
 	if !ok {
-		recordSets = make(map[string][]*route53.ResourceRecordSet)
+		recordSets = make(map[string][]types.ResourceRecordSet)
 	}
 
 	for _, change := range input.ChangeBatch.Changes {
-		if aws.StringValue(change.ResourceRecordSet.Type) == route53.RRTypeA {
+		if change.ResourceRecordSet.Type == types.RRTypeA {
 			for _, rrs := range change.ResourceRecordSet.ResourceRecords {
-				if net.ParseIP(aws.StringValue(rrs.Value)) == nil {
+				if net.ParseIP(aws.ToString(rrs.Value)) == nil {
 					return nil, fmt.Errorf("A records must point to IPs")
 				}
 			}
 		}
 
-		change.ResourceRecordSet.Name = aws.String(wildcardEscape(provider.EnsureTrailingDot(aws.StringValue(change.ResourceRecordSet.Name))))
+		change.ResourceRecordSet.Name = aws.String(wildcardEscape(provider.EnsureTrailingDot(aws.ToString(change.ResourceRecordSet.Name))))
 
 		if change.ResourceRecordSet.AliasTarget != nil {
-			change.ResourceRecordSet.AliasTarget.DNSName = aws.String(wildcardEscape(provider.EnsureTrailingDot(aws.StringValue(change.ResourceRecordSet.AliasTarget.DNSName))))
+			change.ResourceRecordSet.AliasTarget.DNSName = aws.String(wildcardEscape(provider.EnsureTrailingDot(aws.ToString(change.ResourceRecordSet.AliasTarget.DNSName))))
 		}
 
 		setID := ""
 		if change.ResourceRecordSet.SetIdentifier != nil {
-			setID = aws.StringValue(change.ResourceRecordSet.SetIdentifier)
+			setID = aws.ToString(change.ResourceRecordSet.SetIdentifier)
 		}
-		key := aws.StringValue(change.ResourceRecordSet.Name) + "::" + aws.StringValue(change.ResourceRecordSet.Type) + "::" + setID
-		switch aws.StringValue(change.Action) {
-		case route53.ChangeActionCreate:
+		key := aws.ToString(change.ResourceRecordSet.Name) + "::" + string(change.ResourceRecordSet.Type) + "::" + setID
+		switch change.Action {
+		case types.ChangeActionCreate:
 			if _, found := recordSets[key]; found {
-				return nil, fmt.Errorf("Attempt to create duplicate rrset %s", key) // TODO: Return AWS errors with codes etc
+				return nil, fmt.Errorf("Attempt to create duplicate rrset %s", key)
 			}
-			recordSets[key] = append(recordSets[key], change.ResourceRecordSet)
-		case route53.ChangeActionDelete:
+			recordSets[key] = append(recordSets[key], *change.ResourceRecordSet)
+		case types.ChangeActionDelete:
 			if _, found := recordSets[key]; !found {
-				return nil, fmt.Errorf("Attempt to delete non-existent rrset %s", key) // TODO: Check other fields too
+				return nil, fmt.Errorf("Attempt to delete non-existent rrset %s", key)
 			}
 			delete(recordSets, key)
-		case route53.ChangeActionUpsert:
-			recordSets[key] = []*route53.ResourceRecordSet{change.ResourceRecordSet}
+		case types.ChangeActionUpsert:
+			recordSets[key] = []types.ResourceRecordSet{*change.ResourceRecordSet}
 		}
 	}
-	r.recordSets[aws.StringValue(input.HostedZoneId)] = recordSets
-	return output, nil // TODO: We should ideally return status etc, but we don't' use that yet.
+	r.recordSets[aws.ToString(input.HostedZoneId)] = recordSets
+	return output, nil
 }
 
-func (r *Route53APIStub) ListHostedZonesPagesWithContext(ctx context.Context, input *route53.ListHostedZonesInput, fn func(p *route53.ListHostedZonesOutput, lastPage bool) (shouldContinue bool), opts ...request.Option) error {
+func (r *Route53APIStub) ListHostedZones(ctx context.Context, input *route53.ListHostedZonesInput, optFns ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error) {
 	output := &route53.ListHostedZonesOutput{}
 	for _, zone := range r.zones {
 		output.HostedZones = append(output.HostedZones, zone)
 	}
-	lastPage := true
-	fn(output, lastPage)
-	return nil
+	return output, nil
 }
 
-func (r *Route53APIStub) CreateHostedZoneWithContext(ctx context.Context, input *route53.CreateHostedZoneInput, opts ...request.Option) (*route53.CreateHostedZoneOutput, error) {
-	name := aws.StringValue(input.Name)
+func (r *Route53APIStub) CreateHostedZone(ctx context.Context, input *route53.CreateHostedZoneInput, optFns ...func(*route53.Options)) (*route53.CreateHostedZoneOutput, error) {
+	name := aws.ToString(input.Name)
 	id := "/hostedzone/" + name
 	if _, ok := r.zones[id]; ok {
 		return nil, fmt.Errorf("Error creating hosted DNS zone: %s already exists", id)
 	}
-	r.zones[id] = &route53.HostedZone{
+	zone := types.HostedZone{
 		Id:     aws.String(id),
 		Name:   aws.String(name),
 		Config: input.HostedZoneConfig,
 	}
-	return &route53.CreateHostedZoneOutput{HostedZone: r.zones[id]}, nil
+	r.zones[id] = zone
+	return &route53.CreateHostedZoneOutput{HostedZone: &zone}, nil
 }
 
 type dynamicMock struct {
@@ -243,11 +240,11 @@ type dynamicMock struct {
 }
 
 func (m *dynamicMock) ChangeResourceRecordSets(input *route53.ChangeResourceRecordSetsInput) (*route53.ChangeResourceRecordSetsOutput, error) {
-	args := m.Called(input)
-	if args.Get(0) != nil {
-		return args.Get(0).(*route53.ChangeResourceRecordSetsOutput), args.Error(1)
+	mockArgs := m.Called(input)
+	if mockArgs.Get(0) != nil {
+		return mockArgs.Get(0).(*route53.ChangeResourceRecordSetsOutput), mockArgs.Error(1)
 	}
-	return nil, args.Error(1)
+	return nil, mockArgs.Error(1)
 }
 
 func (m *dynamicMock) isMocked(method string, arguments ...interface{}) bool {
@@ -263,7 +260,7 @@ func (m *dynamicMock) isMocked(method string, arguments ...interface{}) bool {
 }
 
 func TestAWSZones(t *testing.T) {
-	publicZones := map[string]*route53.HostedZone{
+	publicZones := map[string]types.HostedZone{
 		"/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do.": {
 			Id:   aws.String("/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."),
 			Name: aws.String("zone-1.ext-dns-test-2.teapot.zalan.do."),
@@ -274,14 +271,14 @@ func TestAWSZones(t *testing.T) {
 		},
 	}
 
-	privateZones := map[string]*route53.HostedZone{
+	privateZones := map[string]types.HostedZone{
 		"/hostedzone/zone-3.ext-dns-test-2.teapot.zalan.do.": {
 			Id:   aws.String("/hostedzone/zone-3.ext-dns-test-2.teapot.zalan.do."),
 			Name: aws.String("zone-3.ext-dns-test-2.teapot.zalan.do."),
 		},
 	}
 
-	allZones := map[string]*route53.HostedZone{}
+	allZones := map[string]types.HostedZone{}
 	for k, v := range publicZones {
 		allZones[k] = v
 	}
@@ -289,14 +286,14 @@ func TestAWSZones(t *testing.T) {
 		allZones[k] = v
 	}
 
-	noZones := map[string]*route53.HostedZone{}
+	noZones := map[string]types.HostedZone{}
 
 	for _, ti := range []struct {
 		msg            string
 		zoneIDFilter   provider.ZoneIDFilter
 		zoneTypeFilter provider.ZoneTypeFilter
 		zoneTagFilter  provider.ZoneTagFilter
-		expectedZones  map[string]*route53.HostedZone
+		expectedZones  map[string]types.HostedZone
 	}{
 		{"no filter", provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), provider.NewZoneTagFilter([]string{}), allZones},
 		{"public filter", provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter("public"), provider.NewZoneTagFilter([]string{}), publicZones},
@@ -338,157 +335,157 @@ func TestAWSRecordsFilter(t *testing.T) {
 }
 
 func TestAWSRecords(t *testing.T) {
-	provider, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), false, false, []*route53.ResourceRecordSet{
+	provider, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), false, false, []types.ResourceRecordSet{
 		{
 			Name:            aws.String("list-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 		},
 		{
 			Name:            aws.String("list-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 		},
 		{
 			Name:            aws.String("*.wildcard-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 		},
 		{
 			Name: aws.String("list-test-alias.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type: aws.String(route53.RRTypeA),
-			AliasTarget: &route53.AliasTarget{
+			Type: types.RRTypeA,
+			AliasTarget: &types.AliasTarget{
 				DNSName:              aws.String("foo.eu-central-1.elb.amazonaws.com."),
-				EvaluateTargetHealth: aws.Bool(false),
+				EvaluateTargetHealth: false,
 				HostedZoneId:         aws.String("Z215JYRZR1TBD5"),
 			},
 		},
 		{
 			Name: aws.String("*.wildcard-test-alias.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type: aws.String(route53.RRTypeA),
-			AliasTarget: &route53.AliasTarget{
+			Type: types.RRTypeA,
+			AliasTarget: &types.AliasTarget{
 				DNSName:              aws.String("foo.eu-central-1.elb.amazonaws.com."),
-				EvaluateTargetHealth: aws.Bool(false),
+				EvaluateTargetHealth: false,
 				HostedZoneId:         aws.String("Z215JYRZR1TBD5"),
 			},
 		},
 		{
 			Name: aws.String("list-test-alias-evaluate.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type: aws.String(route53.RRTypeA),
-			AliasTarget: &route53.AliasTarget{
+			Type: types.RRTypeA,
+			AliasTarget: &types.AliasTarget{
 				DNSName:              aws.String("foo.eu-central-1.elb.amazonaws.com."),
-				EvaluateTargetHealth: aws.Bool(true),
+				EvaluateTargetHealth: true,
 				HostedZoneId:         aws.String("Z215JYRZR1TBD5"),
 			},
 		},
 		{
 			Name:            aws.String("list-test-multiple.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
 		},
 		{
 			Name:            aws.String("prefix-*.wildcard.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeTxt),
+			Type:            types.RRTypeTxt,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("random")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("random")}},
 		},
 		{
 			Name:            aws.String("weight-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 			SetIdentifier:   aws.String("test-set-1"),
 			Weight:          aws.Int64(10),
 		},
 		{
 			Name:            aws.String("weight-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("4.3.2.1")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("4.3.2.1")}},
 			SetIdentifier:   aws.String("test-set-2"),
 			Weight:          aws.Int64(20),
 		},
 		{
 			Name:            aws.String("latency-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 			SetIdentifier:   aws.String("test-set"),
-			Region:          aws.String("us-east-1"),
+			Region:          types.ResourceRecordSetRegion("us-east-1"),
 		},
 		{
 			Name:            aws.String("failover-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 			SetIdentifier:   aws.String("test-set"),
-			Failover:        aws.String("PRIMARY"),
+			Failover:        types.ResourceRecordSetFailoverPrimary,
 		},
 		{
 			Name:             aws.String("multi-value-answer-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:             aws.String(route53.RRTypeA),
+			Type:             types.RRTypeA,
 			TTL:              aws.Int64(recordTTL),
-			ResourceRecords:  []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+			ResourceRecords:  []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 			SetIdentifier:    aws.String("test-set"),
 			MultiValueAnswer: aws.Bool(true),
 		},
 		{
 			Name:            aws.String("geolocation-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 			SetIdentifier:   aws.String("test-set-1"),
-			GeoLocation: &route53.GeoLocation{
+			GeoLocation: &types.GeoLocation{
 				ContinentCode: aws.String("EU"),
 			},
 		},
 		{
 			Name:            aws.String("geolocation-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("4.3.2.1")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("4.3.2.1")}},
 			SetIdentifier:   aws.String("test-set-2"),
-			GeoLocation: &route53.GeoLocation{
+			GeoLocation: &types.GeoLocation{
 				CountryCode: aws.String("DE"),
 			},
 		},
 		{
 			Name:            aws.String("geolocation-subdivision-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 			SetIdentifier:   aws.String("test-set-1"),
-			GeoLocation: &route53.GeoLocation{
+			GeoLocation: &types.GeoLocation{
 				SubdivisionCode: aws.String("NY"),
 			},
 		},
 		{
 			Name:            aws.String("healthcheck-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeCname),
+			Type:            types.RRTypeCname,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("foo.example.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("foo.example.com")}},
 			SetIdentifier:   aws.String("test-set-1"),
 			HealthCheckId:   aws.String("foo-bar-healthcheck-id"),
 			Weight:          aws.Int64(10),
 		},
 		{
 			Name:            aws.String("healthcheck-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("4.3.2.1")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("4.3.2.1")}},
 			SetIdentifier:   aws.String("test-set-2"),
 			HealthCheckId:   aws.String("abc-def-healthcheck-id"),
 			Weight:          aws.Int64(20),
 		},
 		{
 			Name:            aws.String("mail.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeMx),
+			Type:            types.RRTypeMx,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("10 mailhost1.example.com")}, {Value: aws.String("20 mailhost2.example.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("10 mailhost1.example.com")}, {Value: aws.String("20 mailhost2.example.com")}},
 		},
 	})
 
@@ -562,60 +559,60 @@ func TestAWSCreateRecords(t *testing.T) {
 		Create: records,
 	}))
 
-	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."), []*route53.ResourceRecordSet{
+	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."), []types.ResourceRecordSet{
 		{
 			Name:            aws.String("create-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 		},
 		{
 			Name:            aws.String("create-test-custom-ttl.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(60),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("172.17.0.1")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("172.17.0.1")}},
 		},
 		{
 			Name:            aws.String("create-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeCname),
+			Type:            types.RRTypeCname,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("foo.example.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("foo.example.com")}},
 		},
 		{
 			Name: aws.String("create-test-cname-alias.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type: aws.String(route53.RRTypeA),
-			AliasTarget: &route53.AliasTarget{
+			Type: types.RRTypeA,
+			AliasTarget: &types.AliasTarget{
 				DNSName:              aws.String("foo.eu-central-1.elb.amazonaws.com."),
-				EvaluateTargetHealth: aws.Bool(true),
+				EvaluateTargetHealth: true,
 				HostedZoneId:         aws.String("Z215JYRZR1TBD5"),
 			},
 		},
 		{
 			Name:            aws.String("create-test-multiple.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
 		},
 		{
 			Name:            aws.String("create-test-mx.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeMx),
+			Type:            types.RRTypeMx,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("10 mailhost1.example.com")}, {Value: aws.String("20 mailhost2.example.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("10 mailhost1.example.com")}, {Value: aws.String("20 mailhost2.example.com")}},
 		},
 	})
-	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-2.ext-dns-test-2.teapot.zalan.do."), []*route53.ResourceRecordSet{
+	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-2.ext-dns-test-2.teapot.zalan.do."), []types.ResourceRecordSet{
 		{
 			Name:            aws.String("create-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 		},
 		{
 			Name: aws.String("create-test-cname-alias.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type: aws.String(route53.RRTypeA),
-			AliasTarget: &route53.AliasTarget{
+			Type: types.RRTypeA,
+			AliasTarget: &types.AliasTarget{
 				DNSName:              aws.String("alias-target.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				EvaluateTargetHealth: aws.Bool(true),
+				EvaluateTargetHealth: true,
 				HostedZoneId:         aws.String("zone-2.ext-dns-test-2.teapot.zalan.do."),
 			},
 		},
@@ -623,42 +620,42 @@ func TestAWSCreateRecords(t *testing.T) {
 }
 
 func TestAWSUpdateRecords(t *testing.T) {
-	provider, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, []*route53.ResourceRecordSet{
+	provider, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, []types.ResourceRecordSet{
 		{
 			Name:            aws.String("update-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 		},
 		{
 			Name:            aws.String("update-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.4.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.4.4")}},
 		},
 		{
 			Name:            aws.String("update-test-a-to-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.1.1.1")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.1.1.1")}},
 		},
 		{
 			Name:            aws.String("update-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeCname),
+			Type:            types.RRTypeCname,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("foo.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("foo.elb.amazonaws.com")}},
 		},
 		{
 			Name:            aws.String("create-test-multiple.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
 		},
 		{
 			Name:            aws.String("update-test-mx.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeMx),
+			Type:            types.RRTypeMx,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("10 mailhost1.foo.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("10 mailhost1.foo.elb.amazonaws.com")}},
 		},
 	})
 
@@ -684,106 +681,106 @@ func TestAWSUpdateRecords(t *testing.T) {
 		UpdateNew: updatedRecords,
 	}))
 
-	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."), []*route53.ResourceRecordSet{
+	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."), []types.ResourceRecordSet{
 		{
 			Name:            aws.String("update-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 		},
 		{
 			Name:            aws.String("update-test-a-to-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeCname),
+			Type:            types.RRTypeCname,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("foo.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("foo.elb.amazonaws.com")}},
 		},
 		{
 			Name:            aws.String("update-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeCname),
+			Type:            types.RRTypeCname,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("bar.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("bar.elb.amazonaws.com")}},
 		},
 		{
 			Name:            aws.String("create-test-multiple.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}, {Value: aws.String("4.3.2.1")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}, {Value: aws.String("4.3.2.1")}},
 		},
 		{
 			Name:            aws.String("update-test-mx.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeMx),
+			Type:            types.RRTypeMx,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("10 mailhost1.foo.elb.amazonaws.com")}, {Value: aws.String("20 mailhost2.foo.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("10 mailhost1.foo.elb.amazonaws.com")}, {Value: aws.String("20 mailhost2.foo.elb.amazonaws.com")}},
 		},
 	})
-	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-2.ext-dns-test-2.teapot.zalan.do."), []*route53.ResourceRecordSet{
+	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-2.ext-dns-test-2.teapot.zalan.do."), []types.ResourceRecordSet{
 		{
 			Name:            aws.String("update-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("4.3.2.1")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("4.3.2.1")}},
 		},
 	})
 }
 
 func TestAWSDeleteRecords(t *testing.T) {
-	provider, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), false, false, []*route53.ResourceRecordSet{
+	provider, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), false, false, []types.ResourceRecordSet{
 		{
 			Name:            aws.String("delete-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 		},
 		{
 			Name:            aws.String("delete-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 		},
 		{
 			Name:            aws.String("delete-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeCname),
+			Type:            types.RRTypeCname,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("baz.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("baz.elb.amazonaws.com")}},
 		},
 		{
 			Name: aws.String("delete-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type: aws.String(route53.RRTypeA),
-			AliasTarget: &route53.AliasTarget{
+			Type: types.RRTypeA,
+			AliasTarget: &types.AliasTarget{
 				DNSName:              aws.String("foo.eu-central-1.elb.amazonaws.com."),
-				EvaluateTargetHealth: aws.Bool(false),
+				EvaluateTargetHealth: false,
 				HostedZoneId:         aws.String("Z215JYRZR1TBD5"),
 			},
 		},
 		{
 			Name: aws.String("delete-test-cname-alias.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type: aws.String(route53.RRTypeA),
-			AliasTarget: &route53.AliasTarget{
+			Type: types.RRTypeA,
+			AliasTarget: &types.AliasTarget{
 				DNSName:              aws.String("foo.eu-central-1.elb.amazonaws.com."),
-				EvaluateTargetHealth: aws.Bool(true),
+				EvaluateTargetHealth: true,
 				HostedZoneId:         aws.String("Z215JYRZR1TBD5"),
 			},
 		},
 		{
 			Name: aws.String("delete-test-cname-alias.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type: aws.String(route53.RRTypeA),
-			AliasTarget: &route53.AliasTarget{
+			Type: types.RRTypeA,
+			AliasTarget: &types.AliasTarget{
 				DNSName:              aws.String("delete-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				EvaluateTargetHealth: aws.Bool(true),
+				EvaluateTargetHealth: true,
 				HostedZoneId:         aws.String("zone-2.ext-dns-test-2.teapot.zalan.do."),
 			},
 		},
 		{
 			Name:            aws.String("delete-test-multiple.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
 		},
 		{
 			Name:            aws.String("delete-test-mx.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeMx),
+			Type:            types.RRTypeMx,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("10 mailhost1.foo.elb.amazonaws.com")}, {Value: aws.String("20 mailhost2.foo.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("10 mailhost1.foo.elb.amazonaws.com")}, {Value: aws.String("20 mailhost2.foo.elb.amazonaws.com")}},
 		},
 	})
 
@@ -800,8 +797,8 @@ func TestAWSDeleteRecords(t *testing.T) {
 		},
 	}))
 
-	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."), []*route53.ResourceRecordSet{})
-	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-2.ext-dns-test-2.teapot.zalan.do."), []*route53.ResourceRecordSet{})
+	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."), []types.ResourceRecordSet{})
+	validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-2.ext-dns-test-2.teapot.zalan.do."), []types.ResourceRecordSet{})
 }
 
 func TestAWSApplyChanges(t *testing.T) {
@@ -820,131 +817,131 @@ func TestAWSApplyChanges(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		provider, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, []*route53.ResourceRecordSet{
+		provider, _ := newAWSProvider(t, endpoint.NewDomainFilter([]string{"ext-dns-test-2.teapot.zalan.do."}), provider.NewZoneIDFilter([]string{}), provider.NewZoneTypeFilter(""), defaultEvaluateTargetHealth, false, []types.ResourceRecordSet{
 			{
 				Name:            aws.String("update-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 			},
 			{
 				Name:            aws.String("delete-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 			},
 			{
 				Name:            aws.String("update-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.4.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.4.4")}},
 			},
 			{
 				Name:            aws.String("delete-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.4.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.4.4")}},
 			},
 			{
 				Name:            aws.String("update-test-a-to-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.1.1.1")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.1.1.1")}},
 			},
 			{
 				Name: aws.String("update-test-alias-to-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type: aws.String(route53.RRTypeA),
-				AliasTarget: &route53.AliasTarget{
+				Type: types.RRTypeA,
+				AliasTarget: &types.AliasTarget{
 					DNSName:              aws.String("foo.eu-central-1.elb.amazonaws.com."),
-					EvaluateTargetHealth: aws.Bool(true),
+					EvaluateTargetHealth: true,
 					HostedZoneId:         aws.String("Z215JYRZR1TBD5"),
 				},
 			},
 			{
 				Name:            aws.String("update-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeCname),
+				Type:            types.RRTypeCname,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("bar.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("bar.elb.amazonaws.com")}},
 			},
 			{
 				Name:            aws.String("delete-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeCname),
+				Type:            types.RRTypeCname,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("qux.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("qux.elb.amazonaws.com")}},
 			},
 			{
 				Name:            aws.String("update-test-cname-alias.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeCname),
+				Type:            types.RRTypeCname,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("bar.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("bar.elb.amazonaws.com")}},
 			},
 			{
 				Name:            aws.String("delete-test-cname-alias.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeCname),
+				Type:            types.RRTypeCname,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("qux.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("qux.elb.amazonaws.com")}},
 			},
 			{
 				Name:            aws.String("update-test-multiple.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
 			},
 			{
 				Name:            aws.String("delete-test-multiple.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}, {Value: aws.String("4.3.2.1")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}, {Value: aws.String("4.3.2.1")}},
 			},
 			{
 				Name:            aws.String("weighted-to-simple.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 				SetIdentifier:   aws.String("weighted-to-simple"),
 				Weight:          aws.Int64(10),
 			},
 			{
 				Name:            aws.String("simple-to-weighted.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 			},
 			{
 				Name:            aws.String("policy-change.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 				SetIdentifier:   aws.String("policy-change"),
 				Weight:          aws.Int64(10),
 			},
 			{
 				Name:            aws.String("set-identifier-change.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 				SetIdentifier:   aws.String("before"),
 				Weight:          aws.Int64(10),
 			},
 			{
 				Name:            aws.String("set-identifier-no-change.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 				SetIdentifier:   aws.String("no-change"),
 				Weight:          aws.Int64(10),
 			},
 			{
 				Name:            aws.String("update-test-mx.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeMx),
+				Type:            types.RRTypeMx,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("10 mailhost2.bar.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("10 mailhost2.bar.elb.amazonaws.com")}},
 			},
 			{
 				Name:            aws.String("delete-test-mx.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeMx),
+				Type:            types.RRTypeMx,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("30 mailhost1.foo.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("30 mailhost1.foo.elb.amazonaws.com")}},
 			},
 		})
 
@@ -1014,217 +1011,217 @@ func TestAWSApplyChanges(t *testing.T) {
 		assert.Equal(t, 1, counter.calls["ListHostedZonesPages"], tt.name)
 		assert.Equal(t, tt.listRRSets, counter.calls["ListResourceRecordSetsPages"], tt.name)
 
-		validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."), []*route53.ResourceRecordSet{
+		validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."), []types.ResourceRecordSet{
 			{
 				Name:            aws.String("create-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 			},
 			{
 				Name:            aws.String("update-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 			},
 			{
 				Name: aws.String("update-test-a-to-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type: aws.String(route53.RRTypeA),
-				AliasTarget: &route53.AliasTarget{
+				Type: types.RRTypeA,
+				AliasTarget: &types.AliasTarget{
 					DNSName:              aws.String("foo.elb.amazonaws.com."),
-					EvaluateTargetHealth: aws.Bool(true),
+					EvaluateTargetHealth: true,
 					HostedZoneId:         aws.String("zone-1.ext-dns-test-2.teapot.zalan.do."),
 				},
 			},
 			{
 				Name:            aws.String("update-test-alias-to-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeCname),
+				Type:            types.RRTypeCname,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("my-internal-host.example.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("my-internal-host.example.com")}},
 			},
 			{
 				Name:            aws.String("create-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeCname),
+				Type:            types.RRTypeCname,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("foo.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("foo.elb.amazonaws.com")}},
 			},
 			{
 				Name:            aws.String("update-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeCname),
+				Type:            types.RRTypeCname,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("baz.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("baz.elb.amazonaws.com")}},
 			},
 			{
 				Name:            aws.String("create-test-cname-alias.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeCname),
+				Type:            types.RRTypeCname,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("foo.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("foo.elb.amazonaws.com")}},
 			},
 			{
 				Name:            aws.String("update-test-cname-alias.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeCname),
+				Type:            types.RRTypeCname,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("baz.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("baz.elb.amazonaws.com")}},
 			},
 			{
 				Name:            aws.String("weighted-to-simple.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 			},
 			{
 				Name:            aws.String("simple-to-weighted.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 				SetIdentifier:   aws.String("simple-to-weighted"),
 				Weight:          aws.Int64(10),
 			},
 			{
 				Name:            aws.String("policy-change.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 				SetIdentifier:   aws.String("policy-change"),
-				Region:          aws.String("us-east-1"),
+				Region:          types.ResourceRecordSetRegion("us-east-1"),
 			},
 			{
 				Name:            aws.String("set-identifier-change.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 				SetIdentifier:   aws.String("after"),
 				Weight:          aws.Int64(10),
 			},
 			{
 				Name:            aws.String("set-identifier-no-change.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}},
 				SetIdentifier:   aws.String("no-change"),
 				Weight:          aws.Int64(20),
 			},
 			{
 				Name:            aws.String("create-test-mx.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeMx),
+				Type:            types.RRTypeMx,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("10 mailhost1.foo.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("10 mailhost1.foo.elb.amazonaws.com")}},
 			},
 		})
-		validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-2.ext-dns-test-2.teapot.zalan.do."), []*route53.ResourceRecordSet{
+		validateRecords(t, listAWSRecords(t, provider.client, "/hostedzone/zone-2.ext-dns-test-2.teapot.zalan.do."), []types.ResourceRecordSet{
 			{
 				Name:            aws.String("create-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.4.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.4.4")}},
 			},
 			{
 				Name:            aws.String("update-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("4.3.2.1")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("4.3.2.1")}},
 			},
 			{
 				Name:            aws.String("create-test-multiple.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
 			},
 			{
 				Name:            aws.String("update-test-multiple.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeA),
+				Type:            types.RRTypeA,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}, {Value: aws.String("4.3.2.1")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}, {Value: aws.String("4.3.2.1")}},
 			},
 			{
 				Name:            aws.String("update-test-mx.zone-2.ext-dns-test-2.teapot.zalan.do."),
-				Type:            aws.String(route53.RRTypeMx),
+				Type:            types.RRTypeMx,
 				TTL:             aws.Int64(recordTTL),
-				ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("20 mailhost3.foo.elb.amazonaws.com")}},
+				ResourceRecords: []types.ResourceRecord{{Value: aws.String("20 mailhost3.foo.elb.amazonaws.com")}},
 			},
 		})
 	}
 }
 
 func TestAWSApplyChangesDryRun(t *testing.T) {
-	originalRecords := []*route53.ResourceRecordSet{
+	originalRecords := []types.ResourceRecordSet{
 		{
 			Name:            aws.String("update-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 		},
 		{
 			Name:            aws.String("delete-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}},
 		},
 		{
 			Name:            aws.String("update-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.4.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.4.4")}},
 		},
 		{
 			Name:            aws.String("delete-test.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.4.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.4.4")}},
 		},
 		{
 			Name:            aws.String("update-test-a-to-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.1.1.1")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.1.1.1")}},
 		},
 		{
 			Name:            aws.String("update-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeCname),
+			Type:            types.RRTypeCname,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("bar.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("bar.elb.amazonaws.com")}},
 		},
 		{
 			Name:            aws.String("delete-test-cname.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeCname),
+			Type:            types.RRTypeCname,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("qux.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("qux.elb.amazonaws.com")}},
 		},
 		{
 			Name:            aws.String("update-test-cname-alias.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeCname),
+			Type:            types.RRTypeCname,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("bar.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("bar.elb.amazonaws.com")}},
 		},
 		{
 			Name:            aws.String("delete-test-cname-alias.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeCname),
+			Type:            types.RRTypeCname,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("qux.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("qux.elb.amazonaws.com")}},
 		},
 		{
 			Name:            aws.String("update-test-multiple.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("8.8.8.8")}, {Value: aws.String("8.8.4.4")}},
 		},
 		{
 			Name:            aws.String("delete-test-multiple.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeA),
+			Type:            types.RRTypeA,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("1.2.3.4")}, {Value: aws.String("4.3.2.1")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("1.2.3.4")}, {Value: aws.String("4.3.2.1")}},
 		},
 		{
 			Name:            aws.String("update-test-mx.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeMx),
+			Type:            types.RRTypeMx,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("20 mail.foo.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("20 mail.foo.elb.amazonaws.com")}},
 		},
 		{
 			Name:            aws.String("delete-test-mx.zone-2.ext-dns-test-2.teapot.zalan.do."),
-			Type:            aws.String(route53.RRTypeMx),
+			Type:            types.RRTypeMx,
 			TTL:             aws.Int64(recordTTL),
-			ResourceRecords: []*route53.ResourceRecord{{Value: aws.String("10 mail.bar.elb.amazonaws.com")}},
+			ResourceRecords: []types.ResourceRecord{{Value: aws.String("10 mail.bar.elb.amazonaws.com")}},
 		},
 	}
 
@@ -1288,40 +1285,40 @@ func TestAWSApplyChangesDryRun(t *testing.T) {
 func TestAWSChangesByZones(t *testing.T) {
 	changes := Route53Changes{
 		{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionCreate),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionCreate,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String("qux.foo.example.org"), TTL: aws.Int64(1),
 				},
 			},
 		},
 		{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionCreate),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionCreate,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String("qux.bar.example.org"), TTL: aws.Int64(2),
 				},
 			},
 		},
 		{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionDelete),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionDelete,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String("wambo.foo.example.org"), TTL: aws.Int64(10),
 				},
 			},
 		},
 		{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionDelete),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionDelete,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String("wambo.bar.example.org"), TTL: aws.Int64(20),
 				},
 			},
 		},
 	}
 
-	zones := map[string]*route53.HostedZone{
+	zones := map[string]types.HostedZone{
 		"foo-example-org": {
 			Id:   aws.String("foo-example-org"),
 			Name: aws.String("foo.example.org."),
@@ -1333,7 +1330,7 @@ func TestAWSChangesByZones(t *testing.T) {
 		"bar-example-org-private": {
 			Id:     aws.String("bar-example-org-private"),
 			Name:   aws.String("bar.example.org."),
-			Config: &route53.HostedZoneConfig{PrivateZone: aws.Bool(true)},
+			Config: &types.HostedZoneConfig{PrivateZone: true},
 		},
 		"baz-example-org": {
 			Id:   aws.String("baz-example-org"),
@@ -1348,17 +1345,17 @@ func TestAWSChangesByZones(t *testing.T) {
 
 	validateAWSChangeRecords(t, changesByZone["foo-example-org"], Route53Changes{
 		{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionCreate),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionCreate,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String("qux.foo.example.org"), TTL: aws.Int64(1),
 				},
 			},
 		},
 		{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionDelete),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionDelete,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String("wambo.foo.example.org"), TTL: aws.Int64(10),
 				},
 			},
@@ -1367,17 +1364,17 @@ func TestAWSChangesByZones(t *testing.T) {
 
 	validateAWSChangeRecords(t, changesByZone["bar-example-org"], Route53Changes{
 		{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionCreate),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionCreate,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String("qux.bar.example.org"), TTL: aws.Int64(2),
 				},
 			},
 		},
 		{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionDelete),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionDelete,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String("wambo.bar.example.org"), TTL: aws.Int64(20),
 				},
 			},
@@ -1386,17 +1383,17 @@ func TestAWSChangesByZones(t *testing.T) {
 
 	validateAWSChangeRecords(t, changesByZone["bar-example-org-private"], Route53Changes{
 		{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionCreate),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionCreate,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String("qux.bar.example.org"), TTL: aws.Int64(2),
 				},
 			},
 		},
 		{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionDelete),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionDelete,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String("wambo.bar.example.org"), TTL: aws.Int64(20),
 				},
 			},
@@ -1423,7 +1420,7 @@ func TestAWSsubmitChanges(t *testing.T) {
 	zones, _ := provider.Zones(ctx)
 	records, _ := provider.Records(ctx)
 	cs := make(Route53Changes, 0, len(endpoints))
-	cs = append(cs, provider.newChanges(route53.ChangeActionCreate, endpoints)...)
+	cs = append(cs, provider.newChanges(types.ChangeActionCreate, endpoints)...)
 
 	require.NoError(t, provider.submitChanges(ctx, cs, zones))
 
@@ -1442,7 +1439,7 @@ func TestAWSsubmitChangesError(t *testing.T) {
 	require.NoError(t, err)
 
 	ep := endpoint.NewEndpointWithTTL("fail.zone-1.ext-dns-test-2.teapot.zalan.do", endpoint.RecordTypeA, endpoint.TTL(recordTTL), "1.0.0.1")
-	cs := provider.newChanges(route53.ChangeActionCreate, []*endpoint.Endpoint{ep})
+	cs := provider.newChanges(types.ChangeActionCreate, []*endpoint.Endpoint{ep})
 
 	require.Error(t, provider.submitChanges(ctx, cs, zones))
 }
@@ -1464,7 +1461,7 @@ func TestAWSsubmitChangesError(t *testing.T) {
 //	}
 //
 //	// "success" and "fail" are created in the first step, both are submitted in the same batch; this should fail
-//	cs1 := provider.newChanges(route53.ChangeActionCreate, []*endpoint.Endpoint{ep2, ep2txt, ep1})
+//	cs1 := provider.newChanges(types.ChangeActionCreate, []*endpoint.Endpoint{ep2, ep2txt, ep1})
 //	input1 := &route53.ChangeResourceRecordSetsInput{
 //		HostedZoneId: aws.String("/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."),
 //		ChangeBatch: &route53.ChangeBatch{
@@ -1474,7 +1471,7 @@ func TestAWSsubmitChangesError(t *testing.T) {
 //	clientStub.MockMethod("ChangeResourceRecordSets", input1).Return(nil, fmt.Errorf("Mock route53 failure"))
 //
 //	// because of the failure, changes will be retried one by one; make "fail" submitted in its own batch fail as well
-//	cs2 := provider.newChanges(route53.ChangeActionCreate, []*endpoint.Endpoint{ep2, ep2txt})
+//	cs2 := provider.newChanges(types.ChangeActionCreate, []*endpoint.Endpoint{ep2, ep2txt})
 //	input2 := &route53.ChangeResourceRecordSetsInput{
 //		HostedZoneId: aws.String("/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."),
 //		ChangeBatch: &route53.ChangeBatch{
@@ -1494,7 +1491,7 @@ func TestAWSsubmitChangesError(t *testing.T) {
 //	require.False(t, containsRecordWithDNSName(records, "fail__edns_housekeeping.zone-1.ext-dns-test-2.teapot.zalan.do"))
 //
 //	// next batch should contain "fail" and "success2", should succeed this time
-//	cs3 := provider.newChanges(route53.ChangeActionCreate, []*endpoint.Endpoint{ep2, ep2txt, ep3})
+//	cs3 := provider.newChanges(types.ChangeActionCreate, []*endpoint.Endpoint{ep2, ep2txt, ep3})
 //	require.NoError(t, provider.submitChanges(ctx, cs3, zones))
 //
 //	// verify all records are there
@@ -1511,20 +1508,20 @@ func TestAWSBatchChangeSet(t *testing.T) {
 
 	for i := 1; i <= defaultBatchChangeSize; i += 2 {
 		cs = append(cs, &Route53Change{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionCreate),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionCreate,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String(fmt.Sprintf("host-%d", i)),
-					Type: aws.String("A"),
+					Type: types.RRTypeA,
 				},
 			},
 		})
 		cs = append(cs, &Route53Change{
-			Change: route53.Change{
-				Action: aws.String(route53.ChangeActionCreate),
-				ResourceRecordSet: &route53.ResourceRecordSet{
+			Change: types.Change{
+				Action: types.ChangeActionCreate,
+				ResourceRecordSet: &types.ResourceRecordSet{
 					Name: aws.String(fmt.Sprintf("host-%d", i)),
-					Type: aws.String("TXT"),
+					Type: types.RRTypeTxt,
 				},
 			},
 		})
@@ -1549,20 +1546,20 @@ func TestAWSBatchChangeSetExceeding(t *testing.T) {
 	for i := 1; i <= testCount; i += 2 {
 		cs = append(cs,
 			&Route53Change{
-				Change: route53.Change{
-					Action: aws.String(route53.ChangeActionCreate),
-					ResourceRecordSet: &route53.ResourceRecordSet{
+				Change: types.Change{
+					Action: types.ChangeActionCreate,
+					ResourceRecordSet: &types.ResourceRecordSet{
 						Name: aws.String(fmt.Sprintf("host-%d", i)),
-						Type: aws.String("A"),
+						Type: types.RRTypeA,
 					},
 				},
 			},
 			&Route53Change{
-				Change: route53.Change{
-					Action: aws.String(route53.ChangeActionCreate),
-					ResourceRecordSet: &route53.ResourceRecordSet{
+				Change: types.Change{
+					Action: types.ChangeActionCreate,
+					ResourceRecordSet: &types.ResourceRecordSet{
 						Name: aws.String(fmt.Sprintf("host-%d", i)),
-						Type: aws.String("TXT"),
+						Type: types.RRTypeTxt,
 					},
 				},
 			},
@@ -1589,20 +1586,20 @@ func TestAWSBatchChangeSetExceedingNameChange(t *testing.T) {
 	for i := 1; i <= testCount; i += 2 {
 		cs = append(cs,
 			&Route53Change{
-				Change: route53.Change{
-					Action: aws.String(route53.ChangeActionCreate),
-					ResourceRecordSet: &route53.ResourceRecordSet{
+				Change: types.Change{
+					Action: types.ChangeActionCreate,
+					ResourceRecordSet: &types.ResourceRecordSet{
 						Name: aws.String(fmt.Sprintf("host-%d", i)),
-						Type: aws.String("A"),
+						Type: types.RRTypeA,
 					},
 				},
 			},
 			&Route53Change{
-				Change: route53.Change{
-					Action: aws.String(route53.ChangeActionCreate),
-					ResourceRecordSet: &route53.ResourceRecordSet{
+				Change: types.Change{
+					Action: types.ChangeActionCreate,
+					ResourceRecordSet: &types.ResourceRecordSet{
 						Name: aws.String(fmt.Sprintf("host-%d", i)),
-						Type: aws.String("TXT"),
+						Type: types.RRTypeTxt,
 					},
 				},
 			},
@@ -1624,17 +1621,17 @@ func validateEndpoints(t *testing.T, provider *AWSProvider, endpoints []*endpoin
 	assert.True(t, testutils.SameEndpoints(normalized, expected), "actual and normalized endpoints don't match. %+v:%+v", endpoints, normalized)
 }
 
-func validateAWSZones(t *testing.T, zones map[string]*route53.HostedZone, expected map[string]*route53.HostedZone) {
+func validateAWSZones(t *testing.T, zones map[string]types.HostedZone, expected map[string]types.HostedZone) {
 	require.Len(t, zones, len(expected))
 
-	for i, zone := range zones {
-		validateAWSZone(t, zone, expected[i])
+	for id, zone := range zones {
+		validateAWSZone(t, zone, expected[id])
 	}
 }
 
-func validateAWSZone(t *testing.T, zone *route53.HostedZone, expected *route53.HostedZone) {
-	assert.Equal(t, aws.StringValue(expected.Id), aws.StringValue(zone.Id))
-	assert.Equal(t, aws.StringValue(expected.Name), aws.StringValue(zone.Name))
+func validateAWSZone(t *testing.T, zone types.HostedZone, expected types.HostedZone) {
+	assert.Equal(t, aws.ToString(expected.Id), aws.ToString(zone.Id))
+	assert.Equal(t, aws.ToString(expected.Name), aws.ToString(zone.Name))
 }
 
 func validateAWSChangeRecords(t *testing.T, records Route53Changes, expected Route53Changes) {
@@ -1646,9 +1643,9 @@ func validateAWSChangeRecords(t *testing.T, records Route53Changes, expected Rou
 }
 
 func validateAWSChangeRecord(t *testing.T, record *Route53Change, expected *Route53Change) {
-	assert.Equal(t, aws.StringValue(expected.Action), aws.StringValue(record.Action))
-	assert.Equal(t, aws.StringValue(expected.ResourceRecordSet.Name), aws.StringValue(record.ResourceRecordSet.Name))
-	assert.Equal(t, aws.StringValue(expected.ResourceRecordSet.Type), aws.StringValue(record.ResourceRecordSet.Type))
+	assert.Equal(t, string(expected.Action), string(record.Action))
+	assert.Equal(t, aws.ToString(expected.ResourceRecordSet.Name), aws.ToString(record.ResourceRecordSet.Name))
+	assert.Equal(t, string(expected.ResourceRecordSet.Type), string(record.ResourceRecordSet.Type))
 }
 
 func TestAWSCreateRecordsWithCNAME(t *testing.T) {
@@ -1664,12 +1661,12 @@ func TestAWSCreateRecordsWithCNAME(t *testing.T) {
 
 	recordSets := listAWSRecords(t, provider.client, "/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do.")
 
-	validateRecords(t, recordSets, []*route53.ResourceRecordSet{
+	validateRecords(t, recordSets, []types.ResourceRecordSet{
 		{
 			Name: aws.String("create-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-			Type: aws.String(endpoint.RecordTypeCNAME),
+			Type: types.RRTypeCname,
 			TTL:  aws.Int64(300),
-			ResourceRecords: []*route53.ResourceRecord{
+			ResourceRecords: []types.ResourceRecord{
 				{
 					Value: aws.String("foo.example.org"),
 				},
@@ -1727,33 +1724,33 @@ func TestAWSCreateRecordsWithALIAS(t *testing.T) {
 
 		recordSets := listAWSRecords(t, provider.client, "/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do.")
 
-		validateRecords(t, recordSets, []*route53.ResourceRecordSet{
+		validateRecords(t, recordSets, []types.ResourceRecordSet{
 			{
-				AliasTarget: &route53.AliasTarget{
+				AliasTarget: &types.AliasTarget{
 					DNSName:              aws.String("foo.eu-central-1.elb.amazonaws.com."),
-					EvaluateTargetHealth: aws.Bool(evaluateTargetHealth),
+					EvaluateTargetHealth: evaluateTargetHealth,
 					HostedZoneId:         aws.String("Z215JYRZR1TBD5"),
 				},
 				Name: aws.String("create-test.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type: aws.String(route53.RRTypeA),
+				Type: types.RRTypeA,
 			},
 			{
-				AliasTarget: &route53.AliasTarget{
+				AliasTarget: &types.AliasTarget{
 					DNSName:              aws.String("bar.eu-central-1.elb.amazonaws.com."),
-					EvaluateTargetHealth: aws.Bool(evaluateTargetHealth),
+					EvaluateTargetHealth: evaluateTargetHealth,
 					HostedZoneId:         aws.String("Z215JYRZR1TBD5"),
 				},
 				Name: aws.String("create-test-dualstack.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type: aws.String(route53.RRTypeA),
+				Type: types.RRTypeA,
 			},
 			{
-				AliasTarget: &route53.AliasTarget{
+				AliasTarget: &types.AliasTarget{
 					DNSName:              aws.String("bar.eu-central-1.elb.amazonaws.com."),
-					EvaluateTargetHealth: aws.Bool(evaluateTargetHealth),
+					EvaluateTargetHealth: evaluateTargetHealth,
 					HostedZoneId:         aws.String("Z215JYRZR1TBD5"),
 				},
 				Name: aws.String("create-test-dualstack.zone-1.ext-dns-test-2.teapot.zalan.do."),
-				Type: aws.String(route53.RRTypeAaaa),
+				Type: types.RRTypeAaaa,
 			},
 		})
 	}
@@ -1820,32 +1817,32 @@ func TestAWSCanonicalHostedZone(t *testing.T) {
 }
 
 func TestAWSSuitableZones(t *testing.T) {
-	zones := map[string]*route53.HostedZone{
+	zones := map[string]types.HostedZone{
 		// Public domain
 		"example-org": {Id: aws.String("example-org"), Name: aws.String("example.org.")},
 		// Public subdomain
-		"bar-example-org": {Id: aws.String("bar-example-org"), Name: aws.String("bar.example.org."), Config: &route53.HostedZoneConfig{PrivateZone: aws.Bool(false)}},
+		"bar-example-org": {Id: aws.String("bar-example-org"), Name: aws.String("bar.example.org."), Config: &types.HostedZoneConfig{PrivateZone: false}},
 		// Public subdomain
 		"longfoo-bar-example-org": {Id: aws.String("longfoo-bar-example-org"), Name: aws.String("longfoo.bar.example.org.")},
 		// Private domain
-		"example-org-private": {Id: aws.String("example-org-private"), Name: aws.String("example.org."), Config: &route53.HostedZoneConfig{PrivateZone: aws.Bool(true)}},
+		"example-org-private": {Id: aws.String("example-org-private"), Name: aws.String("example.org."), Config: &types.HostedZoneConfig{PrivateZone: true}},
 		// Private subdomain
-		"bar-example-org-private": {Id: aws.String("bar-example-org-private"), Name: aws.String("bar.example.org."), Config: &route53.HostedZoneConfig{PrivateZone: aws.Bool(true)}},
+		"bar-example-org-private": {Id: aws.String("bar-example-org-private"), Name: aws.String("bar.example.org."), Config: &types.HostedZoneConfig{PrivateZone: true}},
 	}
 
 	for _, tc := range []struct {
 		hostname string
-		expected []*route53.HostedZone
+		expected []types.HostedZone
 	}{
 		// bar.example.org is NOT suitable
-		{"foobar.example.org.", []*route53.HostedZone{zones["example-org-private"], zones["example-org"]}},
+		{"foobar.example.org.", []types.HostedZone{zones["example-org-private"], zones["example-org"]}},
 
 		// all matching private zones are suitable
 		// https://github.com/kubernetes-sigs/external-dns/pull/356
-		{"bar.example.org.", []*route53.HostedZone{zones["example-org-private"], zones["bar-example-org-private"], zones["bar-example-org"]}},
+		{"bar.example.org.", []types.HostedZone{zones["example-org-private"], zones["bar-example-org-private"], zones["bar-example-org"]}},
 
-		{"foo.bar.example.org.", []*route53.HostedZone{zones["example-org-private"], zones["bar-example-org-private"], zones["bar-example-org"]}},
-		{"foo.example.org.", []*route53.HostedZone{zones["example-org-private"], zones["example-org"]}},
+		{"foo.bar.example.org.", []types.HostedZone{zones["example-org-private"], zones["bar-example-org-private"], zones["bar-example-org"]}},
+		{"foo.example.org.", []types.HostedZone{zones["example-org-private"], zones["example-org"]}},
 		{"foo.kubernetes.io.", nil},
 	} {
 		suitableZones := suitableZones(tc.hostname, zones)
@@ -1859,19 +1856,19 @@ func TestAWSSuitableZones(t *testing.T) {
 	}
 }
 
-func createAWSZone(t *testing.T, provider *AWSProvider, zone *route53.HostedZone) {
+func createAWSZone(t *testing.T, provider *AWSProvider, zone *types.HostedZone) {
 	params := &route53.CreateHostedZoneInput{
 		CallerReference:  aws.String("external-dns.alpha.kubernetes.io/test-zone"),
 		Name:             zone.Name,
 		HostedZoneConfig: zone.Config,
 	}
 
-	if _, err := provider.client.CreateHostedZoneWithContext(context.Background(), params); err != nil {
-		require.EqualError(t, err, route53.ErrCodeHostedZoneAlreadyExists)
+	if _, err := provider.client.CreateHostedZone(context.Background(), params); err != nil {
+		require.EqualError(t, err, fmt.Sprintf("Error creating hosted DNS zone: /hostedzone/%s already exists", aws.ToString(zone.Name)))
 	}
 }
 
-func setAWSRecords(t *testing.T, provider *AWSProvider, records []*route53.ResourceRecordSet) {
+func setAWSRecords(t *testing.T, provider *AWSProvider, records []types.ResourceRecordSet) {
 	dryRun := provider.dryRun
 	provider.dryRun = false
 	defer func() {
@@ -1886,10 +1883,11 @@ func setAWSRecords(t *testing.T, provider *AWSProvider, records []*route53.Resou
 
 	var changes Route53Changes
 	for _, record := range records {
+		r := record
 		changes = append(changes, &Route53Change{
-			Change: route53.Change{
-				Action:            aws.String(route53.ChangeActionCreate),
-				ResourceRecordSet: record,
+			Change: types.Change{
+				Action:            types.ChangeActionCreate,
+				ResourceRecordSet: &r,
 			},
 		})
 	}
@@ -1903,35 +1901,32 @@ func setAWSRecords(t *testing.T, provider *AWSProvider, records []*route53.Resou
 	require.NoError(t, err)
 }
 
-func listAWSRecords(t *testing.T, client Route53API, zone string) []*route53.ResourceRecordSet {
-	recordSets := []*route53.ResourceRecordSet{}
-	require.NoError(t, client.ListResourceRecordSetsPagesWithContext(context.Background(), &route53.ListResourceRecordSetsInput{
+func listAWSRecords(t *testing.T, client Route53API, zone string) []types.ResourceRecordSet {
+	resp, err := client.ListResourceRecordSets(context.Background(), &route53.ListResourceRecordSetsInput{
 		HostedZoneId: aws.String(zone),
-		MaxItems:     aws.String(route53PageSize),
-	}, func(resp *route53.ListResourceRecordSetsOutput, _ bool) bool {
-		recordSets = append(recordSets, resp.ResourceRecordSets...)
-		return true
-	}))
-
-	return recordSets
+		MaxItems:     aws.Int32(300),
+	})
+	require.NoError(t, err)
+	return resp.ResourceRecordSets
 }
 
 // Route53 stores wildcards escaped: http://docs.aws.amazon.com/Route53/latest/DeveloperGuide/DomainNameFormat.html?shortFooter=true#domain-name-format-asterisk
 func escapeAWSRecords(t *testing.T, provider *AWSProvider, zone string) {
 	recordSets := listAWSRecords(t, provider.client, zone)
 
-	changes := make([]*route53.Change, 0, len(recordSets))
+	changes := make([]types.Change, 0, len(recordSets))
 	for _, recordSet := range recordSets {
-		changes = append(changes, &route53.Change{
-			Action:            aws.String(route53.ChangeActionUpsert),
-			ResourceRecordSet: recordSet,
+		rs := recordSet
+		changes = append(changes, types.Change{
+			Action:            types.ChangeActionUpsert,
+			ResourceRecordSet: &rs,
 		})
 	}
 
 	if len(changes) != 0 {
-		_, err := provider.client.ChangeResourceRecordSetsWithContext(context.Background(), &route53.ChangeResourceRecordSetsInput{
+		_, err := provider.client.ChangeResourceRecordSets(context.Background(), &route53.ChangeResourceRecordSetsInput{
 			HostedZoneId: aws.String(zone),
-			ChangeBatch: &route53.ChangeBatch{
+			ChangeBatch: &types.ChangeBatch{
 				Changes: changes,
 			},
 		})
@@ -1939,11 +1934,11 @@ func escapeAWSRecords(t *testing.T, provider *AWSProvider, zone string) {
 	}
 }
 
-func newAWSProvider(t *testing.T, domainFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, zoneTypeFilter provider.ZoneTypeFilter, evaluateTargetHealth, dryRun bool, records []*route53.ResourceRecordSet) (*AWSProvider, *Route53APIStub) {
+func newAWSProvider(t *testing.T, domainFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, zoneTypeFilter provider.ZoneTypeFilter, evaluateTargetHealth, dryRun bool, records []types.ResourceRecordSet) (*AWSProvider, *Route53APIStub) {
 	return newAWSProviderWithTagFilter(t, domainFilter, zoneIDFilter, zoneTypeFilter, provider.NewZoneTagFilter([]string{}), evaluateTargetHealth, dryRun, records)
 }
 
-func newAWSProviderWithTagFilter(t *testing.T, domainFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, zoneTypeFilter provider.ZoneTypeFilter, zoneTagFilter provider.ZoneTagFilter, evaluateTargetHealth, dryRun bool, records []*route53.ResourceRecordSet) (*AWSProvider, *Route53APIStub) {
+func newAWSProviderWithTagFilter(t *testing.T, domainFilter endpoint.DomainFilter, zoneIDFilter provider.ZoneIDFilter, zoneTypeFilter provider.ZoneTypeFilter, zoneTagFilter provider.ZoneTagFilter, evaluateTargetHealth, dryRun bool, records []types.ResourceRecordSet) (*AWSProvider, *Route53APIStub) {
 	client := NewRoute53APIStub(t)
 
 	provider := &AWSProvider{
@@ -1960,29 +1955,29 @@ func newAWSProviderWithTagFilter(t *testing.T, domainFilter endpoint.DomainFilte
 		failedChangesQueue:   make(map[string]Route53Changes),
 	}
 
-	createAWSZone(t, provider, &route53.HostedZone{
+	createAWSZone(t, provider, &types.HostedZone{
 		Id:     aws.String("/hostedzone/zone-1.ext-dns-test-2.teapot.zalan.do."),
 		Name:   aws.String("zone-1.ext-dns-test-2.teapot.zalan.do."),
-		Config: &route53.HostedZoneConfig{PrivateZone: aws.Bool(false)},
+		Config: &types.HostedZoneConfig{PrivateZone: false},
 	})
 
-	createAWSZone(t, provider, &route53.HostedZone{
+	createAWSZone(t, provider, &types.HostedZone{
 		Id:     aws.String("/hostedzone/zone-2.ext-dns-test-2.teapot.zalan.do."),
 		Name:   aws.String("zone-2.ext-dns-test-2.teapot.zalan.do."),
-		Config: &route53.HostedZoneConfig{PrivateZone: aws.Bool(false)},
+		Config: &types.HostedZoneConfig{PrivateZone: false},
 	})
 
-	createAWSZone(t, provider, &route53.HostedZone{
+	createAWSZone(t, provider, &types.HostedZone{
 		Id:     aws.String("/hostedzone/zone-3.ext-dns-test-2.teapot.zalan.do."),
 		Name:   aws.String("zone-3.ext-dns-test-2.teapot.zalan.do."),
-		Config: &route53.HostedZoneConfig{PrivateZone: aws.Bool(true)},
+		Config: &types.HostedZoneConfig{PrivateZone: true},
 	})
 
 	// filtered out by domain filter
-	createAWSZone(t, provider, &route53.HostedZone{
+	createAWSZone(t, provider, &types.HostedZone{
 		Id:     aws.String("/hostedzone/zone-4.ext-dns-test-3.teapot.zalan.do."),
 		Name:   aws.String("zone-4.ext-dns-test-3.teapot.zalan.do."),
-		Config: &route53.HostedZoneConfig{PrivateZone: aws.Bool(false)},
+		Config: &types.HostedZoneConfig{PrivateZone: false},
 	})
 
 	setupZoneTags(provider.client.(*Route53APIStub))
@@ -2017,10 +2012,10 @@ func setupZoneTags(client *Route53APIStub) {
 	})
 }
 
-func addZoneTags(tagMap map[string][]*route53.Tag, zoneID string, tags map[string]string) {
-	tagList := make([]*route53.Tag, 0, len(tags))
+func addZoneTags(tagMap map[string][]types.Tag, zoneID string, tags map[string]string) {
+	tagList := make([]types.Tag, 0, len(tags))
 	for k, v := range tags {
-		tagList = append(tagList, &route53.Tag{
+		tagList = append(tagList, types.Tag{
 			Key:   aws.String(k),
 			Value: aws.String(v),
 		})
@@ -2028,7 +2023,7 @@ func addZoneTags(tagMap map[string][]*route53.Tag, zoneID string, tags map[strin
 	tagMap[zoneID] = tagList
 }
 
-func validateRecords(t *testing.T, records []*route53.ResourceRecordSet, expected []*route53.ResourceRecordSet) {
+func validateRecords(t *testing.T, records, expected []types.ResourceRecordSet) {
 	assert.ElementsMatch(t, expected, records)
 }
 

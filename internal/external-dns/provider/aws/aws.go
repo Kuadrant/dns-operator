@@ -25,9 +25,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/route53"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
+	"github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/go-logr/logr"
 
 	"sigs.k8s.io/external-dns/endpoint"
@@ -193,25 +193,25 @@ var canonicalHostedZones = map[string]string{
 // Route53API is the subset of the AWS Route53 API that we actually use.  Add methods as required. Signatures must match exactly.
 // mostly taken from: https://github.com/kubernetes/kubernetes/blob/853167624edb6bc0cfdcdfb88e746e178f5db36c/federation/pkg/dnsprovider/providers/aws/route53/stubs/route53api.go
 type Route53API interface {
-	ListResourceRecordSetsPagesWithContext(ctx context.Context, input *route53.ListResourceRecordSetsInput, fn func(resp *route53.ListResourceRecordSetsOutput, lastPage bool) (shouldContinue bool), opts ...request.Option) error
-	ChangeResourceRecordSetsWithContext(ctx context.Context, input *route53.ChangeResourceRecordSetsInput, opts ...request.Option) (*route53.ChangeResourceRecordSetsOutput, error)
-	CreateHostedZoneWithContext(ctx context.Context, input *route53.CreateHostedZoneInput, opts ...request.Option) (*route53.CreateHostedZoneOutput, error)
-	ListHostedZonesPagesWithContext(ctx context.Context, input *route53.ListHostedZonesInput, fn func(resp *route53.ListHostedZonesOutput, lastPage bool) (shouldContinue bool), opts ...request.Option) error
-	ListTagsForResourceWithContext(ctx context.Context, input *route53.ListTagsForResourceInput, opts ...request.Option) (*route53.ListTagsForResourceOutput, error)
+	ListResourceRecordSets(ctx context.Context, input *route53.ListResourceRecordSetsInput, optFns ...func(*route53.Options)) (*route53.ListResourceRecordSetsOutput, error)
+	ChangeResourceRecordSets(ctx context.Context, input *route53.ChangeResourceRecordSetsInput, optFns ...func(*route53.Options)) (*route53.ChangeResourceRecordSetsOutput, error)
+	CreateHostedZone(ctx context.Context, input *route53.CreateHostedZoneInput, optFns ...func(*route53.Options)) (*route53.CreateHostedZoneOutput, error)
+	ListHostedZones(ctx context.Context, input *route53.ListHostedZonesInput, optFns ...func(*route53.Options)) (*route53.ListHostedZonesOutput, error)
+	ListTagsForResource(ctx context.Context, input *route53.ListTagsForResourceInput, optFns ...func(*route53.Options)) (*route53.ListTagsForResourceOutput, error)
 }
 
 // wrapper to handle ownership relation throughout the provider implementation
 type Route53Change struct {
-	route53.Change
+	types.Change
 	OwnedRecord string
 }
 
 type Route53Changes []*Route53Change
 
-func (cs Route53Changes) Route53Changes() []*route53.Change {
-	ret := []*route53.Change{}
+func (cs Route53Changes) Route53Changes() []types.Change {
+	ret := []types.Change{}
 	for _, c := range cs {
-		ret = append(ret, &c.Change)
+		ret = append(ret, c.Change)
 	}
 	return ret
 }
@@ -219,7 +219,7 @@ func (cs Route53Changes) Route53Changes() []*route53.Change {
 type zonesListCache struct {
 	age      time.Time
 	duration time.Duration
-	zones    map[string]*route53.HostedZone
+	zones    map[string]types.HostedZone
 }
 
 // AWSProvider is an implementation of Provider for AWS Route53.
@@ -282,27 +282,33 @@ func NewAWSProvider(ctx context.Context, awsConfig AWSConfig, client Route53API)
 }
 
 // Zones returns the list of hosted zones.
-func (p *AWSProvider) Zones(ctx context.Context) (map[string]*route53.HostedZone, error) {
+func (p *AWSProvider) Zones(ctx context.Context) (map[string]types.HostedZone, error) {
 	if p.zonesCache.zones != nil && time.Since(p.zonesCache.age) < p.zonesCache.duration {
 		p.logger.V(1).Info("Using cached zones list")
 		return p.zonesCache.zones, nil
 	}
 	p.logger.V(1).Info("Refreshing zones list cache")
 
-	zones := make(map[string]*route53.HostedZone)
+	zones := make(map[string]types.HostedZone)
 
-	var tagErr error
-	f := func(resp *route53.ListHostedZonesOutput, lastPage bool) (shouldContinue bool) {
-		for _, zone := range resp.HostedZones {
-			if !p.zoneIDFilter.Match(aws.StringValue(zone.Id)) {
+	var marker *string
+	for {
+		output, err := p.client.ListHostedZones(ctx, &route53.ListHostedZonesInput{Marker: marker})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list hosted zones, %w", err)
+		}
+
+		var tagErr error
+		for _, zone := range output.HostedZones {
+			if !p.zoneIDFilter.Match(aws.ToString(zone.Id)) {
 				continue
 			}
 
-			if !p.zoneTypeFilter.Match(zone) {
+			if !p.zoneTypeFilter.Match(zoneTypeString(&zone)) {
 				continue
 			}
 
-			if !p.domainFilter.Match(aws.StringValue(zone.Name)) {
+			if !p.domainFilter.Match(aws.ToString(zone.Name)) {
 				continue
 			}
 
@@ -311,29 +317,27 @@ func (p *AWSProvider) Zones(ctx context.Context) (map[string]*route53.HostedZone
 				tags, err := p.tagsForZone(ctx, *zone.Id)
 				if err != nil {
 					tagErr = err
-					return false
+					break
 				}
 				if !p.zoneTagFilter.Match(tags) {
 					continue
 				}
 			}
 
-			zones[aws.StringValue(zone.Id)] = zone
+			zones[aws.ToString(zone.Id)] = zone
+		}
+		if tagErr != nil {
+			return nil, fmt.Errorf("failed to list zones tags, %w", tagErr)
 		}
 
-		return true
-	}
-
-	err := p.client.ListHostedZonesPagesWithContext(ctx, &route53.ListHostedZonesInput{}, f)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list hosted zones, %w", err)
-	}
-	if tagErr != nil {
-		return nil, fmt.Errorf("failed to list zones tags, %w", tagErr)
+		if !output.IsTruncated {
+			break
+		}
+		marker = output.NextMarker
 	}
 
 	for _, zone := range zones {
-		p.logger.V(1).Info(fmt.Sprintf("Considering zone: %s (domain: %s)", aws.StringValue(zone.Id), aws.StringValue(zone.Name)))
+		p.logger.V(1).Info(fmt.Sprintf("Considering zone: %s (domain: %s)", aws.ToString(zone.Id), aws.ToString(zone.Name)))
 	}
 
 	if p.zonesCache.duration > time.Duration(0) {
@@ -360,93 +364,110 @@ func (p *AWSProvider) Records(ctx context.Context) (endpoints []*endpoint.Endpoi
 	return p.records(ctx, zones)
 }
 
-func (p *AWSProvider) records(ctx context.Context, zones map[string]*route53.HostedZone) ([]*endpoint.Endpoint, error) {
+func (p *AWSProvider) records(ctx context.Context, zones map[string]types.HostedZone) ([]*endpoint.Endpoint, error) {
 	endpoints := make([]*endpoint.Endpoint, 0)
-	f := func(resp *route53.ListResourceRecordSetsOutput, lastPage bool) (shouldContinue bool) {
-		for _, r := range resp.ResourceRecordSets {
-			newEndpoints := make([]*endpoint.Endpoint, 0)
-
-			if !p.SupportedRecordType(aws.StringValue(r.Type)) {
-				continue
-			}
-
-			var ttl endpoint.TTL
-			if r.TTL != nil {
-				ttl = endpoint.TTL(*r.TTL)
-			}
-
-			if len(r.ResourceRecords) > 0 {
-				targets := make([]string, len(r.ResourceRecords))
-				for idx, rr := range r.ResourceRecords {
-					targets[idx] = aws.StringValue(rr.Value)
-				}
-
-				ep := endpoint.NewEndpointWithTTL(wildcardUnescape(aws.StringValue(r.Name)), aws.StringValue(r.Type), ttl, targets...)
-				if aws.StringValue(r.Type) == endpoint.RecordTypeCNAME {
-					ep = ep.WithProviderSpecific(providerSpecificAlias, "false")
-				}
-				newEndpoints = append(newEndpoints, ep)
-			}
-
-			if r.AliasTarget != nil {
-				// Alias records don't have TTLs so provide the default to match the TXT generation
-				if ttl == 0 {
-					ttl = recordTTL
-				}
-				ep := endpoint.
-					NewEndpointWithTTL(wildcardUnescape(aws.StringValue(r.Name)), endpoint.RecordTypeA, ttl, aws.StringValue(r.AliasTarget.DNSName)).
-					WithProviderSpecific(providerSpecificEvaluateTargetHealth, fmt.Sprintf("%t", aws.BoolValue(r.AliasTarget.EvaluateTargetHealth))).
-					WithProviderSpecific(providerSpecificAlias, "true")
-				newEndpoints = append(newEndpoints, ep)
-			}
-
-			for _, ep := range newEndpoints {
-				if r.SetIdentifier != nil {
-					ep.SetIdentifier = aws.StringValue(r.SetIdentifier)
-					switch {
-					case r.Weight != nil:
-						ep.WithProviderSpecific(providerSpecificWeight, fmt.Sprintf("%d", aws.Int64Value(r.Weight)))
-					case r.Region != nil:
-						ep.WithProviderSpecific(providerSpecificRegion, aws.StringValue(r.Region))
-					case r.Failover != nil:
-						ep.WithProviderSpecific(providerSpecificFailover, aws.StringValue(r.Failover))
-					case r.MultiValueAnswer != nil && aws.BoolValue(r.MultiValueAnswer):
-						ep.WithProviderSpecific(providerSpecificMultiValueAnswer, "")
-					case r.GeoLocation != nil:
-						if r.GeoLocation.ContinentCode != nil {
-							ep.WithProviderSpecific(providerSpecificGeolocationContinentCode, aws.StringValue(r.GeoLocation.ContinentCode))
-						} else {
-							if r.GeoLocation.CountryCode != nil {
-								ep.WithProviderSpecific(providerSpecificGeolocationCountryCode, aws.StringValue(r.GeoLocation.CountryCode))
-							}
-							if r.GeoLocation.SubdivisionCode != nil {
-								ep.WithProviderSpecific(providerSpecificGeolocationSubdivisionCode, aws.StringValue(r.GeoLocation.SubdivisionCode))
-							}
-						}
-					default:
-						// one of the above needs to be set, otherwise SetIdentifier doesn't make sense
-					}
-				}
-
-				if r.HealthCheckId != nil {
-					ep.WithProviderSpecific(providerSpecificHealthCheckID, aws.StringValue(r.HealthCheckId))
-				}
-
-				endpoints = append(endpoints, ep)
-			}
-		}
-
-		return true
-	}
 
 	for _, z := range zones {
-		params := &route53.ListResourceRecordSetsInput{
-			HostedZoneId: z.Id,
-			MaxItems:     aws.String(route53PageSize),
-		}
+		var startRecordName *string
+		var startRecordType types.RRType
+		var startRecordIdentifier *string
 
-		if err := p.client.ListResourceRecordSetsPagesWithContext(ctx, params, f); err != nil {
-			return nil, fmt.Errorf("failed to list resource records sets for zone %s, %w", *z.Id, err)
+		for {
+			params := &route53.ListResourceRecordSetsInput{
+				HostedZoneId:    z.Id,
+				MaxItems:        aws.Int32(300),
+				StartRecordName: startRecordName,
+			}
+			if startRecordType != "" {
+				params.StartRecordType = startRecordType
+			}
+			if startRecordIdentifier != nil {
+				params.StartRecordIdentifier = startRecordIdentifier
+			}
+
+			resp, err := p.client.ListResourceRecordSets(ctx, params)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list resource records sets for zone %s, %w", *z.Id, err)
+			}
+
+			for _, r := range resp.ResourceRecordSets {
+				if !p.SupportedRecordType(string(r.Type)) {
+					continue
+				}
+
+				var ttl endpoint.TTL
+				if r.TTL != nil {
+					ttl = endpoint.TTL(*r.TTL)
+				}
+
+				newEndpoints := make([]*endpoint.Endpoint, 0)
+
+				if len(r.ResourceRecords) > 0 {
+					targets := make([]string, len(r.ResourceRecords))
+					for idx, rr := range r.ResourceRecords {
+						targets[idx] = aws.ToString(rr.Value)
+					}
+
+					ep := endpoint.NewEndpointWithTTL(wildcardUnescape(aws.ToString(r.Name)), string(r.Type), ttl, targets...)
+					if r.Type == types.RRTypeCname {
+						ep = ep.WithProviderSpecific(providerSpecificAlias, "false")
+					}
+					newEndpoints = append(newEndpoints, ep)
+				}
+
+				if r.AliasTarget != nil {
+					if ttl == 0 {
+						ttl = recordTTL
+					}
+					ep := endpoint.
+						NewEndpointWithTTL(wildcardUnescape(aws.ToString(r.Name)), endpoint.RecordTypeA, ttl, aws.ToString(r.AliasTarget.DNSName)).
+						WithProviderSpecific(providerSpecificEvaluateTargetHealth, fmt.Sprintf("%t", r.AliasTarget.EvaluateTargetHealth)).
+						WithProviderSpecific(providerSpecificAlias, "true")
+					newEndpoints = append(newEndpoints, ep)
+				}
+
+				for _, ep := range newEndpoints {
+					if r.SetIdentifier != nil {
+						ep.SetIdentifier = aws.ToString(r.SetIdentifier)
+						switch {
+						case r.Weight != nil:
+							ep.WithProviderSpecific(providerSpecificWeight, fmt.Sprintf("%d", *r.Weight))
+						case r.Region != "":
+							ep.WithProviderSpecific(providerSpecificRegion, string(r.Region))
+						case r.Failover != "":
+							ep.WithProviderSpecific(providerSpecificFailover, string(r.Failover))
+						case r.MultiValueAnswer != nil && *r.MultiValueAnswer:
+							ep.WithProviderSpecific(providerSpecificMultiValueAnswer, "")
+						case r.GeoLocation != nil:
+							if r.GeoLocation.ContinentCode != nil {
+								ep.WithProviderSpecific(providerSpecificGeolocationContinentCode, aws.ToString(r.GeoLocation.ContinentCode))
+							} else {
+								if r.GeoLocation.CountryCode != nil {
+									ep.WithProviderSpecific(providerSpecificGeolocationCountryCode, aws.ToString(r.GeoLocation.CountryCode))
+								}
+								if r.GeoLocation.SubdivisionCode != nil {
+									ep.WithProviderSpecific(providerSpecificGeolocationSubdivisionCode, aws.ToString(r.GeoLocation.SubdivisionCode))
+								}
+							}
+						default:
+							// one of the above needs to be set, otherwise SetIdentifier doesn't make sense
+						}
+					}
+
+					if r.HealthCheckId != nil {
+						ep.WithProviderSpecific(providerSpecificHealthCheckID, aws.ToString(r.HealthCheckId))
+					}
+
+					endpoints = append(endpoints, ep)
+				}
+			}
+
+			if !resp.IsTruncated {
+				break
+			}
+			startRecordName = resp.NextRecordName
+			startRecordType = resp.NextRecordType
+			startRecordIdentifier = resp.NextRecordIdentifier
 		}
 	}
 
@@ -506,9 +527,9 @@ func (p *AWSProvider) createUpdateChanges(newEndpoints, oldEndpoints []*endpoint
 	}
 
 	combined := make(Route53Changes, 0, len(deletes)+len(creates)+len(updates))
-	combined = append(combined, p.newChanges(route53.ChangeActionCreate, creates)...)
-	combined = append(combined, p.newChanges(route53.ChangeActionUpsert, updates)...)
-	combined = append(combined, p.newChanges(route53.ChangeActionDelete, deletes)...)
+	combined = append(combined, p.newChanges(types.ChangeActionCreate, creates)...)
+	combined = append(combined, p.newChanges(types.ChangeActionUpsert, updates)...)
+	combined = append(combined, p.newChanges(types.ChangeActionDelete, deletes)...)
 	return combined
 }
 
@@ -521,7 +542,7 @@ func (p *AWSProvider) GetDomainFilter() endpoint.DomainFilter {
 	}
 	zoneNames := []string(nil)
 	for _, z := range zones {
-		zoneNames = append(zoneNames, aws.StringValue(z.Name), "."+aws.StringValue(z.Name))
+		zoneNames = append(zoneNames, aws.ToString(z.Name), "."+aws.ToString(z.Name))
 	}
 	p.logger.Info(fmt.Sprintf("Applying provider record filter for domains: %v", zoneNames))
 	return endpoint.NewDomainFilter(zoneNames)
@@ -537,15 +558,15 @@ func (p *AWSProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) e
 	updateChanges := p.createUpdateChanges(changes.UpdateNew, changes.UpdateOld)
 
 	combinedChanges := make(Route53Changes, 0, len(changes.Delete)+len(changes.Create)+len(updateChanges))
-	combinedChanges = append(combinedChanges, p.newChanges(route53.ChangeActionCreate, changes.Create)...)
-	combinedChanges = append(combinedChanges, p.newChanges(route53.ChangeActionDelete, changes.Delete)...)
+	combinedChanges = append(combinedChanges, p.newChanges(types.ChangeActionCreate, changes.Create)...)
+	combinedChanges = append(combinedChanges, p.newChanges(types.ChangeActionDelete, changes.Delete)...)
 	combinedChanges = append(combinedChanges, updateChanges...)
 
 	return p.submitChanges(ctx, combinedChanges, zones)
 }
 
 // submitChanges takes a zone and a collection of Changes and sends them as a single transaction.
-func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes, zones map[string]*route53.HostedZone) error {
+func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes, zones map[string]types.HostedZone) error {
 	// return early if there is nothing to change
 	if len(changes) == 0 {
 		p.logger.Info("All records are already up to date")
@@ -572,54 +593,29 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 			}
 
 			for _, c := range b {
-				p.logger.Info(fmt.Sprintf("Desired change: %s %s %s [Id: %s]", *c.Action, *c.ResourceRecordSet.Name, *c.ResourceRecordSet.Type, z))
+				p.logger.Info(fmt.Sprintf("Desired change: %s %s %s [Id: %s]", c.Action, aws.ToString(c.ResourceRecordSet.Name), c.ResourceRecordSet.Type, z))
 			}
 
 			if !p.dryRun {
 				params := &route53.ChangeResourceRecordSetsInput{
 					HostedZoneId: aws.String(z),
-					ChangeBatch: &route53.ChangeBatch{
+					ChangeBatch: &types.ChangeBatch{
 						Changes: b.Route53Changes(),
 					},
 				}
 
 				successfulChanges := 0
 
-				if _, err := p.client.ChangeResourceRecordSetsWithContext(ctx, params); err != nil {
-					p.logger.Error(err, fmt.Sprintf("Failure in zone %s [Id: %s] when submitting change batch", aws.StringValue(zones[z].Name), z))
+				if _, err := p.client.ChangeResourceRecordSets(ctx, params); err != nil {
+					p.logger.Error(err, fmt.Sprintf("Failure in zone %s [Id: %s] when submitting change batch", aws.ToString(zones[z].Name), z))
 
-					//ToDo mnairn: Make this optional
-					// We don't want parts of the record set being created if it fails to update
-					//changesByOwnership := groupChangesByNameAndOwnershipRelation(b)
-					//
-					//if len(changesByOwnership) > 1 {
-					//	log.Debug("Trying to submit change sets one-by-one instead")
-					//
-					//	for _, changes := range changesByOwnership {
-					//		for _, c := range changes {
-					//			log.Debugf("Desired change: %s %s %s [Id: %s]", *c.Action, *c.ResourceRecordSet.Name, *c.ResourceRecordSet.Type, z)
-					//		}
-					//		params.ChangeBatch = &route53.ChangeBatch{
-					//			Changes: changes.Route53Changes(),
-					//		}
-					//		if _, err := p.client.ChangeResourceRecordSetsWithContext(ctx, params); err != nil {
-					//			failedUpdate = true
-					//			log.Errorf("Failed submitting change (error: %v), it will be retried in a separate change batch in the next iteration", err)
-					//			p.failedChangesQueue[z] = append(p.failedChangesQueue[z], changes...)
-					//		} else {
-					//			successfulChanges = successfulChanges + len(changes)
-					//		}
-					//	}
-					//} else {
-					zoneErrors = append(zoneErrors, fmt.Errorf("Failure in zone %s [Id: %s] when submitting change: %v", aws.StringValue(zones[z].Name), z, err))
-					//}
+					zoneErrors = append(zoneErrors, fmt.Errorf("Failure in zone %s [Id: %s] when submitting change: %w", aws.ToString(zones[z].Name), z, err))
 				} else {
 					successfulChanges = len(b)
 				}
 
 				if successfulChanges > 0 {
-					// z is the R53 Hosted Zone ID already as aws.StringValue
-					p.logger.Info(fmt.Sprintf("%d record(s) in zone %s [Id: %s] were successfully updated", successfulChanges, aws.StringValue(zones[z].Name), z))
+					p.logger.Info(fmt.Sprintf("%d record(s) in zone %s [Id: %s] were successfully updated", successfulChanges, aws.ToString(zones[z].Name), z))
 				}
 
 				if i != len(batchCs)-1 {
@@ -638,7 +634,7 @@ func (p *AWSProvider) submitChanges(ctx context.Context, changes Route53Changes,
 }
 
 // newChanges returns a collection of Changes based on the given records and action.
-func (p *AWSProvider) newChanges(action string, endpoints []*endpoint.Endpoint) Route53Changes {
+func (p *AWSProvider) newChanges(action types.ChangeAction, endpoints []*endpoint.Endpoint) Route53Changes {
 	changes := make(Route53Changes, 0, len(endpoints))
 
 	for _, endpoint := range endpoints {
@@ -647,8 +643,8 @@ func (p *AWSProvider) newChanges(action string, endpoints []*endpoint.Endpoint) 
 		if dualstack {
 			// make a copy of change, modify RRS type to AAAA, then add new change
 			rrs := *change.ResourceRecordSet
-			change2 := &Route53Change{Change: route53.Change{Action: change.Action, ResourceRecordSet: &rrs}}
-			change2.ResourceRecordSet.Type = aws.String(route53.RRTypeAaaa)
+			change2 := &Route53Change{Change: types.Change{Action: change.Action, ResourceRecordSet: &rrs}}
+			change2.ResourceRecordSet.Type = types.RRTypeAaaa
 			changes = append(changes, change2)
 		}
 	}
@@ -710,11 +706,11 @@ func (p *AWSProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoi
 // returned Change is based on the given record by the given action, e.g.
 // action=ChangeActionCreate returns a change for creation of the record and
 // action=ChangeActionDelete returns a change for deletion of the record.
-func (p *AWSProvider) newChange(action string, ep *endpoint.Endpoint) (*Route53Change, bool) {
+func (p *AWSProvider) newChange(action types.ChangeAction, ep *endpoint.Endpoint) (*Route53Change, bool) {
 	change := &Route53Change{
-		Change: route53.Change{
-			Action: aws.String(action),
-			ResourceRecordSet: &route53.ResourceRecordSet{
+		Change: types.Change{
+			Action: action,
+			ResourceRecordSet: &types.ResourceRecordSet{
 				Name: aws.String(ep.DNSName),
 			},
 		},
@@ -729,22 +725,22 @@ func (p *AWSProvider) newChange(action string, ep *endpoint.Endpoint) (*Route53C
 		if val, ok := ep.Labels[endpoint.DualstackLabelKey]; ok {
 			dualstack = val == "true"
 		}
-		change.ResourceRecordSet.Type = aws.String(route53.RRTypeA)
-		change.ResourceRecordSet.AliasTarget = &route53.AliasTarget{
+		change.ResourceRecordSet.Type = types.RRTypeA
+		change.ResourceRecordSet.AliasTarget = &types.AliasTarget{
 			DNSName:              aws.String(ep.Targets[0]),
 			HostedZoneId:         aws.String(cleanZoneID(targetHostedZone)),
-			EvaluateTargetHealth: aws.Bool(evalTargetHealth),
+			EvaluateTargetHealth: evalTargetHealth,
 		}
 	} else {
-		change.ResourceRecordSet.Type = aws.String(ep.RecordType)
+		change.ResourceRecordSet.Type = types.RRType(ep.RecordType)
 		if !ep.RecordTTL.IsConfigured() {
 			change.ResourceRecordSet.TTL = aws.Int64(recordTTL)
 		} else {
 			change.ResourceRecordSet.TTL = aws.Int64(int64(ep.RecordTTL))
 		}
-		change.ResourceRecordSet.ResourceRecords = make([]*route53.ResourceRecord, len(ep.Targets))
+		change.ResourceRecordSet.ResourceRecords = make([]types.ResourceRecord, len(ep.Targets))
 		for idx, val := range ep.Targets {
-			change.ResourceRecordSet.ResourceRecords[idx] = &route53.ResourceRecord{
+			change.ResourceRecordSet.ResourceRecords[idx] = types.ResourceRecord{
 				Value: aws.String(val),
 			}
 		}
@@ -762,16 +758,16 @@ func (p *AWSProvider) newChange(action string, ep *endpoint.Endpoint) (*Route53C
 			change.ResourceRecordSet.Weight = aws.Int64(weight)
 		}
 		if prop, ok := ep.GetProviderSpecificProperty(providerSpecificRegion); ok {
-			change.ResourceRecordSet.Region = aws.String(prop)
+			change.ResourceRecordSet.Region = types.ResourceRecordSetRegion(prop)
 		}
 		if prop, ok := ep.GetProviderSpecificProperty(providerSpecificFailover); ok {
-			change.ResourceRecordSet.Failover = aws.String(prop)
+			change.ResourceRecordSet.Failover = types.ResourceRecordSetFailover(prop)
 		}
 		if _, ok := ep.GetProviderSpecificProperty(providerSpecificMultiValueAnswer); ok {
 			change.ResourceRecordSet.MultiValueAnswer = aws.Bool(true)
 		}
 
-		geolocation := &route53.GeoLocation{}
+		geolocation := &types.GeoLocation{}
 		useGeolocation := false
 		if prop, ok := ep.GetProviderSpecificProperty(providerSpecificGeolocationContinentCode); ok {
 			geolocation.ContinentCode = aws.String(prop)
@@ -833,7 +829,7 @@ func groupChangesByNameAndOwnershipRelation(cs Route53Changes) map[string]Route5
 	for _, v := range cs {
 		key := v.OwnedRecord
 		if key == "" {
-			key = aws.StringValue(v.ResourceRecordSet.Name)
+			key = aws.ToString(v.ResourceRecordSet.Name)
 		}
 		changesByOwnership[key] = append(changesByOwnership[key], v)
 	}
@@ -841,8 +837,8 @@ func groupChangesByNameAndOwnershipRelation(cs Route53Changes) map[string]Route5
 }
 
 func (p *AWSProvider) tagsForZone(ctx context.Context, zoneID string) (map[string]string, error) {
-	response, err := p.client.ListTagsForResourceWithContext(ctx, &route53.ListTagsForResourceInput{
-		ResourceType: aws.String("hostedzone"),
+	response, err := p.client.ListTagsForResource(ctx, &route53.ListTagsForResourceInput{
+		ResourceType: types.TagResourceTypeHostedzone,
 		ResourceId:   aws.String(zoneID),
 	})
 	if err != nil {
@@ -898,10 +894,10 @@ func (p *AWSProvider) batchChangeSet(cs Route53Changes, batchSize int) []Route53
 
 func sortChangesByActionNameType(cs Route53Changes) Route53Changes {
 	sort.SliceStable(cs, func(i, j int) bool {
-		if *cs[i].Action > *cs[j].Action {
+		if string(cs[i].Action) > string(cs[j].Action) {
 			return true
 		}
-		if *cs[i].Action < *cs[j].Action {
+		if string(cs[i].Action) < string(cs[j].Action) {
 			return false
 		}
 		if *cs[i].ResourceRecordSet.Name < *cs[j].ResourceRecordSet.Name {
@@ -910,45 +906,45 @@ func sortChangesByActionNameType(cs Route53Changes) Route53Changes {
 		if *cs[i].ResourceRecordSet.Name > *cs[j].ResourceRecordSet.Name {
 			return false
 		}
-		return *cs[i].ResourceRecordSet.Type < *cs[j].ResourceRecordSet.Type
+		return string(cs[i].ResourceRecordSet.Type) < string(cs[j].ResourceRecordSet.Type)
 	})
 
 	return cs
 }
 
 // changesByZone separates a multi-zone change into a single change per zone.
-func (p *AWSProvider) changesByZone(zones map[string]*route53.HostedZone, changeSet Route53Changes) map[string]Route53Changes {
+func (p *AWSProvider) changesByZone(zones map[string]types.HostedZone, changeSet Route53Changes) map[string]Route53Changes {
 	changes := make(map[string]Route53Changes)
 
 	for _, z := range zones {
-		changes[aws.StringValue(z.Id)] = Route53Changes{}
+		changes[aws.ToString(z.Id)] = Route53Changes{}
 	}
 
 	for _, c := range changeSet {
-		hostname := provider.EnsureTrailingDot(aws.StringValue(c.ResourceRecordSet.Name))
+		hostname := provider.EnsureTrailingDot(aws.ToString(c.ResourceRecordSet.Name))
 
 		zones := suitableZones(hostname, zones)
 		if len(zones) == 0 {
-			p.logger.V(1).Info(fmt.Sprintf("Skipping record %s because no hosted zone matching record DNS Name was detected", c.String()))
+			p.logger.V(1).Info(fmt.Sprintf("Skipping record %s %s because no hosted zone matching record DNS Name was detected", string(c.Action), aws.ToString(c.ResourceRecordSet.Name)))
 			continue
 		}
 		for _, z := range zones {
-			if c.ResourceRecordSet.AliasTarget != nil && aws.StringValue(c.ResourceRecordSet.AliasTarget.HostedZoneId) == sameZoneAlias {
+			if c.ResourceRecordSet.AliasTarget != nil && aws.ToString(c.ResourceRecordSet.AliasTarget.HostedZoneId) == sameZoneAlias {
 				// alias record is to be created; target needs to be in the same zone as endpoint
 				// if it's not, this will fail
-				rrset := *c.ResourceRecordSet
-				aliasTarget := *rrset.AliasTarget
-				aliasTarget.HostedZoneId = aws.String(cleanZoneID(aws.StringValue(z.Id)))
-				rrset.AliasTarget = &aliasTarget
+				rrs := *c.ResourceRecordSet
+				aliasTarget := *rrs.AliasTarget
+				aliasTarget.HostedZoneId = aws.String(cleanZoneID(aws.ToString(z.Id)))
+				rrs.AliasTarget = &aliasTarget
 				c = &Route53Change{
-					Change: route53.Change{
+					Change: types.Change{
 						Action:            c.Action,
-						ResourceRecordSet: &rrset,
+						ResourceRecordSet: &rrs,
 					},
 				}
 			}
-			changes[aws.StringValue(z.Id)] = append(changes[aws.StringValue(z.Id)], c)
-			p.logger.V(1).Info(fmt.Sprintf("Adding %s to zone %s [Id: %s]", hostname, aws.StringValue(z.Name), aws.StringValue(z.Id)))
+			changes[aws.ToString(z.Id)] = append(changes[aws.ToString(z.Id)], c)
+			p.logger.V(1).Info(fmt.Sprintf("Adding %s to zone %s [Id: %s]", hostname, aws.ToString(z.Name), aws.ToString(z.Id)))
 		}
 	}
 
@@ -965,16 +961,17 @@ func (p *AWSProvider) changesByZone(zones map[string]*route53.HostedZone, change
 // suitableZones returns all suitable private zones and the most suitable public zone
 //
 //	for a given hostname and a set of zones.
-func suitableZones(hostname string, zones map[string]*route53.HostedZone) []*route53.HostedZone {
-	var matchingZones []*route53.HostedZone
-	var publicZone *route53.HostedZone
+func suitableZones(hostname string, zones map[string]types.HostedZone) []types.HostedZone {
+	var matchingZones []types.HostedZone
+	var publicZone *types.HostedZone
 
 	for _, z := range zones {
-		if aws.StringValue(z.Name) == hostname || strings.HasSuffix(hostname, "."+aws.StringValue(z.Name)) {
-			if z.Config == nil || !aws.BoolValue(z.Config.PrivateZone) {
+		if aws.ToString(z.Name) == hostname || strings.HasSuffix(hostname, "."+aws.ToString(z.Name)) {
+			if z.Config == nil || !z.Config.PrivateZone {
 				// Only select the best matching public zone
-				if publicZone == nil || len(aws.StringValue(z.Name)) > len(aws.StringValue(publicZone.Name)) {
-					publicZone = z
+				if publicZone == nil || len(aws.ToString(z.Name)) > len(aws.ToString(publicZone.Name)) {
+					zCopy := z
+					publicZone = &zCopy
 				}
 			} else {
 				// Include all private zones
@@ -984,7 +981,7 @@ func suitableZones(hostname string, zones map[string]*route53.HostedZone) []*rou
 	}
 
 	if publicZone != nil {
-		matchingZones = append(matchingZones, publicZone)
+		matchingZones = append(matchingZones, *publicZone)
 	}
 
 	return matchingZones
@@ -1059,4 +1056,11 @@ func (p *AWSProvider) SupportedRecordType(recordType string) bool {
 		// Delegates to base implementation which supports: A, AAAA, CNAME, NS, TXT, SRV, etc.
 		return provider.SupportedRecordType(recordType)
 	}
+}
+
+func zoneTypeString(z *types.HostedZone) string {
+	if z.Config == nil || !z.Config.PrivateZone {
+		return "public"
+	}
+	return "private"
 }

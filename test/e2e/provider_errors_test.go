@@ -112,7 +112,7 @@ var _ = Describe("DNSRecord Provider Errors", Labels{"provider_errors"}, func() 
 			Expect(testDNSProviderSecret.Type).To(Equal(v1alpha1.SecretTypeKuadrantAWS))
 			pBuilder.WithDataItem(v1alpha1.AWSAccessKeyIDKey, "1234")
 			pBuilder.WithDataItem(v1alpha1.AWSSecretAccessKeyKey, "1234")
-			expectedProviderErr = "failed to list hosted zones, InvalidClientTokenId: The security token included in the request is invalid."
+			expectedProviderErr = "InvalidClientTokenId: The security token included in the request is invalid."
 		}
 		invalidProviderSecret = pBuilder.Build()
 		Expect(k8sClient.Create(ctx, invalidProviderSecret)).To(Succeed())

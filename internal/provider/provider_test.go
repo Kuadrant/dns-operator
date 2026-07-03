@@ -35,6 +35,16 @@ func TestSanitizeError(t *testing.T) {
 			expectedError: "An error has occurred,  error error",
 		},
 		{
+			name:          "error message with AWS SDK v2 RequestID",
+			err:           errors.New("operation error Route 53: ListHostedZones, https response error StatusCode: 403, RequestID: 051c860b-9b30-4c19-be1a-1280c3e9fdc4, api error InvalidClientTokenId: The security token included in the request is invalid."),
+			expectedError: "operation error Route 53: ListHostedZones, https response error api error InvalidClientTokenId: The security token included in the request is invalid.",
+		},
+		{
+			name:          "error message with empty AWS SDK v2 RequestID",
+			err:           errors.New("https response error StatusCode: 403, RequestID: , api error InvalidClientTokenId: msg"),
+			expectedError: "https response error api error InvalidClientTokenId: msg",
+		},
+		{
 			name:          "error message without request id",
 			err:           errors.New("An error has occurred"),
 			expectedError: "An error has occurred",

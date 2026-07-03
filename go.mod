@@ -9,7 +9,9 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/dns/armdns v1.1.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/privatedns/armprivatedns v1.1.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager v1.3.0
-	github.com/aws/aws-sdk-go v1.44.311
+	github.com/aws/aws-sdk-go-v2 v1.42.0
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.25
+	github.com/aws/aws-sdk-go-v2/service/route53 v1.63.4
 	github.com/go-logr/logr v1.4.3
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
@@ -43,6 +45,10 @@ require (
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.8.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2 // indirect
+	github.com/aws/aws-sdk-go v1.44.311 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.29 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.29 // indirect
+	github.com/aws/smithy-go v1.27.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
