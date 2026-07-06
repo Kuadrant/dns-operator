@@ -40,7 +40,7 @@ func (f *TextOutputFormatter) PrintObject(object any) {
 		f.printArray(object)
 	case reflect.Map:
 		f.printMap(object)
-	case reflect.Struct, reflect.Ptr:
+	case reflect.Struct, reflect.Pointer:
 		f.printStruct(object)
 	default:
 		fmt.Fprintf(f.w, "%+v\n", object)
