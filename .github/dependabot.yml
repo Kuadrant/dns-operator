@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps):"
+  - package-ecosystem: gomod
+    directory: /coredns/plugin
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps):"
+  - package-ecosystem: gomod
+    directory: /coredns/plugin/geoip
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps):"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci(deps):"
