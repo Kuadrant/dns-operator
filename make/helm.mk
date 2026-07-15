@@ -6,7 +6,7 @@ CHART_NAME ?= dns-operator
 CHART_DIRECTORY ?= charts/$(CHART_NAME)
 
 .PHONY: helm-build
-helm-build: manifests set-image-refs operator-sdk ## Build the helm chart from kustomize manifests
+helm-build: manifests set-image-refs ## Build the helm chart from kustomize manifests
 	# Build the helm chart templates from kustomize manifests
 	$(KUSTOMIZE) build config/helm > $(CHART_DIRECTORY)/templates/manifests.yaml
 	V="$(VERSION)" $(YQ) eval '.version = strenv(V)' -i $(CHART_DIRECTORY)/Chart.yaml

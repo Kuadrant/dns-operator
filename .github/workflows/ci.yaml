@@ -79,23 +79,6 @@ jobs:
       - name: Run make verify-manifests
         run: |
           make verify-manifests
-  verify-bundle:
-    name: Verify bundle
-    if: needs.pre-job.outputs.should_skip != 'true'
-    needs: pre-job
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: false
-        id: go
-      - name: Run make verify-bundle
-        run: |
-          make verify-bundle
   verify-helm-build:
     name: Verify helm build
     if: needs.pre-job.outputs.should_skip != 'true'
@@ -211,7 +194,7 @@ jobs:
     # This check adds a list of checks to one job to simplify adding settings to the repo.
     # If a new check is added in this file, and it should be retested on entry to the merge queue,
     # it needs to be added to the list below aka needs: [ existing check 1, existing check 2, new check ].
-    needs: [ lint, verify-code, verify-manifests, verify-bundle, verify-helm-build, verify-imports, verify-generate, verify-go-mod, unit-test-suite, integration-test-suite, coredns-unit-test-suite]
+    needs: [ lint, verify-code, verify-manifests, verify-helm-build, verify-imports, verify-generate, verify-go-mod, unit-test-suite, integration-test-suite, coredns-unit-test-suite]
     if: always()
     runs-on: ubuntu-latest
     steps:

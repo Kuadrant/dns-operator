@@ -1,67 +1,14 @@
-# VERSION defines the project version for the bundle.
-# Update this value when you upgrade the version of your project.
-# To re-generate a bundle for another specific version without changing the standard setup, you can:
-# - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
-# - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= 0.0.0
 
-# Organization in the container resgistry
 DEFAULT_ORG = kuadrant
 ORG ?= $(DEFAULT_ORG)
 
-# Repo in the container registry
 DEFAULT_REPO = dns-operator
 REPO ?= $(DEFAULT_REPO)
 
-# CHANNELS define the bundle channels used in the bundle.
-# Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
-# To re-generate a bundle for other specific channels without changing the standard setup, you can:
-# - use the CHANNELS as arg of the bundle target (e.g make bundle CHANNELS=candidate,fast,stable)
-# - use environment variables to overwrite this value (e.g export CHANNELS="candidate,fast,stable")
-ifneq ($(origin CHANNELS), undefined)
-BUNDLE_CHANNELS := --channels=$(CHANNELS)
-endif
-
-# DEFAULT_CHANNEL defines the default channel used in the bundle.
-# Add a new line here if you would like to change its default config. (E.g DEFAULT_CHANNEL = "stable")
-# To re-generate a bundle for any other default channel without changing the default setup, you can:
-# - use the DEFAULT_CHANNEL as arg of the bundle target (e.g make bundle DEFAULT_CHANNEL=stable)
-# - use environment variables to overwrite this value (e.g export DEFAULT_CHANNEL="stable")
-ifneq ($(origin DEFAULT_CHANNEL), undefined)
-BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
-endif
-BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
-
-# IMAGE_TAG_BASE defines the docker.io namespace and part of the image name for remote images.
-# This variable is used to construct full image tags for bundle and catalog images.
-#
-# For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
-# quay.io/kuadrant/dns-operator-bundle:$VERSION and quay.io/kuadrant/dns-operator-catalog:$VERSION.
 IMAGE_TAG_BASE ?= quay.io/kuadrant/dns-operator
-
-# IMAGE_TAG defines the image tag for bundle and catalog images.
 IMAGE_TAG ?= latest
 
-# BUNDLE_IMG defines the image:tag used for the bundle.
-# You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:$(IMAGE_TAG)
-
-# BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
-BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
-
-# USE_IMAGE_DIGESTS defines if images are resolved via tags or digests
-# You can enable this value if you would like to use SHA Based Digests
-# To enable set flag to true
-USE_IMAGE_DIGESTS ?= false
-ifeq ($(USE_IMAGE_DIGESTS), true)
-	BUNDLE_GEN_FLAGS += --use-image-digests
-endif
-
-# Set the Operator SDK version to use. By default, what is installed on the system is used.
-# This is useful for CI or a project to utilize a specific version of the operator-sdk toolkit.
-OPERATOR_SDK_VERSION ?= v1.33.0
-
-# Image URL to use all building/pushing image targets
 DEFAULT_IMG ?= $(IMAGE_TAG_BASE):$(IMAGE_TAG)
 IMG ?= $(DEFAULT_IMG)
 
@@ -133,13 +80,6 @@ help: ## Display this help.
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-.PHONY: manifests-gen-base-csv
-manifests-gen-base-csv: yq ## Generate base CSV for the current configuration (VERSION, IMG, CHANNELS etc..)
-	$(YQ) -i '.metadata.annotations.containerImage = "$(IMG)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml
-	$(YQ) -i '.metadata.name = "dns-operator.v$(VERSION)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml
-	$(YQ) -i '.spec.version = "$(VERSION)"' config/manifests/bases/dns-operator.clusterserviceversion.yaml
-	$(YQ) -i 'del(.spec.replaces)' config/manifests/bases/dns-operator.clusterserviceversion.yaml
-	
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
@@ -389,14 +329,6 @@ deploy-namespaced: manifests set-image-refs remove-cluster-overlay generate-clus
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/deploy/local | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
-.PHONY: install-olm
-install-olm: operator-sdk
-	$(OPERATOR_SDK) olm install
-
-.PHONY: uninstall-olm
-uninstall-olm: operator-sdk
-	$(OPERATOR_SDK) olm uninstall
-
 ##@ Build Dependencies
 
 ## Location to install dependencies to
@@ -457,23 +389,6 @@ $(ENVTEST): | $(LOCALBIN)
 govulncheck: $(GOVULNCHECK) ## Download govulncheck locally if necessary.
 $(GOVULNCHECK): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install golang.org/x/vuln/cmd/govulncheck@latest
-
-.PHONY: operator-sdk
-OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
-operator-sdk: ## Download operator-sdk locally if necessary.
-ifeq (,$(wildcard $(OPERATOR_SDK)))
-ifeq (, $(shell which operator-sdk 2>/dev/null))
-	@{ \
-	set -e ;\
-	mkdir -p $(dir $(OPERATOR_SDK)) ;\
-	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
-	curl -sSLo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$${OS}_$${ARCH} ;\
-	chmod +x $(OPERATOR_SDK) ;\
-	}
-else
-OPERATOR_SDK = $(shell which operator-sdk)
-endif
-endif
 
 .PHONY: openshift-goimports
 openshift-goimports: $(OPENSHIFT_GOIMPORTS) ## Download openshift-goimports locally if necessary
@@ -539,81 +454,14 @@ $(KUBECTL_DNS):
 	$(MAKE) build-cli
 
 
-.PHONY: bundle
-bundle: manifests manifests-gen-base-csv set-image-refs operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
-	$(OPERATOR_SDK) generate kustomize manifests -q
-	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
-	$(MAKE) bundle-post-generate
-	$(OPERATOR_SDK) bundle validate ./bundle
-	$(MAKE) bundle-ignore-createdAt
-	echo "$$QUAY_EXPIRY_TIME_LABEL" >> bundle.Dockerfile
-
-bundle-operator-image-url: $(YQ) ## Read operator image reference URL from the manifest bundle.
-	@$(YQ) '.metadata.annotations.containerImage' bundle/manifests/dns-operator.clusterserviceversion.yaml
-
-# Since operator-sdk 1.26.0, `make bundle` changes the `createdAt` field from the bundle
-# even if it is patched:
-#   https://github.com/operator-framework/operator-sdk/pull/6136
-# This code checks if only the createdAt field. If is the only change, it is ignored.
-# Else, it will do nothing.
-# https://github.com/operator-framework/operator-sdk/issues/6285#issuecomment-1415350333
-# https://github.com/operator-framework/operator-sdk/issues/6285#issuecomment-1532150678
-.PHONY: bundle-ignore-createdAt
-bundle-ignore-createdAt:
-	git diff --quiet -I'^    createdAt: ' ./bundle && git checkout ./bundle || true
-
-.PHONY: bundle-post-generate
-bundle-post-generate:
-	$(YQ) -i '.annotations."com.redhat.openshift.versions" = "v4.12-v4.14"' bundle/metadata/annotations.yaml
-	V="$(CATALOG_IMG)" $(YQ) eval '.spec.image = strenv(V)' -i config/deploy/olm/catalogsource.yaml
-	@if [ "$(CHANNELS)" != "" ]; then\
-		V="$(CHANNELS)" $(YQ) eval '.spec.channel = strenv(V)' -i config/deploy/olm/subscription.yaml; \
-	fi
-ifeq ($(USE_IMAGE_DIGESTS),true)
-	# Deduplicate relatedImages and remove name field (operator-sdk --use-image-digests creates duplicates)
-	$(YQ) -i '.spec.relatedImages |= unique_by(.image) | del(.spec.relatedImages[].name)' bundle/manifests/dns-operator.clusterserviceversion.yaml
-endif
-
-.PHONY: bundle-build
-bundle-build: ## Build the bundle image.
-	$(CONTAINER_TOOL) build --build-arg QUAY_IMAGE_EXPIRY=$(QUAY_IMAGE_EXPIRY) -f bundle.Dockerfile -t $(BUNDLE_IMG) .
-
-.PHONY: bundle-push
-bundle-push: ## Push the bundle image.
-	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
-
-.PHONY: opm
-OPM = $(LOCALBIN)/opm
-opm: ## Download opm locally if necessary.
-ifeq (,$(wildcard $(OPM)))
-ifeq (,$(shell which opm 2>/dev/null))
-	@{ \
-	set -e ;\
-	mkdir -p $(dir $(OPM)) ;\
-	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
-	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.23.0/$${OS}-$${ARCH}-opm ;\
-	chmod +x $(OPM) ;\
-	}
-else
-OPM = $(shell which opm)
-endif
-endif
-
-.PHONY: print-bundle-image
-print-bundle-image: ## Print bundle image.
-	@echo $(BUNDLE_IMG)
-
 ##@ Release
 
 .PHONY: prepare-release
 RELEASE_FILE = $(shell pwd)/make/release.mk
 prepare-release: IMG_TAG=v$(VERSION)
-prepare-release: ## Generates a makefile that will override environment variables for a specific release and runs bundle.
-	echo -e "#Release default values\\nIMG=$(IMAGE_TAG_BASE):$(IMG_TAG)\nBUNDLE_IMG=$(IMAGE_TAG_BASE)-bundle:$(IMG_TAG)\n\
-	CATALOG_IMG=$(IMAGE_TAG_BASE)-catalog:$(IMG_TAG)\nCOREDNS_IMG=$(COREDNS_IMAGE_TAG_BASE):$(IMG_TAG)\nCHANNELS=$(CHANNELS)\n\
-	BUNDLE_CHANNELS=--channels=$(CHANNELS)\nVERSION=$(VERSION)" > $(RELEASE_FILE)
+prepare-release: ## Generates release defaults and builds Helm chart.
+	echo -e "#Release default values\\nIMG=$(IMAGE_TAG_BASE):$(IMG_TAG)\nCOREDNS_IMG=$(COREDNS_IMAGE_TAG_BASE):$(IMG_TAG)\nVERSION=$(VERSION)" > $(RELEASE_FILE)
 	$(MAKE) set-image-refs
-	$(MAKE) bundle
 	$(MAKE) helm-build VERSION=$(VERSION)
 
 .PHONY: read-release-version

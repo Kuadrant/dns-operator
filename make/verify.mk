@@ -4,7 +4,7 @@
 ## Targets to verify actions that generate/modify code have been executed and output committed
 
 .PHONY: verify-all
-verify-all: verify-code verify-bundle verify-helm-build verify-imports verify-manifests verify-generate verify-go-mod verify-vulnerabilities
+verify-all: verify-code verify-helm-build verify-imports verify-manifests verify-generate verify-go-mod verify-vulnerabilities
 
 .PHONY: verify-code
 verify-code: vet ## Verify code formatting
@@ -18,11 +18,6 @@ verify-vulnerabilities: govulncheck
 verify-manifests: manifests ## Verify manifests update.
 	git diff --exit-code ./config
 	[ -z "$$(git ls-files --other --exclude-standard --directory --no-empty-directory ./config)" ]
-
-.PHONY: verify-bundle
-verify-bundle: bundle ## Verify bundle update.
-	git diff --exit-code ./bundle ./config
-	[ -z "$$(git ls-files --other --exclude-standard --directory --no-empty-directory ./bundle ./config)" ]
 
 .PHONY: verify-helm-build
 verify-helm-build: helm-build ## Verify helm build update.

@@ -15,10 +15,6 @@ act-test-integration-tests: act ## Run integration tests job.
 act-test-verify-manifests: act ## Run verify manifests job.
 	$(ACT) -j verify-manifests
 
-.PHONY: act-test-verify-bundle
-act-test-verify-bundle: act ## Run verify bundle job.
-	$(ACT) -j verify-bundle
-
 .PHONY: act-test-verify-code
 act-test-verify-code: act ## Run verify code job.
 	$(ACT) -j verify-code
