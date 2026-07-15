@@ -432,7 +432,7 @@ KIND_VERSION = v0.30.0
 ACT_VERSION = latest
 YQ_VERSION := v4.34.2
 GINKGO_VERSION ?= v2.22.0
-GOLANGCI_LINT_VERSION ?= v2.7.2
+GOLANGCI_LINT_VERSION ?= v2.12.2
 HELM_VERSION = v3.15.0
 KUBE_BURNER_VERSION = v1.11.1
 
@@ -520,7 +520,7 @@ $(GINKGO): | $(LOCALBIN)
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): | $(LOCALBIN)
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$(GOLANGCI_LINT_VERSION)/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
 
 .PHONY: kube-burner
 kube-burner: $(KUBE_BURNER) ## Download kube-burner locally if necessary.
