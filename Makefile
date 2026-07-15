@@ -612,6 +612,9 @@ prepare-release: ## Generates a makefile that will override environment variable
 	echo -e "#Release default values\\nIMG=$(IMAGE_TAG_BASE):$(IMG_TAG)\nBUNDLE_IMG=$(IMAGE_TAG_BASE)-bundle:$(IMG_TAG)\n\
 	CATALOG_IMG=$(IMAGE_TAG_BASE)-catalog:$(IMG_TAG)\nCOREDNS_IMG=$(COREDNS_IMAGE_TAG_BASE):$(IMG_TAG)\nCHANNELS=$(CHANNELS)\n\
 	BUNDLE_CHANNELS=--channels=$(CHANNELS)\nVERSION=$(VERSION)" > $(RELEASE_FILE)
+ifneq ($(origin DEFAULT_CHANNEL), undefined)
+	echo -e "DEFAULT_CHANNEL=$(DEFAULT_CHANNEL)\nBUNDLE_DEFAULT_CHANNEL=--default-channel=$(DEFAULT_CHANNEL)" >> $(RELEASE_FILE)
+endif
 	$(MAKE) set-image-refs
 	$(MAKE) bundle
 	$(MAKE) helm-build VERSION=$(VERSION)
