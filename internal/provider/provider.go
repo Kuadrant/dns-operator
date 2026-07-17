@@ -18,8 +18,8 @@ import (
 type DNSProviderName string
 
 var (
-	statusCodeRegexp        = regexp.MustCompile(`status code: [^\s]+`)
-	requestIDRegexp         = regexp.MustCompile(`request id: [^\s]+`)
+	statusCodeRegexp        = regexp.MustCompile(`(?i)status\s*code:\s*[^\s,]+,?\s*`)
+	requestIDRegexp         = regexp.MustCompile(`(?i)request\s*id:\s*[^\s,]*,?\s*`)
 	saxParseExceptionRegexp = regexp.MustCompile(`Invalid XML ; javax.xml.stream.XMLStreamException: org.xml.sax.SAXParseException; lineNumber: [^\s]+; columnNumber: [^\s]+`)
 
 	// ErrNoZoneForHost is returned when no DNS zone can be found that matches the requested host.

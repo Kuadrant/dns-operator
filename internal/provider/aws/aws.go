@@ -22,10 +22,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/route53"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/go-logr/logr"
 
 	v1 "k8s.io/api/core/v1"
@@ -56,7 +55,7 @@ type Route53DNSProvider struct {
 	*externaldnsprovideraws.AWSProvider
 	awsConfig     externaldnsprovideraws.AWSConfig
 	logger        logr.Logger
-	route53Client *route53.Route53
+	route53Client *route53.Client
 }
 
 var p provider.Provider = &Route53DNSProvider{}
@@ -72,28 +71,24 @@ func (p *Route53DNSProvider) Labels() map[string]string {
 }
 
 func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config) (provider.Provider, error) {
-	config := aws.NewConfig()
-
-	config.WithHTTPClient(metrics.NewInstrumentedClient(provider.DNSProviderAWS.String(), config.HTTPClient))
-
-	sessionOpts := session.Options{
-		Config: *config,
-	}
-	if string(s.Data[v1alpha1.AWSAccessKeyIDKey]) == "" || string(s.Data[v1alpha1.AWSSecretAccessKeyKey]) == "" {
+	accessKey := string(s.Data[v1alpha1.AWSAccessKeyIDKey])
+	secretKey := string(s.Data[v1alpha1.AWSSecretAccessKeyKey])
+	if accessKey == "" || secretKey == "" {
 		return nil, fmt.Errorf("AWS Provider credentials is empty")
 	}
 
-	sessionOpts.Config.Credentials = credentials.NewStaticCredentials(string(s.Data[v1alpha1.AWSAccessKeyIDKey]), string(s.Data[v1alpha1.AWSSecretAccessKeyKey]), "")
-	sessionOpts.SharedConfigState = session.SharedConfigDisable
-	sess, err := session.NewSessionWithOptions(sessionOpts)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create aws session: %s", err)
-	}
-	if string(s.Data[v1alpha1.AWSRegionKey]) != "" {
-		sess.Config.WithRegion(string(s.Data[v1alpha1.AWSRegionKey]))
+	region := string(s.Data[v1alpha1.AWSRegionKey])
+	if region == "" {
+		region = "us-east-1"
 	}
 
-	route53Client := route53.New(sess, config)
+	cfg := aws.Config{
+		Region:      region,
+		Credentials: credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
+		HTTPClient:  metrics.NewInstrumentedClient(provider.DNSProviderAWS.String(), nil),
+	}
+
+	route53Client := route53.NewFromConfig(cfg)
 
 	awsConfig := externaldnsprovideraws.AWSConfig{
 		DomainFilter:         c.DomainFilter,
@@ -108,7 +103,7 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 		ZoneCacheDuration:    awsZoneCacheDuration,
 	}
 
-	logger := log.FromContext(ctx).WithName("aws-dns").WithValues("region", config.Region)
+	logger := log.FromContext(ctx).WithName("aws-dns").WithValues("region", cfg.Region)
 	ctx = log.IntoContext(ctx, logger)
 
 	awsProvider, err := externaldnsprovideraws.NewAWSProvider(ctx, awsConfig, route53Client)
