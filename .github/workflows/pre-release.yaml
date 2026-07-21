@@ -87,11 +87,7 @@ jobs:
           fi
           git checkout -b "${PRE_RELEASE_BRANCH}"
 
-      - name: Install yq
-        run: |
-          sudo wget -qO /usr/local/bin/yq \
-            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
+      - uses: ./.github/actions/install-yq
 
       - name: Update release.yaml
         env:
