@@ -246,9 +246,12 @@ func (s *DNSRecordStatus) ProviderEndpointsRemoved() bool {
 }
 
 // ProviderEndpointsDeletion return true if the ready status condition has the reason set to "ProviderEndpointsDeletion"
+// or "ProviderEndpointsRemoved" (which is a progression past the deletion stage).
 func (s *DNSRecordStatus) ProviderEndpointsDeletion() bool {
 	readyCond := meta.FindStatusCondition(s.Conditions, string(ConditionTypeReady))
-	if readyCond == nil || readyCond.Reason == string(ConditionReasonProviderEndpointsDeletion) {
+	if readyCond == nil ||
+		readyCond.Reason == string(ConditionReasonProviderEndpointsDeletion) ||
+		readyCond.Reason == string(ConditionReasonProviderEndpointsRemoved) {
 		return true
 	}
 	return false
