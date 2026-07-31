@@ -29,11 +29,16 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -47,8 +52,6 @@ const (
 	DelegationRolePrimary   = "primary"
 	DelegationRoleSecondary = "secondary"
 
-	validationRequeueVariance = 0.5
-
 	txtRegistryPrefix              = "kuadrant-"
 	txtRegistrySuffix              = ""
 	txtRegistryWildcardReplacement = "wildcard"
@@ -58,11 +61,8 @@ const (
 )
 
 var (
-	defaultRequeueTime          time.Duration
-	defaultValidationRequeue    time.Duration
-	randomizedValidationRequeue time.Duration
-	validFor                    time.Duration
-	reconcileStart              metav1.Time
+	defaultRequeueTime       time.Duration
+	defaultValidationRequeue time.Duration
 
 	probesEnabled     bool
 	allowInsecureCert bool
@@ -77,8 +77,8 @@ type DNSRecordReconciler struct {
 
 var _ reconcile.TypedReconciler[reconcile.Request] = &DNSRecordReconciler{}
 
-func postReconcile(ctx context.Context, name, ns string) {
-	log.FromContext(ctx).Info(fmt.Sprintf("Reconciled DNSRecord %s from namespace %s in %s", name, ns, time.Since(reconcileStart.Time)))
+func postReconcile(ctx context.Context, name, ns string, startTime time.Time) {
+	log.FromContext(ctx).Info(fmt.Sprintf("Reconciled DNSRecord %s from namespace %s in %s", name, ns, time.Since(startTime)))
 }
 
 //+kubebuilder:rbac:groups=kuadrant.io,resources=dnsrecords,verbs=get;list;watch;create;update;patch;delete
@@ -93,13 +93,10 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	logger.Info("Reconciling DNSRecord")
 
-	reconcileStart = metav1.Now()
+	startTime := time.Now()
 	probes := &v1alpha1.DNSHealthCheckProbeList{}
 
-	defer postReconcile(ctx, req.Name, req.Namespace)
-
-	// randomize validation reconcile delay
-	randomizedValidationRequeue = common.RandomizeValidationDuration(validationRequeueVariance, defaultValidationRequeue)
+	defer postReconcile(ctx, req.Name, req.Namespace, startTime)
 
 	rec := &v1alpha1.DNSRecord{}
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, rec)
@@ -141,8 +138,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		if !dnsRecord.GetStatus().ProviderEndpointsDeletion() {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
-			result, err := r.updateStatus(ctx, previous, dnsRecord, true, err)
-			return result, err
+			return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, reconcile.Result{RequeueAfter: defaultValidationRequeue})
 		}
 
 		if dnsRecord.HasDNSZoneAssigned() {
@@ -168,7 +164,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			// in this case we need to queue for validation to ensure DNS Provider retained changes
 			// before removing finalizer and deleting the DNS Record CR
 			if hadChanges {
-				return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+				return ctrl.Result{RequeueAfter: defaultValidationRequeue}, nil
 			}
 		} else {
 			logger.Info("dns zone was never assigned, skipping zone cleanup")
@@ -179,7 +175,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		dnsRecord.SetStatusZoneID("")
 		dnsRecord.SetStatusDomainOwners(nil)
 
-		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, time.Second)
+		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, reconcile.Result{RequeueAfter: time.Second})
 	}
 
 	if !controllerutil.ContainsFinalizer(dnsRecord.GetDNSRecord(), DNSRecordFinalizer) {
@@ -189,7 +185,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+		return ctrl.Result{RequeueAfter: defaultValidationRequeue}, nil
 	}
 
 	if probesEnabled {
@@ -237,14 +233,14 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// - group is added to status
 		if !meta.IsStatusConditionPresentAndEqual(dnsRecord.GetStatus().Conditions, string(v1alpha1.ConditionTypeReadyForDelegation), metav1.ConditionTrue) {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReadyForDelegation), metav1.ConditionTrue, string(v1alpha1.ConditionReasonFinalizersSet), "")
-			return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, randomizedValidationRequeue)
+			return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, reconcile.Result{RequeueAfter: defaultValidationRequeue})
 		}
 
 		if r.IsSecondary() {
 			// Records that are delegating on secondary clusters should just set the ready status and return here
 			// ToDo Should probably have a different condition reason and message
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionTrue, string(v1alpha1.ConditionReasonProviderSuccess), "Provider ensured the dns record")
-			return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, 0)
+			return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, reconcile.Result{})
 		}
 	}
 
@@ -320,7 +316,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// If this grouped record is not active, exit early (only active groups process unpublishing)
 	if !dnsRecord.IsActive() {
 		dnsRecord.SetStatusConditions(false)
-		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
+		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, reconcile.Result{RequeueAfter: InactiveGroupRequeueTime})
 	}
 
 	// Create a dns provider for the current record, must have an owner and zone assigned or will throw an error
@@ -338,7 +334,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: randomizedValidationRequeue}, nil
+		return ctrl.Result{RequeueAfter: defaultValidationRequeue}, nil
 	}
 
 	// Publish the record
@@ -363,17 +359,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return r.updateStatus(ctx, previous, dnsRecord, hadChanges, nil)
 }
 
-func (r *DNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
-	logger := log.FromContext(ctx)
-	if prematurely, _ := recordReceivedPrematurely(dnsRecord); prematurely {
-		logger.V(1).Info("Skipping DNSRecord - is still valid")
-		return false, nil
-	}
-	return r.BaseDNSRecordReconciler.publishRecord(ctx, dnsRecord, dnsProvider)
-}
-
 func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, current DNSRecordAccessor, hadChanges bool, specErr error) (reconcile.Result, error) {
-	var requeueTime time.Duration
 	logger := log.FromContext(ctx)
 
 	// failure
@@ -388,57 +374,44 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 		return ctrl.Result{Requeue: true}, updateError
 	}
 
-	// short loop. We don't publish anything so not changing status
-	if prematurely, requeueIn := recordReceivedPrematurely(current); prematurely {
-		return reconcile.Result{RequeueAfter: requeueIn}, nil
-	}
-
 	readyCond := meta.FindStatusCondition(current.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady))
 
-	// success
+	// Determine requeue strategy based on changes and state
+	var result reconcile.Result
 	if hadChanges {
-		// generation has not changed but there are changes.
-		// implies that they were overridden - bump write counter
-		requeueTime = randomizedValidationRequeue
-		// BUG: https://github.com/Kuadrant/dns-operator/issues/664 The premature checks stops this from running.
 		if !generationChanged(current.GetDNSRecord()) {
 			current.GetStatus().WriteCounter++
 			logger.V(1).Info("Changes needed on the same generation of record")
 
-			// we weren't ready before - back off
-			if readyCond.Status == metav1.ConditionFalse {
-				requeueTime = exponentialRequeueTime(current.GetStatus().ValidFor)
+			if readyCond != nil && readyCond.Status == metav1.ConditionFalse {
+				// not ready and conflicting — let SDK rate limiter handle exponential backoff
+				result = reconcile.Result{Requeue: true}
+			} else {
+				// ready but changes on same generation — quick retry without backoff escalation
+				result = reconcile.Result{RequeueAfter: defaultValidationRequeue}
 			}
+		} else {
+			// new generation — reset backoff for quick validation
+			result = reconcile.Result{RequeueAfter: defaultValidationRequeue}
 		}
 	} else {
 		logger.Info("All records are already up to date")
 
 		readyCond = meta.FindStatusCondition(current.GetStatus().Conditions, string(v1alpha1.ConditionTypeReady))
 
-		// this is the first reconciliation current.GetStatus().ValidFor is not set
 		if readyCond == nil {
-			requeueTime = defaultValidationRequeue
-		} else if readyCond.Status == metav1.ConditionFalse && readyCond.Reason == string(v1alpha1.ConditionReasonAwaitingValidation) {
-			// no changes and we are awaiting validation - validation succeeded
-			// reset to a fixed value from a randomized one
-			requeueTime = exponentialRequeueTime(defaultValidationRequeue.String())
+			// first reconciliation
+			result = reconcile.Result{RequeueAfter: defaultValidationRequeue}
+		} else if generationChanged(current.GetDNSRecord()) {
+			// generation changed but no updates needed — reset for quick recheck
+			result = reconcile.Result{RequeueAfter: defaultValidationRequeue}
 		} else {
-			// ready or not publishing unhealthy endpoints,
-			// we are giving precedence to AwaitingValidation
-			// meaning we are doubling not randomized value
-			requeueTime = exponentialRequeueTime(current.GetStatus().ValidFor)
-
-			// reset requeue time if we changed healthcheck spec but no updates were needed to the provider
-			if generationChanged(current.GetDNSRecord()) {
-				requeueTime = defaultValidationRequeue
-			}
+			// stable or ramping up — let SDK rate limiter handle exponential backoff
+			result = reconcile.Result{Requeue: true}
 		}
 	}
 
 	setStatusConditions(current, hadChanges)
-
-	// valid for is always a requeue time
-	current.GetStatus().ValidFor = requeueTime.String()
 
 	// reset the counter on the gen change regardless of having changes in the plan
 	if generationChanged(current.GetDNSRecord()) {
@@ -447,21 +420,26 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 	}
 
 	current.GetStatus().ObservedGeneration = current.GetDNSRecord().GetGeneration()
-	current.GetStatus().QueuedAt = reconcileStart
 
-	return r.updateStatusAndRequeue(ctx, r.Client, previous, current, requeueTime)
+	return r.updateStatusAndRequeue(ctx, r.Client, previous, current, result)
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, validForDuration, minRequeue time.Duration, healthProbesEnabled, allowInsecureHealthCert bool) error {
+func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, minRequeue time.Duration, healthProbesEnabled, allowInsecureHealthCert bool) error {
+	if minRequeue > maxRequeue {
+		return fmt.Errorf("minRequeue (%s) must not exceed maxRequeue (%s)", minRequeue, maxRequeue)
+	}
+
 	defaultRequeueTime = maxRequeue
-	validFor = validForDuration
 	defaultValidationRequeue = minRequeue
 	probesEnabled = healthProbesEnabled
 	allowInsecureCert = allowInsecureHealthCert
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.DNSRecord{}).
+		For(&v1alpha1.DNSRecord{}, builder.WithPredicates(specOrDeletionChangedPredicate{})).
+		WithOptions(controller.Options{
+			RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](minRequeue, maxRequeue),
+		}).
 		Watches(&v1alpha1.DNSHealthCheckProbe{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
 			logger := log.FromContext(ctx)
 			probe, ok := o.(*v1alpha1.DNSHealthCheckProbe)
@@ -507,73 +485,32 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, val
 		Complete(r)
 }
 
-// recordReceivedPrematurely returns true if the current reconciliation loop started before
-// the last loop plus validFor duration.
-// It also returns a duration for which the record should have been requeued. Meaning that if the record was valid
-// for 30 minutes and was received in 29 minutes, the function will return (true, 30 min).
-// It will make an exception and will let through premature records if healthcheck probes change their health status
-func recordReceivedPrematurely(record DNSRecordAccessor) (bool, time.Duration) {
-	var prematurely bool
-
-	requeueIn := validFor
-	if record.GetStatus().ValidFor != "" {
-		requeueIn, _ = time.ParseDuration(record.GetStatus().ValidFor)
-	}
-
-	// do not consider active records premature, as they may have some unpublishing to do
-	if record.IsActive() && record.GetGroup() != "" {
-		return false, requeueIn
-	}
-
-	expiryTime := metav1.NewTime(record.GetStatus().QueuedAt.Add(requeueIn))
-	prematurely = !generationChanged(record.GetDNSRecord()) && reconcileStart.Before(&expiryTime)
-
-	hca, hasHealthChecks := record.(*healthCheckAdapter)
-
-	// Check for the exception if we are received prematurely.
-	// This cuts off all the cases when we are creating.
-	// If this evaluates to true, we must have created probes and must have healthy condition
-	if prematurely && hasHealthChecks && record.GetSpec().HealthCheck != nil {
-		healthyCond := meta.FindStatusCondition(record.GetStatus().Conditions, string(v1alpha1.ConditionTypeHealthy))
-		// this is caused only by an error during reconciliation
-		if healthyCond == nil {
-			return false, requeueIn
-		}
-		// healthy is true only if we have probes and they are all healthy
-		isHealthy := healthyCond.Status == metav1.ConditionTrue
-
-		// if at least one is healthy - this will lock in true
-		allProbesHealthy := false
-		for _, probe := range hca.probes.Items {
-			if probe.Status.Healthy != nil {
-				allProbesHealthy = allProbesHealthy || *probe.Status.Healthy
-			}
-		}
-		// prematurely is true here. return false in case we need full reconcile
-		return isHealthy == allProbesHealthy, requeueIn
-	}
-
-	return prematurely, requeueIn
-}
-
 func generationChanged(record *v1alpha1.DNSRecord) bool {
 	return record.Generation != record.Status.ObservedGeneration
 }
 
-// exponentialRequeueTime consumes the current time and doubles it until it reaches defaultRequeueTime
-func exponentialRequeueTime(lastRequeueTime string) time.Duration {
-	lastRequeue, err := time.ParseDuration(lastRequeueTime)
-	// corrupted DNSRecord. This value naturally set only via time.Duration.String() call
-	if err != nil {
-		// default to the least confidence timeout
-		return randomizedValidationRequeue
+// specOrDeletionChangedPredicate filters watch Update events to spec changes
+// (generation changed) and objects that are deleting (deletion timestamp set).
+// Status-only updates on non-deleting objects are filtered to prevent a tight
+// reconciliation loop where WriteCounter increments, status patches, and the
+// watch immediately re-enqueue the item — bypassing the SDK rate limiter.
+// Deleting objects are allowed through so the deletion state machine progresses
+// without waiting for rate-limited requeues.
+type specOrDeletionChangedPredicate struct {
+	predicate.Funcs
+}
+
+func (specOrDeletionChangedPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectOld == nil || e.ObjectNew == nil {
+		return false
 	}
-	// double the duration. Return the max timeout if overshoot
-	newRequeue := lastRequeue * 2
-	if newRequeue > defaultRequeueTime {
-		return defaultRequeueTime
+	if e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration() {
+		return true
 	}
-	return newRequeue
+	if e.ObjectNew.GetDeletionTimestamp() != nil {
+		return true
+	}
+	return false
 }
 
 // setStatusConditions sets healthy and ready condition on given DNSRecord

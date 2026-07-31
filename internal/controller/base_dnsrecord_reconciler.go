@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/go-logr/logr"
 
@@ -209,7 +208,7 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 }
 
 func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client client.Client, previous, current DNSRecordAccessor, err error) (reconcile.Result, error) {
-	result, uErr := r.updateStatusAndRequeue(ctx, client, previous, current, 0)
+	result, uErr := r.updateStatusAndRequeue(ctx, client, previous, current, reconcile.Result{})
 
 	if uErr != nil {
 		err = uErr
@@ -218,20 +217,20 @@ func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client clien
 }
 
 // updateStatusAndRequeue will update the status of the record if the current and previous status is different
-// and returns a reconcile.result that re-queues at the given time.
-func (r *BaseDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, c client.Client, previous, current DNSRecordAccessor, requeueTime time.Duration) (reconcile.Result, error) {
+// and returns the given reconcile.Result.
+func (r *BaseDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, c client.Client, previous, current DNSRecordAccessor, result reconcile.Result) (reconcile.Result, error) {
 	logger := log.FromContext(ctx)
 	patch := client.MergeFrom(previous.GetDNSRecord())
 	// update the record after setting the status
 	if !equality.Semantic.DeepEqual(previous.GetStatus(), current.GetStatus()) {
 		if updateError := c.Status().Patch(ctx, current.GetDNSRecord(), patch); updateError != nil {
 			if apierrors.IsConflict(updateError) {
-				return ctrl.Result{RequeueAfter: time.Second}, nil
+				return ctrl.Result{Requeue: true}, nil
 			}
 			return ctrl.Result{}, updateError
 		}
 	}
-	logger.V(1).Info(fmt.Sprintf("Requeue in %s", requeueTime.String()))
+	logger.V(1).Info(fmt.Sprintf("Requeue: %v", result))
 
-	return ctrl.Result{RequeueAfter: requeueTime}, nil
+	return result, nil
 }
