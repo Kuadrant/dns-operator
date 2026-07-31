@@ -30,7 +30,6 @@ const (
 	TestTimeoutLong           = time.Second * 30
 	TestRetryIntervalMedium   = time.Millisecond * 250
 	RequeueDuration           = time.Second * 2
-	ValidityDuration          = time.Second * 2
 	DefaultValidationDuration = time.Second * 1
 )
 

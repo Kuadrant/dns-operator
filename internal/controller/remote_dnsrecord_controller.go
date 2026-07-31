@@ -148,7 +148,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 		if !dnsRecord.GetStatus().ProviderEndpointsDeletion() {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
-			return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, time.Second)
+			return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, reconcile.Result{RequeueAfter: defaultValidationRequeue})
 		}
 
 		if dnsRecord.HasDNSZoneAssigned() {
@@ -223,7 +223,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	// If this grouped record is not active, exit early (only active groups process unpublishing)
 	if !dnsRecord.IsActive() {
 		dnsRecord.SetStatusConditions(false)
-		return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, InactiveGroupRequeueTime)
+		return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, reconcile.Result{RequeueAfter: InactiveGroupRequeueTime})
 	}
 
 	// Publish the record
@@ -249,7 +249,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	}
 
 	dnsRecord.SetStatusConditions(hadChanges)
-	return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, defaultRequeueTime)
+	return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, reconcile.Result{RequeueAfter: defaultRequeueTime})
 }
 
 func (r *RemoteDNSRecordReconciler) getClusterUID(ctx context.Context) (string, error) {
