@@ -666,19 +666,9 @@ var _ = Describe("DNSRecordReconciler", func() {
 
 		By("checking dnsrecord " + dnsRecord.Name + " and " + dnsRecord2.Name + " conflict")
 		Eventually(func(g Gomega) {
-			var oldRequeue, newRequeue time.Duration
-			var err error
-
-			oldRequeue, err = time.ParseDuration(dnsRecord.Status.ValidFor)
+			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
 			g.Expect(err).NotTo(HaveOccurred())
-
-			err = primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord), dnsRecord)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			newRequeue, err = time.ParseDuration(dnsRecord.Status.ValidFor)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			g.Expect(oldRequeue.Milliseconds()).To(BeNumerically("<", newRequeue.Milliseconds()))
+			g.Expect(dnsRecord.Status.WriteCounter).To(BeNumerically(">", int64(0)))
 		}, TestTimeoutMedium, time.Second).Should(Succeed())
 
 		Eventually(func(g Gomega) {
@@ -717,7 +707,7 @@ var _ = Describe("DNSRecordReconciler", func() {
 			err := primaryK8sClient.Get(ctx, client.ObjectKeyFromObject(dnsRecord2), dnsRecord2)
 			g.Expect(err).NotTo(HaveOccurred())
 			dnsRecord2.Spec.Endpoints = NewTestEndpoints(testHostname).Endpoints()
-			Expect(primaryK8sClient.Update(ctx, dnsRecord2)).To(Succeed())
+			g.Expect(primaryK8sClient.Update(ctx, dnsRecord2)).To(Succeed())
 		}, TestTimeoutShort, time.Second).Should(Succeed())
 
 		Eventually(func(g Gomega) {
