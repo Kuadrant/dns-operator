@@ -1,0 +1,422 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-branch:
+        description: "Release branch (e.g. release-1.5)"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.release-branch }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  IMG_REGISTRY_HOST: quay.io
+  IMG_REGISTRY_ORG: kuadrant
+  OPERATOR_NAME: dns-operator
+  COREDNS_NAME: coredns-kuadrant
+  PLATFORMS: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
+
+jobs:
+  read-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+      major: ${{ steps.parse.outputs.major }}
+      minor: ${{ steps.parse.outputs.minor }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/install-yq
+
+      - name: Parse version from release.yaml
+        id: parse
+        run: .github/scripts/parse-version.sh
+
+      - name: Validate branch matches version
+        env:
+          INPUT_BRANCH: ${{ inputs.release-branch }}
+          MAJOR: ${{ steps.parse.outputs.major }}
+          MINOR: ${{ steps.parse.outputs.minor }}
+          VERSION: ${{ steps.parse.outputs.version }}
+        run: |
+          EXPECTED_BRANCH="release-${MAJOR}.${MINOR}"
+          if [[ "$INPUT_BRANCH" != "$EXPECTED_BRANCH" ]]; then
+            echo "::error::Branch '${INPUT_BRANCH}' does not match version ${VERSION} (expected branch: ${EXPECTED_BRANCH})"
+            exit 1
+          fi
+
+      - name: Verify no existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.parse.outputs.version }}
+        run: |
+          TAG="v${VERSION}"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "::error::GitHub Release $TAG already exists"
+            exit 1
+          fi
+
+  smoke-tests:
+    needs: read-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify manifests
+        run: make verify-manifests
+
+      - name: Verify bundle
+        run: make verify-bundle
+
+      - name: Verify helm build
+        run: make verify-helm-build
+
+      - name: Run unit tests
+        run: make test-unit
+
+      - name: Run CoreDNS unit tests
+        run: make coredns-test-unit
+
+  tag:
+    needs: [read-version, smoke-tests]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+          fetch-depth: 0
+
+      - name: Create and push tag
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+        run: |
+          TAG="v${VERSION}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+  build-operator-image:
+    needs: [read-version, tag]
+    runs-on: ubuntu-latest
+    outputs:
+      build-tags: ${{ steps.build-image.outputs.tags }}
+      image: ${{ steps.push-to-quay.outputs.registry-path }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+          persist-credentials: false
+
+      - name: Verify release version matches
+        env:
+          EXPECTED: v${{ needs.read-version.outputs.version }}
+        run: |
+          version=$(make read-release-version)
+          if [[ "$version" != "$EXPECTED" ]]; then
+            echo "::error::Makefile version '$version' does not match release version '$EXPECTED'"
+            exit 1
+          fi
+
+      - name: Install qemu dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+
+      - name: Build Image
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.OPERATOR_NAME }}
+          tags: v${{ needs.read-version.outputs.version }}
+          platforms: ${{ env.PLATFORMS }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            DIRTY=false
+            VERSION=v${{ needs.read-version.outputs.version }}
+          dockerfiles: |
+            ./Dockerfile
+
+      - name: Push Image
+        if: github.repository_owner == 'kuadrant'
+        id: push-to-quay
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}
+          username: ${{ secrets.IMG_REGISTRY_USERNAME }}
+          password: ${{ secrets.IMG_REGISTRY_TOKEN }}
+
+  build-bundle-image:
+    needs: [read-version, build-operator-image]
+    runs-on: ubuntu-latest
+    outputs:
+      build-tags: ${{ steps.build-image.outputs.tags }}
+      image: ${{ steps.push-to-quay.outputs.registry-path }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+          persist-credentials: false
+
+      - name: Install yq
+        run: make yq
+
+      - name: Verify operator image reference in bundle
+        env:
+          EXPECTED: ${{ needs.build-operator-image.outputs.image }}
+        run: |
+          url=$(make bundle-operator-image-url)
+          if [[ -n "$EXPECTED" && "$url" != "$EXPECTED" ]]; then
+            echo "::error::Bundle references operator image '$url' but expected '$EXPECTED'"
+            exit 1
+          fi
+
+      - name: Install qemu dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+
+      - name: Build Image
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.OPERATOR_NAME }}-bundle
+          tags: v${{ needs.read-version.outputs.version }}
+          platforms: ${{ env.PLATFORMS }}
+          build-args: QUAY_IMAGE_EXPIRY=never
+          dockerfiles: |
+            ./bundle.Dockerfile
+
+      - name: Push Image
+        if: github.repository_owner == 'kuadrant'
+        id: push-to-quay
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}
+          username: ${{ secrets.IMG_REGISTRY_USERNAME }}
+          password: ${{ secrets.IMG_REGISTRY_TOKEN }}
+
+  build-catalog-image:
+    needs: [read-version, build-bundle-image]
+    runs-on: ubuntu-latest
+    outputs:
+      build-tags: ${{ steps.build-image.outputs.tags }}
+      image: ${{ steps.push-to-quay.outputs.registry-path }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+          persist-credentials: false
+
+      - name: Install yq
+        run: make yq
+
+      - name: Verify bundle image reference in catalog
+        env:
+          EXPECTED: ${{ needs.build-bundle-image.outputs.image }}
+        run: |
+          image=$(make print-bundle-image)
+          if [[ -n "$EXPECTED" && "$image" != "$EXPECTED" ]]; then
+            echo "::error::Catalog references bundle image '$image' but expected '$EXPECTED'"
+            exit 1
+          fi
+
+      - name: Run make catalog-build
+        run: make catalog-build
+
+      - name: Install qemu dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+
+      - name: Build Image
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.OPERATOR_NAME }}-catalog
+          tags: v${{ needs.read-version.outputs.version }}
+          platforms: ${{ env.PLATFORMS }}
+          context: ./tmp/catalog
+          dockerfiles: |
+            ./tmp/catalog/index.Dockerfile
+
+      - name: Push Image
+        if: github.repository_owner == 'kuadrant'
+        id: push-to-quay
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}
+          username: ${{ secrets.IMG_REGISTRY_USERNAME }}
+          password: ${{ secrets.IMG_REGISTRY_TOKEN }}
+
+  build-coredns-image:
+    needs: [read-version, tag]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+          persist-credentials: false
+
+      - name: Run make coredns-generate-demo-geo-db
+        run: make coredns-generate-demo-geo-db
+
+      - name: Install qemu dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+
+      - name: Build Image
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: ${{ env.COREDNS_NAME }}
+          tags: v${{ needs.read-version.outputs.version }}
+          platforms: ${{ env.PLATFORMS }}
+          context: ./coredns/plugin
+          dockerfiles: |
+            ./coredns/plugin/Dockerfile
+
+      - name: Push Image
+        if: github.repository_owner == 'kuadrant'
+        id: push-to-quay
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}
+          username: ${{ secrets.IMG_REGISTRY_USERNAME }}
+          password: ${{ secrets.IMG_REGISTRY_TOKEN }}
+
+  build-helm-chart:
+    needs: [read-version, tag]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure GPG Key
+        env:
+          GPG_SIGNING_KEY: ${{ secrets.HELM_CHARTS_SIGNING_KEY }}
+        run: |
+          echo -n "$GPG_SIGNING_KEY" | base64 -d | gpg --import --batch
+
+      - name: Package and sign Helm Chart
+        run: |
+          GPG_KEY_UID="Kuadrant Development Team" \
+          make helm-package-sign
+
+      - name: Upload chart artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: |
+            dns-operator-${{ needs.read-version.outputs.version }}.tgz
+            dns-operator-${{ needs.read-version.outputs.version }}.tgz.prov
+
+  build-cli-binaries:
+    needs: [read-version, tag]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64, s390x, ppc64le]
+        exclude:
+          - goos: darwin
+            goarch: s390x
+          - goos: darwin
+            goarch: ppc64le
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build CLI binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+          VERSION: v${{ needs.read-version.outputs.version }}
+        run: |
+          OUTPUT_NAME="kubectl-kuadrant_dns"
+          go build -ldflags "-X main.gitSHA=${{ github.sha }} -X main.version=${VERSION}" \
+            -o "${OUTPUT_NAME}" ./cmd/plugin/
+          tar czf "kubectl-kuadrant_dns-${VERSION}-${GOOS}-${GOARCH}.tar.gz" "${OUTPUT_NAME}"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: kubectl-kuadrant_dns-*.tar.gz
+
+  create-release:
+    needs: [read-version, build-catalog-image, build-coredns-image, build-helm-chart, build-cli-binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release-branch }}
+
+      - name: Download helm chart artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+          path: release-assets/
+
+      - name: Download CLI binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cli-*
+          path: release-assets/
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.read-version.outputs.version }}
+        run: |
+          TAG="v${VERSION}"
+          gh release create "$TAG" \
+            --title "Release $TAG" \
+            --generate-notes \
+            release-assets/*
