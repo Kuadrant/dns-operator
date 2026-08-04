@@ -220,8 +220,14 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 	dnsRecord = r.applyGroupAdapter(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord)
 
-	// If this grouped record is not active, exit early (only active groups process unpublishing)
+	// If this grouped record is not active, update registry entries and exit (only active groups process unpublishing)
 	if !dnsRecord.IsActive() {
+		if _, err := r.applyChanges(ctx, dnsRecord, dnsProvider, false, true); err != nil {
+			logger.Error(err, "Failed to update registry for inactive group")
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+				"RegistryError", fmt.Sprintf("Failed to update registry for inactive group: %v", err))
+			return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
+		}
 		dnsRecord.SetStatusConditions(false)
 		return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, reconcile.Result{RequeueAfter: InactiveGroupRequeueTime})
 	}

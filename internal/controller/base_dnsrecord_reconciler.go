@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -96,7 +97,7 @@ func (r *BaseDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord 
 func (r *BaseDNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	hadChanges, err := r.applyChanges(ctx, dnsRecord, dnsProvider, true)
+	hadChanges, err := r.applyChanges(ctx, dnsRecord, dnsProvider, true, false)
 	if err != nil {
 		if strings.Contains(err.Error(), "was not found") || strings.Contains(err.Error(), "notFound") {
 			logger.Info("Record not found in zone, continuing")
@@ -116,7 +117,7 @@ func (r *BaseDNSRecordReconciler) deleteRecord(ctx context.Context, dnsRecord DN
 // returns if it had changes, if record is healthy and an error. If had no changes - the healthy bool can be ignored
 func (r *BaseDNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider) (bool, error) {
 	logger := log.FromContext(ctx)
-	hadChanges, err := r.applyChanges(ctx, dnsRecord, dnsProvider, false)
+	hadChanges, err := r.applyChanges(ctx, dnsRecord, dnsProvider, false, false)
 	if err != nil {
 		return hadChanges, err
 	}
@@ -127,7 +128,10 @@ func (r *BaseDNSRecordReconciler) publishRecord(ctx context.Context, dnsRecord D
 
 // applyChanges creates the Plan and applies it to the registry. Returns true only if the Plan had no errors and there were changes to apply.
 // The error is nil only if the changes were successfully applied or there were no changes to be made.
-func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider, isDelete bool) (bool, error) {
+// When registryOnly is true, only label-change Updates are applied (Creates, Deletes, and target-changing
+// Updates are stripped). This allows inactive controllers to update TXT registry labels (e.g. groupID)
+// without creating, deleting, or modifying DNS record targets.
+func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DNSRecordAccessor, dnsProvider provider.Provider, isDelete bool, registryOnly bool) (bool, error) {
 	logger := log.FromContext(ctx)
 	//ToDo We can't use GetRootHost() here as it currently removes any wildcard prefix which needs to be maintained in this scenario.
 	rootDomainName := dnsRecord.GetSpec().RootHost
@@ -194,8 +198,30 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	if err = recordPlan.Error(); err != nil {
 		return false, err
 	}
-	dnsRecord.SetStatusDomainOwners(recordPlan.Owners)
-	dnsRecord.SetStatusEndpoints(specEndpoints)
+
+	if registryOnly {
+		recordPlan.Changes.Create = nil
+		recordPlan.Changes.Delete = nil
+		filteredOld := []*externaldnsendpoint.Endpoint{}
+		filteredNew := []*externaldnsendpoint.Endpoint{}
+		for i, newEp := range recordPlan.Changes.UpdateNew {
+			oldEp := recordPlan.Changes.UpdateOld[i]
+			if newEp.Targets.Same(oldEp.Targets) &&
+				newEp.RecordType == oldEp.RecordType &&
+				newEp.SetIdentifier == oldEp.SetIdentifier &&
+				newEp.RecordTTL == oldEp.RecordTTL &&
+				reflect.DeepEqual(newEp.ProviderSpecific, oldEp.ProviderSpecific) {
+				filteredOld = append(filteredOld, oldEp)
+				filteredNew = append(filteredNew, newEp)
+			}
+		}
+		recordPlan.Changes.UpdateOld = filteredOld
+		recordPlan.Changes.UpdateNew = filteredNew
+	} else {
+		dnsRecord.SetStatusDomainOwners(recordPlan.Owners)
+		dnsRecord.SetStatusEndpoints(specEndpoints)
+	}
+
 	if recordPlan.Changes.HasChanges() {
 		//ToDo (mnairn) CoreDNS will always think it has changes as long as provider.Records() returns an empty slice
 		// Figure out a better way of doing this that avoids the check for a specific provider here
