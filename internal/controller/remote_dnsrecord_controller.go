@@ -225,7 +225,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		if _, err := r.publishRecord(ctx, dnsRecord, dnsProvider); err != nil {
 			logger.Error(err, "Failed to update registry for inactive group")
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-				"RegistryError", fmt.Sprintf("Failed to update registry for inactive group: %v", err))
+				string(v1alpha1.ConditionReasonRegistryError), fmt.Sprintf("Failed to update registry for inactive group: %v", err))
 			return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
 		}
 		dnsRecord.SetStatusConditions(false)

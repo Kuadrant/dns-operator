@@ -531,7 +531,96 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 
 				g.Expect(ungroupedPrimaryK8sClient.List(ctx, recordList, client.InNamespace(testNamespace))).To(Succeed())
 				g.Expect(len(recordList.Items)).To(Equal(0))
+			}, TestTimeoutLong, time.Second).Should(Succeed())
+
+			By("clearing active groups")
+			setActiveGroupsInDNS(testZoneDomainName, types.Groups{}, mockTXTResolver)
+			setActiveGroupsInDNS(testHostname, types.Groups{}, mockTXTResolver)
+		})
+
+		It("should correct tampered registry group entries for inactive controllers", Labels{"groups"}, func(ctx SpecContext) {
+			cluster1Group1DNSRecord := createDNSRecord(testHostname+"-cluster1-group1", testNamespace, testHostname, "cluster1-group1.example.com")
+			ungroupedDNSRecord := createDNSRecord(testHostname+"-ungrouped", testNamespace, testHostname, "cluster-ungrouped.example.com")
+
+			By("creating DNSRecords on group1 and ungrouped clusters")
+			Expect(cluster1Group1K8sClient.Create(ctx, cluster1Group1DNSRecord)).To(Succeed())
+			Expect(ungroupedPrimaryK8sClient.Create(ctx, ungroupedDNSRecord)).To(Succeed())
+
+			// Step 1: Set group1 active and wait for records to be published
+			By("STEP 1: setting group1 as active and waiting for publish")
+			setActiveGroupsInDNS(testZoneDomainName, types.Groups{types.Group("group1")}, mockTXTResolver)
+			setActiveGroupsInDNS(testHostname, types.Groups{types.Group("group1")}, mockTXTResolver)
+
+			Eventually(confirmRecordTargets(ctx, ungroupedPrimaryK8sClient, testNamespace, testHostname,
+				[]string{"cluster1-group1.example.com", "cluster-ungrouped.example.com"}),
+				TestTimeoutMedium, time.Second*5).Should(Succeed())
+
+			// Step 2: Verify TXT registry has group1 entries
+			By("STEP 2: verifying TXT registry has group1 entries")
+			Eventually(func(g Gomega) {
+				registryMap := readAuthoritativeRegistryMap(ctx, ungroupedPrimaryK8sClient, testNamespace)
+				g.Expect(registryMap.Hosts).To(HaveKey(testHostname))
+				g.Expect(registryMap.Hosts[testHostname].HasGroup(types.Group("group1"))).To(BeTrue())
 			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			// Step 3: Make group1 inactive (no active groups to avoid unpublishInactiveGroups race)
+			By("STEP 3: removing all active groups")
+			setActiveGroupsInDNS(testZoneDomainName, types.Groups{}, mockTXTResolver)
+			setActiveGroupsInDNS(testHostname, types.Groups{}, mockTXTResolver)
+
+			// Step 4: Wait for group1 to be marked inactive
+			By("STEP 4: waiting for group1 controller to show Active=False")
+			Eventually(func(g Gomega) {
+				g.Expect(cluster1Group1K8sClient.Get(ctx, client.ObjectKeyFromObject(cluster1Group1DNSRecord), cluster1Group1DNSRecord)).To(Succeed())
+				g.Expect(cluster1Group1DNSRecord.Status.GetRemoteRecordStatus(ungroupedPrimaryClusterID).Conditions).To(
+					ContainElement(MatchFields(IgnoreExtras, Fields{
+						"Type":   Equal(string(v1alpha1.ConditionTypeActive)),
+						"Status": Equal(metav1.ConditionFalse),
+						"Reason": Equal(string(v1alpha1.ConditionReasonNotInActiveGroup)),
+					})),
+				)
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			// Step 5: Tamper TXT registry entries (replace group1 with tampered)
+			By("STEP 5: tampering TXT registry group entries")
+			modified := tamperRegistryGroup(ctx, ungroupedPrimaryK8sClient, testNamespace, "group1", "tampered")
+			Expect(modified).To(BeNumerically(">", 0), "Expected at least one TXT endpoint to be tampered")
+
+			// Step 6: Snapshot zone DNS endpoints before waiting for correction
+			By("STEP 6: snapshotting zone DNS endpoints")
+			dnsEndpointsBefore := filterDNSEndpoints(readZoneRecords(ctx, testZoneDomainName))
+			Expect(dnsEndpointsBefore).NotTo(BeEmpty())
+
+			// Step 7: Wait for inactive controller to correct the tampered entries
+			By("STEP 7: waiting for inactive controller to correct tampered registry entries")
+			Eventually(func(g Gomega) {
+				correctedMap := readAuthoritativeRegistryMap(ctx, ungroupedPrimaryK8sClient, testNamespace)
+				g.Expect(correctedMap.Hosts).To(HaveKey(testHostname))
+				g.Expect(correctedMap.Hosts[testHostname].HasGroup(types.Group("group1"))).To(BeTrue(),
+					"Expected inactive controller to correct group1 registry entries")
+				g.Expect(correctedMap.Hosts[testHostname].HasGroup(types.Group("tampered"))).To(BeFalse(),
+					"Expected tampered group to be corrected")
+			}, TestTimeoutMedium, time.Second).Should(Succeed())
+
+			// Step 8: Verify zone DNS endpoints unchanged
+			By("STEP 8: verifying zone DNS endpoints are unchanged")
+			dnsEndpointsAfter := filterDNSEndpoints(readZoneRecords(ctx, testZoneDomainName))
+			Expect(dnsEndpointsAfter).To(ConsistOf(dnsEndpointsBefore),
+				"Expected DNS endpoints to be unchanged after tamper correction")
+
+			// Cleanup
+			By("cleaning up DNSRecords")
+			Expect(cluster1Group1K8sClient.Delete(ctx, cluster1Group1DNSRecord)).To(Succeed())
+			Expect(ungroupedPrimaryK8sClient.Delete(ctx, ungroupedDNSRecord)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				recordList := &v1alpha1.DNSRecordList{}
+				g.Expect(cluster1Group1K8sClient.List(ctx, recordList, client.InNamespace(testNamespace))).To(Succeed())
+				g.Expect(len(recordList.Items)).To(Equal(0))
+
+				g.Expect(ungroupedPrimaryK8sClient.List(ctx, recordList, client.InNamespace(testNamespace))).To(Succeed())
+				g.Expect(len(recordList.Items)).To(Equal(0))
+			}, TestTimeoutLong, time.Second).Should(Succeed())
 
 			By("clearing active groups")
 			setActiveGroupsInDNS(testZoneDomainName, types.Groups{}, mockTXTResolver)

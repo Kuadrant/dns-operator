@@ -72,7 +72,7 @@ func (r *DNSProbeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		controllerutil.RemoveFinalizer(dnsProbe, DNSHealthCheckFinalizer)
 		if err = r.Update(ctx, dnsProbe); client.IgnoreNotFound(err) != nil {
 			if apierrors.IsConflict(err) {
-				return ctrl.Result{Requeue: true}, nil
+				return ctrl.Result{RequeueAfter: time.Second}, nil
 			}
 			return ctrl.Result{}, err
 		}
@@ -83,7 +83,7 @@ func (r *DNSProbeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if controllerutil.AddFinalizer(dnsProbe, DNSHealthCheckFinalizer) {
 			if err := r.Client.Update(ctx, dnsProbe); err != nil {
 				if apierrors.IsConflict(err) {
-					return ctrl.Result{Requeue: true}, nil
+					return ctrl.Result{RequeueAfter: time.Second}, nil
 				}
 				return ctrl.Result{}, err
 			}

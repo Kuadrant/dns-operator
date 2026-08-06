@@ -164,15 +164,8 @@ func readZoneRecords(ctx context.Context, zoneDomainName string) []*externaldnse
 	return records
 }
 
-// readRegistryMap reads zone records and parses TXT records into a RegistryMap
-func readRegistryMap(ctx context.Context, zoneDomainName string) *externaldnsregistry.RegistryMap {
-	records := readZoneRecords(ctx, zoneDomainName)
-	return externaldnsregistry.TxtRecordsToRegistryMap(records, txtRegistryPrefix, txtRegistrySuffix, txtRegistryWildcardReplacement, []byte(txtRegistryEncryptAESKey))
-}
-
 // readAuthoritativeRegistryMap reads the authoritative record's spec endpoints and parses TXT records into a RegistryMap.
-// Unlike readRegistryMap which reads from the inmemory DNS zone, this reads from the authoritative K8s DNSRecord
-// where group labels are stored by the remote controller's GroupRegistry.
+// It reads from the authoritative K8s DNSRecord where group labels are stored by the remote controller's GroupRegistry.
 func readAuthoritativeRegistryMap(ctx context.Context, k8sClient client.Client, namespace string) *externaldnsregistry.RegistryMap {
 	authRecordList := &v1alpha1.DNSRecordList{}
 	Expect(k8sClient.List(ctx, authRecordList, client.InNamespace(namespace), client.MatchingLabels{
@@ -185,15 +178,50 @@ func readAuthoritativeRegistryMap(ctx context.Context, k8sClient client.Client, 
 	return externaldnsregistry.TxtRecordsToRegistryMap(endpoints, txtRegistryPrefix, txtRegistrySuffix, txtRegistryWildcardReplacement, []byte(txtRegistryEncryptAESKey))
 }
 
-// filterDNSEndpoints returns only A, AAAA, and CNAME endpoints from a record list
+// filterDNSEndpoints returns only A, AAAA, and CNAME endpoints from a record list.
+// Labels are cleared since they are registry metadata that can change independently of the DNS record.
 func filterDNSEndpoints(endpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
 	var filtered []*externaldnsendpoint.Endpoint
 	for _, ep := range endpoints {
 		if ep.RecordType == "A" || ep.RecordType == "AAAA" || ep.RecordType == "CNAME" {
-			filtered = append(filtered, ep)
+			cp := ep.DeepCopy()
+			cp.Labels = nil
+			filtered = append(filtered, cp)
 		}
 	}
 	return filtered
+}
+
+// tamperRegistryGroup modifies authoritative record TXT endpoints to replace one group value with another.
+// Returns the number of TXT endpoints modified. This simulates stale/incorrect group labels in the TXT registry.
+func tamperRegistryGroup(ctx context.Context, k8sClient client.Client, namespace string, fromGroup, toGroup string) int {
+	authRecordList := &v1alpha1.DNSRecordList{}
+	Expect(k8sClient.List(ctx, authRecordList, client.InNamespace(namespace), client.MatchingLabels{
+		v1alpha1.AuthoritativeRecordLabel: "true",
+	})).To(Succeed())
+
+	totalModified := 0
+	fromLabel := "external-dns/group=" + fromGroup
+	toLabel := "external-dns/group=" + toGroup
+	for i := range authRecordList.Items {
+		record := &authRecordList.Items[i]
+		modified := false
+		for j, ep := range record.Spec.Endpoints {
+			if ep.RecordType == "TXT" {
+				for k, target := range ep.Targets {
+					if strings.Contains(target, fromLabel) {
+						record.Spec.Endpoints[j].Targets[k] = strings.ReplaceAll(target, fromLabel, toLabel)
+						modified = true
+						totalModified++
+					}
+				}
+			}
+		}
+		if modified {
+			Expect(k8sClient.Update(ctx, record)).To(Succeed())
+		}
+	}
+	return totalModified
 }
 
 // createDNSRecord creates a delegated DNSRecord with weighted CNAME routing

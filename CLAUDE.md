@@ -282,9 +282,9 @@ Common log metadata:
 - Prevents conflicts when multiple operators manage same zone
 
 **Reconciliation Flow:**
-- Min requeue time: 5s (prevents API throttling)
-- Max requeue time: 15m (ensures eventual consistency)
-- Exponential backoff via SDK rate limiter between min and max
+- Min requeue time: 5s (default, configurable via `--min-requeue-time`)
+- Max requeue time: 15m (default, configurable via `--max-requeue-time`)
+- Backoff derived from time since last ready condition transition, bounded between min and max
 
 ## Custom Claude
 

@@ -28,6 +28,10 @@ func (g GroupRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, error
 }
 
 func (g GroupRegistry) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
+	// Inactive groups must not create, delete, or modify DNS records — only TXT
+	// registry metadata (e.g. groupID labels) should be updated. Strip Creates,
+	// Deletes, and any Updates that change targets/type/TTL, keeping only Updates
+	// where the difference is limited to label metadata.
 	if g.Group.IsSet() && !g.IsActive {
 		changes.Create = nil
 		changes.Delete = nil

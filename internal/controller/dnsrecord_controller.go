@@ -124,7 +124,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			controllerutil.RemoveFinalizer(dnsRecord.GetDNSRecord(), DNSRecordFinalizer)
 			if err = r.Update(ctx, dnsRecord.GetDNSRecord()); client.IgnoreNotFound(err) != nil {
 				if apierrors.IsConflict(err) {
-					return ctrl.Result{Requeue: true}, nil
+					return ctrl.Result{RequeueAfter: time.Second}, nil
 				}
 				return ctrl.Result{}, err
 			}
@@ -311,31 +311,24 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	dnsRecord = r.applyGroupAdapter(ctx, r.Client, dnsRecord)
 
-	// If this grouped record is not active, update registry entries and exit (only active groups process unpublishing)
-	if !dnsRecord.IsActive() {
-		dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
-		if err != nil {
-			logger.Error(err, "Failed to load DNS provider for inactive group registry update")
-			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-				string(v1alpha1.ConditionReasonProviderError), fmt.Sprintf("The dns provider could not be loaded: %v", err))
-			return r.updateStatus(ctx, previous, dnsRecord, false, err)
-		}
-		if _, err := r.publishRecord(ctx, dnsRecord, dnsProvider); err != nil {
-			logger.Error(err, "Failed to update registry for inactive group")
-			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-				"RegistryError", fmt.Sprintf("Failed to update registry for inactive group: %v", err))
-			return r.updateStatus(ctx, previous, dnsRecord, false, err)
-		}
-		dnsRecord.SetStatusConditions(false)
-		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
-	}
-
 	// Create a dns provider for the current record, must have an owner and zone assigned or will throw an error
 	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
 	if err != nil {
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			string(v1alpha1.ConditionReasonProviderError), fmt.Sprintf("The dns provider could not be loaded: %v", err))
 		return r.updateStatus(ctx, previous, dnsRecord, false, err)
+	}
+
+	// If this grouped record is not active, update registry entries and exit (only active groups process unpublishing)
+	if !dnsRecord.IsActive() {
+		if _, err := r.publishRecord(ctx, dnsRecord, dnsProvider); err != nil {
+			logger.Error(err, "Failed to update registry for inactive group")
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+				string(v1alpha1.ConditionReasonRegistryError), fmt.Sprintf("Failed to update registry for inactive group: %v", err))
+			return r.updateStatus(ctx, previous, dnsRecord, false, err)
+		}
+		dnsRecord.SetStatusConditions(false)
+		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
 	}
 
 	// Ensure provider labels are added
@@ -403,8 +396,7 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 			// first reconciliation or generation changed
 			requeueAfter = defaultValidationRequeue
 		} else {
-			// stable — derive backoff from time since last condition transition
-			requeueAfter = min(max(defaultValidationRequeue, time.Since(readyCond.LastTransitionTime.Time)), defaultRequeueTime)
+			requeueAfter = r.ClampTime(defaultValidationRequeue, defaultRequeueTime, time.Since(readyCond.LastTransitionTime.Time))
 		}
 	}
 
@@ -423,17 +415,13 @@ func (r *DNSRecordReconciler) updateStatus(ctx context.Context, previous, curren
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, minRequeue time.Duration, healthProbesEnabled, allowInsecureHealthCert bool) error {
-	if minRequeue > maxRequeue {
-		return fmt.Errorf("minRequeue (%s) must not exceed maxRequeue (%s)", minRequeue, maxRequeue)
-	}
-
 	defaultRequeueTime = maxRequeue
 	defaultValidationRequeue = minRequeue
 	probesEnabled = healthProbesEnabled
 	allowInsecureCert = allowInsecureHealthCert
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.DNSRecord{}, builder.WithPredicates(specOrDeletionChangedPredicate{})).
+		For(&v1alpha1.DNSRecord{}, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, deletingPredicate{}))).
 		Watches(&v1alpha1.DNSHealthCheckProbe{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
 			logger := log.FromContext(ctx)
 			probe, ok := o.(*v1alpha1.DNSHealthCheckProbe)
@@ -483,28 +471,19 @@ func generationChanged(record *v1alpha1.DNSRecord) bool {
 	return record.Generation != record.Status.ObservedGeneration
 }
 
-// specOrDeletionChangedPredicate filters watch Update events to spec changes
-// (generation changed) and objects that are deleting (deletion timestamp set).
-// Status-only updates on non-deleting objects are filtered to prevent a tight
-// reconciliation loop where WriteCounter increments, status patches, and the
-// watch immediately re-enqueue the item — bypassing the calculated RequeueAfter.
-// Deleting objects are allowed through so the deletion state machine progresses
-// without waiting for scheduled requeues.
-type specOrDeletionChangedPredicate struct {
+// deletingPredicate allows Update events through when the object has a deletion
+// timestamp set, so the deletion state machine progresses without waiting for
+// scheduled requeues. Combined with predicate.GenerationChangedPredicate via
+// predicate.Or() to also allow spec changes through.
+type deletingPredicate struct {
 	predicate.Funcs
 }
 
-func (specOrDeletionChangedPredicate) Update(e event.UpdateEvent) bool {
-	if e.ObjectOld == nil || e.ObjectNew == nil {
+func (deletingPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectNew == nil {
 		return false
 	}
-	if e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration() {
-		return true
-	}
-	if e.ObjectNew.GetDeletionTimestamp() != nil {
-		return true
-	}
-	return false
+	return e.ObjectNew.GetDeletionTimestamp() != nil
 }
 
 // setStatusConditions sets healthy and ready condition on given DNSRecord
