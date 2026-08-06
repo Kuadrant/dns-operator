@@ -142,9 +142,8 @@ func (r *DNSProbeReconciler) setLoggerValues(ctx context.Context, logger logr.Lo
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *DNSProbeReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, validForDuration, minRequeue time.Duration) error {
+func (r *DNSProbeReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, minRequeue time.Duration) error {
 	defaultRequeueTime = maxRequeue
-	validFor = validForDuration
 	defaultValidationRequeue = minRequeue
 
 	return ctrl.NewControllerManagedBy(mgr).

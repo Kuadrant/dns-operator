@@ -76,11 +76,6 @@ var _ = Describe("DNSRecordReconciler", func() {
 		})
 
 		Describe("Group Change", Labels{"groups"}, func() {
-			// Note: This test only passes because the test suite uses low values for
-			// ValidityDuration (2s) and RequeueDuration (2s). With production values
-			// (e.g., validFor=14m), the group change would be delayed by recordReceivedPrematurely
-			// which skips status updates when the record is still within its validity window.
-			// See https://github.com/Kuadrant/dns-operator/issues/664
 			It("should update status.group when controller restarts with a different group", func(ctx SpecContext) {
 				// Phase 1: Start controller with group1
 				By("starting controller with group=group1")

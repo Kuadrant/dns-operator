@@ -148,7 +148,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 		if !dnsRecord.GetStatus().ProviderEndpointsDeletion() {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
-			return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, time.Second)
+			return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, defaultValidationRequeue)
 		}
 
 		if dnsRecord.HasDNSZoneAssigned() {

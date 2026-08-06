@@ -195,8 +195,10 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	if err = recordPlan.Error(); err != nil {
 		return false, err
 	}
+
 	dnsRecord.SetStatusDomainOwners(recordPlan.Owners)
 	dnsRecord.SetStatusEndpoints(specEndpoints)
+
 	if recordPlan.Changes.HasChanges() {
 		//ToDo (mnairn) CoreDNS will always think it has changes as long as provider.Records() returns an empty slice
 		// Figure out a better way of doing this that avoids the check for a specific provider here
@@ -218,20 +220,20 @@ func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client clien
 }
 
 // updateStatusAndRequeue will update the status of the record if the current and previous status is different
-// and returns a reconcile.result that re-queues at the given time.
-func (r *BaseDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, c client.Client, previous, current DNSRecordAccessor, requeueTime time.Duration) (reconcile.Result, error) {
+// and returns a reconcile.Result that re-queues after the given duration.
+func (r *BaseDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, c client.Client, previous, current DNSRecordAccessor, requeueAfter time.Duration) (reconcile.Result, error) {
 	logger := log.FromContext(ctx)
 	patch := client.MergeFrom(previous.GetDNSRecord())
 	// update the record after setting the status
 	if !equality.Semantic.DeepEqual(previous.GetStatus(), current.GetStatus()) {
 		if updateError := c.Status().Patch(ctx, current.GetDNSRecord(), patch); updateError != nil {
 			if apierrors.IsConflict(updateError) {
-				return ctrl.Result{RequeueAfter: time.Second}, nil
+				return ctrl.Result{RequeueAfter: defaultValidationRequeue}, nil
 			}
 			return ctrl.Result{}, updateError
 		}
 	}
-	logger.V(1).Info(fmt.Sprintf("Requeue in %s", requeueTime.String()))
+	logger.V(1).Info(fmt.Sprintf("Requeue in %s", requeueAfter))
 
-	return ctrl.Result{RequeueAfter: requeueTime}, nil
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
