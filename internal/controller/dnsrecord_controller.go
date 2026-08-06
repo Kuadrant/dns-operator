@@ -311,8 +311,21 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	dnsRecord = r.applyGroupAdapter(ctx, r.Client, dnsRecord)
 
-	// If this grouped record is not active, exit early (only active groups process unpublishing)
+	// If this grouped record is not active, update registry entries and exit (only active groups process unpublishing)
 	if !dnsRecord.IsActive() {
+		dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
+		if err != nil {
+			logger.Error(err, "Failed to load DNS provider for inactive group registry update")
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+				string(v1alpha1.ConditionReasonProviderError), fmt.Sprintf("The dns provider could not be loaded: %v", err))
+			return r.updateStatus(ctx, previous, dnsRecord, false, err)
+		}
+		if _, err := r.publishRecord(ctx, dnsRecord, dnsProvider); err != nil {
+			logger.Error(err, "Failed to update registry for inactive group")
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+				"RegistryError", fmt.Sprintf("Failed to update registry for inactive group: %v", err))
+			return r.updateStatus(ctx, previous, dnsRecord, false, err)
+		}
 		dnsRecord.SetStatusConditions(false)
 		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
 	}

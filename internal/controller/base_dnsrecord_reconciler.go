@@ -148,6 +148,7 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 		recordRegistry = registry.GroupRegistry{
 			Registry: recordRegistry,
 			Group:    dnsRecord.GetGroup(),
+			IsActive: dnsRecord.IsActive(),
 		}
 	}
 

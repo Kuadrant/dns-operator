@@ -20,6 +20,9 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
+	"github.com/kuadrant/dns-operator/internal/provider"
+	inmemoryprovider "github.com/kuadrant/dns-operator/internal/provider/inmemory"
 	"github.com/kuadrant/dns-operator/pkg/builder"
 	"github.com/kuadrant/dns-operator/types"
 )
@@ -142,6 +145,55 @@ func createDefaultDNSProviderSecret(ctx context.Context, namespace, zoneDomainNa
 	secret.SetLabels(labels)
 	Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 	return secret
+}
+
+// readZoneRecords reads all endpoints (DNS + TXT) from the inmemory provider's shared zone
+func readZoneRecords(ctx context.Context, zoneDomainName string) []*externaldnsendpoint.Endpoint {
+	secret := &v1.Secret{
+		Data: map[string][]byte{
+			v1alpha1.InmemInitZonesKey: []byte(zoneDomainName),
+		},
+	}
+	cfg := provider.Config{
+		DomainFilter: externaldnsendpoint.NewDomainFilter([]string{zoneDomainName}),
+	}
+	p, err := inmemoryprovider.NewProviderFromSecret(ctx, secret, cfg)
+	Expect(err).NotTo(HaveOccurred())
+	records, err := p.Records(ctx)
+	Expect(err).NotTo(HaveOccurred())
+	return records
+}
+
+// readRegistryMap reads zone records and parses TXT records into a RegistryMap
+func readRegistryMap(ctx context.Context, zoneDomainName string) *externaldnsregistry.RegistryMap {
+	records := readZoneRecords(ctx, zoneDomainName)
+	return externaldnsregistry.TxtRecordsToRegistryMap(records, txtRegistryPrefix, txtRegistrySuffix, txtRegistryWildcardReplacement, []byte(txtRegistryEncryptAESKey))
+}
+
+// readAuthoritativeRegistryMap reads the authoritative record's spec endpoints and parses TXT records into a RegistryMap.
+// Unlike readRegistryMap which reads from the inmemory DNS zone, this reads from the authoritative K8s DNSRecord
+// where group labels are stored by the remote controller's GroupRegistry.
+func readAuthoritativeRegistryMap(ctx context.Context, k8sClient client.Client, namespace string) *externaldnsregistry.RegistryMap {
+	authRecordList := &v1alpha1.DNSRecordList{}
+	Expect(k8sClient.List(ctx, authRecordList, client.InNamespace(namespace), client.MatchingLabels{
+		v1alpha1.AuthoritativeRecordLabel: "true",
+	})).To(Succeed())
+	var endpoints []*externaldnsendpoint.Endpoint
+	for _, record := range authRecordList.Items {
+		endpoints = append(endpoints, record.Spec.Endpoints...)
+	}
+	return externaldnsregistry.TxtRecordsToRegistryMap(endpoints, txtRegistryPrefix, txtRegistrySuffix, txtRegistryWildcardReplacement, []byte(txtRegistryEncryptAESKey))
+}
+
+// filterDNSEndpoints returns only A, AAAA, and CNAME endpoints from a record list
+func filterDNSEndpoints(endpoints []*externaldnsendpoint.Endpoint) []*externaldnsendpoint.Endpoint {
+	var filtered []*externaldnsendpoint.Endpoint
+	for _, ep := range endpoints {
+		if ep.RecordType == "A" || ep.RecordType == "AAAA" || ep.RecordType == "CNAME" {
+			filtered = append(filtered, ep)
+		}
+	}
+	return filtered
 }
 
 // createDNSRecord creates a delegated DNSRecord with weighted CNAME routing
