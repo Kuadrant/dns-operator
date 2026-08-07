@@ -29,8 +29,8 @@ jobs:
           - goos: darwin
             goarch: ppc64le
     steps:
-      - uses: actions/checkout@v4
-      - uses: wangyoucao577/go-release-action@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
+      - uses: wangyoucao577/go-release-action@279495102627de7960cbc33434ab01a12bae144b # ratchet:wangyoucao577/go-release-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}

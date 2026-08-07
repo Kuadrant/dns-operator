@@ -4,7 +4,7 @@
 ## Targets to verify actions that generate/modify code have been executed and output committed
 
 .PHONY: verify-all
-verify-all: verify-code verify-bundle verify-helm-build verify-imports verify-manifests verify-generate verify-go-mod verify-vulnerabilities
+verify-all: verify-code verify-bundle verify-helm-build verify-imports verify-manifests verify-generate verify-go-mod verify-vulnerabilities verify-ratchet
 
 .PHONY: verify-code
 verify-code: vet ## Verify code formatting
@@ -41,3 +41,7 @@ verify-generate: generate ## Verify generate update.
 verify-go-mod: ## Verify go.mod matches source code
 	go mod tidy
 	git diff --exit-code ./go.mod
+
+.PHONY: verify-ratchet
+verify-ratchet: ratchet ## Verify GitHub Actions are pinned to commit SHAs.
+	$(RATCHET) lint $$(find .github/workflows -name '*.yaml' -o -name '*.yml')

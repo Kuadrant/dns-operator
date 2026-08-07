@@ -19,7 +19,7 @@ jobs:
       image: ${{ steps.push-to-quay.outputs.registry-path }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
 
       - name: Read release string version
         id: release
@@ -40,7 +40,7 @@ jobs:
 
       - name: Build Image
         id: build-image
-        uses: redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@9dc2ade9b5db229966b5025ae266311e12f349c4 # ratchet:redhat-actions/buildah-build@v2
         with:
           image: ${{ env.OPERATOR_NAME }}
           tags: ${{ github.ref_name }}
@@ -59,7 +59,7 @@ jobs:
       - name: Push Image
         if: github.repository_owner == 'kuadrant'
         id: push-to-quay
-        uses: redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@5860fc963bf8f2b3221773a023141612f010c469 # ratchet:redhat-actions/push-to-registry@v2
         with:
           image: ${{ steps.build-image.outputs.image }}
           tags: ${{ steps.build-image.outputs.tags }}
@@ -79,7 +79,7 @@ jobs:
       image: ${{ steps.push-to-quay.outputs.registry-path }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
       - name: Install yq tool
         run: |
           # following sub-shells running make target should have yq already installed
@@ -102,7 +102,7 @@ jobs:
 
       - name: Build Image
         id: build-image
-        uses: redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@9dc2ade9b5db229966b5025ae266311e12f349c4 # ratchet:redhat-actions/buildah-build@v2
         with:
           image: ${{ env.OPERATOR_NAME }}-bundle
           tags: ${{ needs.build.outputs.build-tags }}
@@ -117,7 +117,7 @@ jobs:
       - name: Push Image
         if: github.repository_owner == 'kuadrant'
         id: push-to-quay
-        uses: redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@5860fc963bf8f2b3221773a023141612f010c469 # ratchet:redhat-actions/push-to-registry@v2
         with:
           image: ${{ steps.build-image.outputs.image }}
           tags: ${{ steps.build-image.outputs.tags }}
@@ -137,7 +137,7 @@ jobs:
       image: ${{ steps.push-to-quay.outputs.registry-path }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
       - name: Install yq tool
         run: |
           # following sub-shells running make target should have yq already installed
@@ -161,7 +161,7 @@ jobs:
 
       - name: Build Image
         id: build-image
-        uses: redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@9dc2ade9b5db229966b5025ae266311e12f349c4 # ratchet:redhat-actions/buildah-build@v2
         with:
           image: ${{ env.OPERATOR_NAME }}-catalog
           tags: ${{ needs.build.outputs.build-tags }}
@@ -176,7 +176,7 @@ jobs:
       - name: Push Image
         if: github.repository_owner == 'kuadrant'
         id: push-to-quay
-        uses: redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@5860fc963bf8f2b3221773a023141612f010c469 # ratchet:redhat-actions/push-to-registry@v2
         with:
           image: ${{ steps.build-image.outputs.image }}
           tags: ${{ steps.build-image.outputs.tags }}

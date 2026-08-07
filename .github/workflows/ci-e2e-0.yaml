@@ -47,7 +47,7 @@ on:
         default: false
         type: boolean
   merge_group:
-    types: [ checks_requested ]
+    types: [checks_requested]
   pull_request_target:
     types: [opened, reopened, synchronize]
     branches:
@@ -67,9 +67,9 @@ jobs:
     outputs:
       should_skip_e2e: ${{ steps.skip_check.outputs.should_skip }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
       - id: skip_check
-        uses: fkirc/skip-duplicate-actions@v3.4.1
+        uses: fkirc/skip-duplicate-actions@f75dd6564bb646f95277dc8c3b80612e46a4a1ea # ratchet:fkirc/skip-duplicate-actions@v3.4.1
         with:
           cancel_others: false
           paths_ignore: '["**/*.md", "**/*.adoc", "LICENSE"]'
@@ -83,7 +83,7 @@ jobs:
       - name: Get User Permission
         if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'pull_request' }}
         id: checkAccess
-        uses: actions-cool/check-user-permission@v2
+        uses: actions-cool/check-user-permission@c21884f3dda18dafc2f8b402fe807ccc9ec1aa5e # ratchet:actions-cool/check-user-permission@v2
         with:
           require: write
           username: ${{ github.triggering_actor }}
@@ -96,10 +96,10 @@ jobs:
           echo "Current permission level is ${{ steps.checkAccess.outputs.user-permission }}"
           echo "Job originally triggered by ${{ github.actor }}"
           exit 1
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: false
@@ -171,7 +171,7 @@ jobs:
         run: |
           kubectl run -q curl --image=curlimages/curl --rm -it --restart=Never --namespace dns-operator-system -- curl -XGET http://dns-operator-controller-manager-metrics-service:8080/metrics > metrics.txt
           cat metrics.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # ratchet:actions/upload-artifact@v4
         with:
           name: metrics
           path: metrics.txt
@@ -186,9 +186,9 @@ jobs:
     # This check adds a list of checks to one job to simplify adding settings to the repo.
     # If a new check is added in this file, and it should be retested on entry to the merge queue,
     # it needs to be added to the list below aka needs: [ existing check 1, existing check 2, new check ].
-    needs: [ e2e-test-suite ]
+    needs: [e2e-test-suite]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
       - run: echo '${{ toJSON(needs) }}' | jq -e 'all(.[]; .result == "success" or .result == "skipped")'
