@@ -161,6 +161,10 @@ imports: openshift-goimports ## Run openshift goimports against code.
 	$(OPENSHIFT_GOIMPORTS) -m github.com/kuadrant/dns-operator -i github.com/kuadrant
 	$(OPENSHIFT_GOIMPORTS) -p coredns/plugin -m github.com/kuadrant/coredns-kuadrant -i github.com/kuadrant
 
+.PHONY: ratchet-pin
+ratchet-pin: ratchet ## Pin GitHub Actions to commit SHAs.
+	$(RATCHET) pin $$(find .github/workflows -name '*.yaml' -o -name '*.yml')
+
 .PHONY: test
 test: test-unit test-integration ## Run tests.
 
@@ -419,6 +423,7 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 HELM ?= $(LOCALBIN)/helm
 KUBE_BURNER ?= $(LOCALBIN)/kube-burner
 KUBECTL_DNS ?= $(LOCALBIN)/kubectl-kuadrant_dns
+RATCHET ?= $(LOCALBIN)/ratchet
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.5.0
@@ -432,6 +437,7 @@ GINKGO_VERSION ?= v2.22.0
 GOLANGCI_LINT_VERSION ?= v2.12.2
 HELM_VERSION = v3.15.0
 KUBE_BURNER_VERSION = v1.11.1
+RATCHET_VERSION ?= v0.11.4
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -537,6 +543,14 @@ $(KUBE_BURNER):
 kubectl-dns: $(KUBECTL_DNS) ## Build the kubectl-kuadrant_dns locally if required.
 $(KUBECTL_DNS):
 	$(MAKE) build-cli
+
+RATCHET_V_BINARY := $(LOCALBIN)/ratchet-$(RATCHET_VERSION)
+.PHONY: ratchet
+ratchet: $(RATCHET_V_BINARY) ## Download ratchet locally if necessary.
+$(RATCHET_V_BINARY): | $(LOCALBIN)
+	GOBIN=$(LOCALBIN) go install github.com/sethvargo/ratchet@$(RATCHET_VERSION)
+	@mv $(LOCALBIN)/ratchet $(RATCHET_V_BINARY)
+	@ln -sf $(RATCHET_V_BINARY) $(RATCHET)
 
 
 .PHONY: bundle
