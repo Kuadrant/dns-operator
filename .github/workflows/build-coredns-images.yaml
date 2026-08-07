@@ -15,6 +15,9 @@ env:
   MAIN_BRANCH_NAME: main
   COREDNS_PLUGIN_NAME: coredns-kuadrant
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build and Push CoreDNS image

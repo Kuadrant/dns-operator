@@ -12,6 +12,8 @@ on:
     paths:
       - 'charts/**'
 
+permissions: {}
+
 jobs:
   dispatch:
     runs-on: ubuntu-latest
