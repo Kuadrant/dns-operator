@@ -1,0 +1,51 @@
+# E2E test orchestrator for PRs and merge queue.
+#
+# pull_request: Runs CoreDNS and Endpoint tests only (no secrets required).
+#   Provides fast feedback on controller logic regressions for all PRs
+#   including forks.
+#
+# merge_group: Runs the full suite including AWS, GCP, and Azure providers
+#   (secrets available). Ensures no provider regressions before merging.
+
+name: CI-E2E
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches:
+      - main
+  merge_group:
+    types: [checks_requested]
+
+jobs:
+  pre-job:
+    runs-on: ubuntu-latest
+    name: Pre job checks
+    outputs:
+      should_skip_e2e: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@f75dd6564bb646f95277dc8c3b80612e46a4a1ea # ratchet:fkirc/skip-duplicate-actions@v3.4.1
+        with:
+          cancel_others: false
+          paths_ignore: '["**/*.md", "**/*.adoc", "LICENSE"]'
+          do_not_skip: '["pull_request", "push", "merge_group", "workflow_dispatch", "schedule"]'
+  e2e-pr:
+    name: E2E PR Tests
+    needs: pre-job
+    if: needs.pre-job.outputs.should_skip_e2e != 'true'
+    uses: ./.github/workflows/ci-e2e-0.yaml
+    secrets: inherit
+    with:
+      skipAWS: ${{ github.event_name == 'pull_request' }}
+      skipGCP: ${{ github.event_name == 'pull_request' }}
+      skipAzure: ${{ github.event_name == 'pull_request' }}
+  required-checks:
+    name: CI-E2E Required Checks
+    needs: [e2e-pr]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
+      - run: echo '${{ toJSON(needs) }}' | jq -e 'all(.[]; .result == "success" or .result == "skipped")'
