@@ -13,6 +13,9 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/cmd/plugin/common"
+	internalcommon "github.com/kuadrant/dns-operator/internal/common"
+	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
+	"github.com/kuadrant/dns-operator/types"
 )
 
 const (
@@ -140,4 +143,98 @@ func GetDomainRegexp(domain string) (*regexp.Regexp, error) {
 		return nil, err
 	}
 	return domainRegexp, nil
+}
+
+type Action string
+
+const (
+	ActionDelete Action = "DELETE"
+	ActionModify Action = "MODIFY"
+)
+
+type EndpointImpact struct {
+	DNSName    string
+	RecordType string
+	Action     Action
+	OldTargets []string
+	NewTargets []string
+}
+
+type GroupRemovalImpact struct {
+	RemainingGroups []string
+	Endpoints       []EndpointImpact
+}
+
+// AnalyseGroupRemovalImpact determines which DNS endpoints would be affected
+// if the given group were removed from the active groups list. It mirrors the
+// analysis logic in the controller's unpublishInactiveGroups function.
+func AnalyseGroupRemovalImpact(endpoints []*endpoint.Endpoint, groupToRemove string, currentActiveGroups []string) GroupRemovalImpact {
+	managedRecordTypes := []string{endpoint.RecordTypeA, endpoint.RecordTypeAAAA, endpoint.RecordTypeCNAME}
+
+	var remainingGroups []string
+	postRemovalGroups := types.Groups{}
+	for _, g := range currentActiveGroups {
+		if g != groupToRemove {
+			postRemovalGroups = append(postRemovalGroups, types.Group(g))
+			remainingGroups = append(remainingGroups, g)
+		}
+	}
+
+	registryMap := registry.TxtRecordsToRegistryMap(endpoints, internalcommon.TxtRegistryPrefix, internalcommon.TxtRegistrySuffix, internalcommon.TxtRegistryWildcardReplacement, []byte(internalcommon.TxtRegistryEncryptAESKey))
+
+	var impacts []EndpointImpact
+
+	for _, ep := range endpoints {
+		if !slices.Contains(managedRecordTypes, ep.RecordType) {
+			continue
+		}
+
+		registryHost, ok := registryMap.Hosts[ep.DNSName]
+		if !ok {
+			continue
+		}
+
+		if !registryHost.HasAnyGroup(postRemovalGroups) && len(registryHost.UngroupedOwners) == 0 {
+			impacts = append(impacts, EndpointImpact{
+				DNSName:    ep.DNSName,
+				RecordType: ep.RecordType,
+				Action:     ActionDelete,
+				OldTargets: ep.Targets,
+			})
+			continue
+		}
+
+		inactiveTargets := registryHost.GetOtherGroupsTargets(postRemovalGroups)
+		activeTargets := registryHost.GetGroupsTargets(postRemovalGroups)
+		ungroupedTargets := registryHost.GetUngroupedTargets()
+
+		var newTargets []string
+		for _, t := range ep.Targets {
+			if !slices.Contains(inactiveTargets, t) || slices.Contains(activeTargets, t) || slices.Contains(ungroupedTargets, t) {
+				newTargets = append(newTargets, t)
+			}
+		}
+
+		if len(newTargets) == 0 {
+			impacts = append(impacts, EndpointImpact{
+				DNSName:    ep.DNSName,
+				RecordType: ep.RecordType,
+				Action:     ActionDelete,
+				OldTargets: ep.Targets,
+			})
+		} else if !slices.Equal(newTargets, ep.Targets) {
+			impacts = append(impacts, EndpointImpact{
+				DNSName:    ep.DNSName,
+				RecordType: ep.RecordType,
+				Action:     ActionModify,
+				OldTargets: ep.Targets,
+				NewTargets: newTargets,
+			})
+		}
+	}
+
+	return GroupRemovalImpact{
+		RemainingGroups: remainingGroups,
+		Endpoints:       impacts,
+	}
 }

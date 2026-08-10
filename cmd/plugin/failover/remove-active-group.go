@@ -1,10 +1,9 @@
 package failover
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,11 +27,13 @@ var RemoveActiveGroupCMD = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 }
 
+var dryRun bool
+
 func init() {
 	RemoveActiveGroupCMD.Flags().StringVar(&providerRef, "providerRef", "", "A provider reference to the secret with provider credentials. Format = '<namespace>/<name>'")
 	RemoveActiveGroupCMD.Flags().StringVarP(&domain, "domain", "d", "", "domain to which the group will belong")
 	RemoveActiveGroupCMD.Flags().BoolVarP(&assumeYes, "assumeyes", "y", false, "skip confirmation. Use at your own risk")
-
+	RemoveActiveGroupCMD.Flags().BoolVar(&dryRun, "dry-run", false, "preview the impact of removing the group without making changes")
 }
 
 func removeActiveGroup(_ *cobra.Command, args []string) error {
@@ -118,37 +119,67 @@ func removeActiveGroup(_ *cobra.Command, args []string) error {
 			continue
 		}
 
-		if !strings.Contains(groupTXTRecord.Targets[0], groupName) {
-			log.V(1).Info(fmt.Sprintf("TXT record does not contain group %s. Groups: %s. Skipping", groupTXTRecord.Targets[0], groupName))
+		currentActiveGroups, isCurrentVersion := GetActiveGroupsFromTarget(groupTXTRecord.Targets[0])
+		if !isCurrentVersion {
+			log.V(1).Info("Skipping legacy record", "group", groupName, "zone", zone.DNSName, "zoneID", zone.ID, "record", groupTXTRecord.DNSName, "target", groupTXTRecord.Targets[0])
+			continue
+		}
+
+		if !slices.Contains(currentActiveGroups, groupName) {
+			log.V(1).Info("Group not found in active groups", "group", groupName, "zone", zone.DNSName, "zoneID", zone.ID, "activeGroups", currentActiveGroups)
+			continue
+		}
+
+		log.V(1).Info("Selected zone", "zone", zone.DNSName, "zoneID", zone.ID)
+
+		if dryRun {
+			result := AnalyseGroupRemovalImpact(endpoints, groupName, currentActiveGroups)
+
+			output.Formatter.Print(fmt.Sprintf("Dry run: impact of removing group %q from zone %s (ID: %s)", groupName, zone.DNSName, zone.ID))
+
+			if len(result.RemainingGroups) == 0 {
+				output.Formatter.Print(fmt.Sprintf("  TXT record %s will be DELETED (last group)", groupTXTRecord.DNSName))
+			} else {
+				output.Formatter.Print(fmt.Sprintf("  TXT record %s will be UPDATED (remaining groups: %s)", groupTXTRecord.DNSName, strings.Join(result.RemainingGroups, ", ")))
+			}
+
+			if len(result.Endpoints) == 0 {
+				output.Formatter.Print("  No DNS endpoints will be affected")
+			} else {
+				table := output.PrintableTable{
+					Headers: []string{"Action", "DNS Name", "Type", "Current Targets", "New Targets"},
+				}
+				for _, impact := range result.Endpoints {
+					newTargets := ""
+					if impact.Action == ActionModify {
+						newTargets = strings.Join(impact.NewTargets, ", ")
+					}
+					table.Data = append(table.Data, []string{
+						string(impact.Action),
+						impact.DNSName,
+						impact.RecordType,
+						strings.Join(impact.OldTargets, ", "),
+						newTargets,
+					})
+				}
+				output.Formatter.PrintTable(table)
+			}
 			continue
 		}
 
 		output.Formatter.Print(fmt.Sprintf("Removing active group %s from the record: %s", groupName, groupTXTRecord.DNSName))
-		log.V(1).Info(fmt.Sprintf("Selected zone: %s, (ID: %s)", zone.DNSName, zone.ID))
 
-		var answer string
 		if !assumeYes {
 			output.Formatter.Print("Do you want to proceed? [Y/N]")
-
-			reader := bufio.NewReader(os.Stdin)
-			answer, err = reader.ReadString('\n')
-			if err != nil {
-				log.Error(err, "failed to read answer", "answer", answer)
-			}
-			answer = strings.TrimSpace(strings.ToLower(answer))
 		}
 
-		// delete group
-		if answer == "y" || assumeYes {
+		if assumeYes || inputYes(log) {
 			changes := &plan.Changes{}
 
 			oldGroupRecord := groupTXTRecord.DeepCopy()
 			groupTXTRecord = RemoveGroupFromActiveGroups(groupName, groupTXTRecord)
 
-			activeGroups, isCurrentVersion := GetActiveGroupsFromTarget(groupTXTRecord.Targets[0])
-			if !isCurrentVersion {
-				log.V(1).Info(fmt.Sprintf("Skipping removal of active group %s; This is a legacy record: %s", groupName, groupTXTRecord.Targets[0]))
-			}
+			activeGroups, _ := GetActiveGroupsFromTarget(groupTXTRecord.Targets[0])
 
 			if len(activeGroups) == 0 {
 				changes.Delete = append(changes.Delete, oldGroupRecord)
