@@ -43,7 +43,7 @@ jobs:
       skipAzure: ${{ github.event_name == 'pull_request' }}
   required-checks:
     name: CI-E2E Required Checks
-    needs: [e2e-pr]
+    needs: [pre-job, e2e-pr]
     if: always()
     runs-on: ubuntu-latest
     steps:

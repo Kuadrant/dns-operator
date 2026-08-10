@@ -95,7 +95,6 @@ on:
         description: Skip tests with endpoints provider
         default: false
         type: boolean
-    secrets: inherit
 
 env:
   TEST_NAMESPACE: e2e-test
