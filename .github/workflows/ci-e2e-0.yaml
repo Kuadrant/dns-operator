@@ -133,15 +133,15 @@ jobs:
           make local-setup DEPLOY=true TEST_NAMESPACE=${{ env.TEST_NAMESPACE }}
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-coredns
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-endpoint
-      - name: Verify cloud provider secrets
+      - name: Verify AWS cloud provider secrets
         if: ${{ !inputs.ginkgoDryRun && !inputs.skipAWS }}
         run: |
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-aws
-      - name: Verify cloud provider secrets
+      - name: Verify GCP cloud provider secrets
         if: ${{ !inputs.ginkgoDryRun && !inputs.skipGCP }}
         run: |
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-gcp
-      - name: Verify cloud provider secrets
+      - name: Verify Azure cloud provider secrets
         if: ${{ !inputs.ginkgoDryRun && !inputs.skipAzure }}
         run: |
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-azure
