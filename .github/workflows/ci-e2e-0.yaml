@@ -96,6 +96,9 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+
 env:
   TEST_NAMESPACE: e2e-test
   TEST_RECORDS_COUNT: ${{ inputs.testRecordsCount || '2' }}
