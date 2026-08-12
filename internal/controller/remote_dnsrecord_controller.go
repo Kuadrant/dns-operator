@@ -148,7 +148,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 		if !dnsRecord.GetStatus().ProviderEndpointsDeletion() {
 			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, string(v1alpha1.ConditionReasonProviderEndpointsDeletion), "DNS records are being deleted from provider")
-			return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, time.Second)
+			return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, defaultValidationRequeue)
 		}
 
 		if dnsRecord.HasDNSZoneAssigned() {
@@ -220,8 +220,14 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 	dnsRecord = r.applyGroupAdapter(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord)
 
-	// If this grouped record is not active, exit early (only active groups process unpublishing)
+	// If this grouped record is not active, update registry entries and exit (only active groups process unpublishing)
 	if !dnsRecord.IsActive() {
+		if _, err := r.publishRecord(ctx, dnsRecord, dnsProvider); err != nil {
+			logger.Error(err, "Failed to update registry for inactive group")
+			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+				string(v1alpha1.ConditionReasonRegistryError), fmt.Sprintf("Failed to update registry for inactive group: %v", err))
+			return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
+		}
 		dnsRecord.SetStatusConditions(false)
 		return r.updateStatusAndRequeue(ctx, cl.GetClient(), previous, dnsRecord, InactiveGroupRequeueTime)
 	}

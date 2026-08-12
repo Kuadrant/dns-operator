@@ -74,7 +74,6 @@ var (
 	probeAddr              string
 	pprofAddr              string
 	minRequeueTime         time.Duration
-	validFor               time.Duration
 	maxRequeueTime         time.Duration
 	providers              stringSliceFlags
 	dnsProbesEnabled       bool
@@ -93,7 +92,6 @@ var (
 	probeAddrKey              = variableKey("health-probe-bind-address")
 	pprofAddressKey           = variableKey("pprof-bind-address")
 	minRequeueTimeKey         = variableKey("min-requeue-time")
-	validForKey               = variableKey("valid-for")
 	maxRequeueTimeKey         = variableKey("max-requeue-time")
 	providersKey              = variableKey("provider")
 	dnsProbesEnabledKey       = variableKey("enable-probes")
@@ -109,7 +107,6 @@ var (
 
 const (
 	RequeueDuration           = time.Minute * 15
-	ValidityDuration          = time.Minute * 14
 	DefaultValidationDuration = time.Second * 5
 
 	DefaultClusterSecretNamespace = "dns-operator-system"
@@ -141,9 +138,6 @@ func main() {
 	flag.DurationVar(&maxRequeueTime, maxRequeueTimeKey.Flag(), RequeueDuration,
 		"The maximum times it takes between reconciliations of DNS Record "+
 			"Controls how ofter record is reconciled")
-	flag.DurationVar(&validFor, validForKey.Flag(), ValidityDuration,
-		"Duration when the record is considered to hold valid information"+
-			"Controls if we commit to the full reconcile loop")
 	flag.DurationVar(&minRequeueTime, minRequeueTimeKey.Flag(), DefaultValidationDuration,
 		"The minimal timeout between calls to the DNS Provider"+
 			"Controls if we commit to the full reconcile loop")
@@ -287,6 +281,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	if minRequeueTime <= 0 || maxRequeueTime <= 0 {
+		setupLog.Error(fmt.Errorf("min-requeue-time (%s) and max-requeue-time (%s) must be greater than zero", minRequeueTime, maxRequeueTime), "invalid configuration")
+		os.Exit(1)
+	}
+	if minRequeueTime > maxRequeueTime {
+		setupLog.Error(fmt.Errorf("min-requeue-time (%s) must not exceed max-requeue-time (%s)", minRequeueTime, maxRequeueTime), "invalid configuration")
+		os.Exit(1)
+	}
+
 	dnsRecordController := &controller.DNSRecordReconciler{
 		BaseDNSRecordReconciler: controller.BaseDNSRecordReconciler{
 			Scheme:          mgr.GetScheme(),
@@ -298,7 +301,7 @@ func main() {
 		Client: mgr.GetClient(),
 	}
 
-	if err = dnsRecordController.SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
+	if err = dnsRecordController.SetupWithManager(mgr, maxRequeueTime, minRequeueTime, dnsProbesEnabled, allowInsecureCerts); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DNSRecord")
 		os.Exit(1)
 	}
@@ -330,7 +333,7 @@ func main() {
 			Client:       mgr.GetClient(),
 			Scheme:       mgr.GetScheme(),
 			ProbeManager: probeManager,
-		}).SetupWithManager(mgr, maxRequeueTime, validFor, minRequeueTime); err != nil {
+		}).SetupWithManager(mgr, maxRequeueTime, minRequeueTime); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "DNSProbe")
 			os.Exit(1)
 		}
@@ -390,12 +393,6 @@ func overrideControllerFlags() {
 			if parseErr == nil {
 				maxRequeueTime = value
 				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", maxRequeueTimeKey.Flag(), v))
-			}
-		case validForKey.Envar():
-			value, parseErr := time.ParseDuration(v)
-			if parseErr == nil {
-				validFor = value
-				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", validForKey.Flag(), v))
 			}
 		case minRequeueTimeKey.Envar():
 			value, parseErr := time.ParseDuration(v)

@@ -215,7 +215,6 @@ Key controller flags (can also be set via environment variables):
 | `--leader-elect` | `LEADER_ELECT` | `false` | Enable leader election |
 | `--min-requeue-time` | `MIN_REQUEUE_TIME` | `5s` | Min timeout between provider calls |
 | `--max-requeue-time` | `MAX_REQUEUE_TIME` | `15m` | Max time between reconciliations |
-| `--valid-for` | `VALID_FOR` | `14m` | Duration record info is valid |
 | `--provider` | `PROVIDER` | `aws,google,azure,coredns,endpoints` | DNS providers to enable |
 | `--enable-probes` | `ENABLE_PROBES` | `true` | Enable health probes |
 | `--insecure-health-checks` | `INSECURE_HEALTH_CHECKS` | `true` | Ignore cert validation |
@@ -283,10 +282,9 @@ Common log metadata:
 - Prevents conflicts when multiple operators manage same zone
 
 **Reconciliation Flow:**
-- Records marked valid for 14m by default
-- Min requeue time: 5s (prevents API throttling)
-- Max requeue time: 15m (ensures eventual consistency)
-- Exponential backoff between min and max
+- Min requeue time: 5s (default, configurable via `--min-requeue-time`)
+- Max requeue time: 15m (default, configurable via `--max-requeue-time`)
+- Backoff derived from time since last ready condition transition, bounded between min and max
 
 ## Custom Claude
 

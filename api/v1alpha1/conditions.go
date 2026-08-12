@@ -10,6 +10,7 @@ const ConditionReasonAwaitingValidation ConditionReason = "AwaitingValidation"
 const ConditionReasonProviderEndpointsRemoved ConditionReason = "ProviderEndpointsRemoved"
 const ConditionReasonProviderEndpointsDeletion ConditionReason = "ProviderEndpointsDeletion"
 const ConditionReasonValidationError ConditionReason = "ValidationError"
+const ConditionReasonRegistryError ConditionReason = "RegistryError"
 
 const ConditionTypeHealthy ConditionType = "Healthy"
 const ConditionReasonHealthy ConditionReason = "AllChecksPassed"

@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -19,6 +20,7 @@ var _ registry.Registry = &GroupRegistry{}
 type GroupRegistry struct {
 	Registry registry.Registry
 	Group    types.Group
+	IsActive bool
 }
 
 func (g GroupRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
@@ -26,6 +28,29 @@ func (g GroupRegistry) Records(ctx context.Context) ([]*endpoint.Endpoint, error
 }
 
 func (g GroupRegistry) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
+	// Inactive groups must not create, delete, or modify DNS records — only TXT
+	// registry metadata (e.g. groupID labels) should be updated. Strip Creates,
+	// Deletes, and any Updates that change targets/type/TTL, keeping only Updates
+	// where the difference is limited to label metadata.
+	if g.Group.IsSet() && !g.IsActive {
+		changes.Create = nil
+		changes.Delete = nil
+		filteredOld := make([]*endpoint.Endpoint, 0, len(changes.UpdateNew))
+		filteredNew := make([]*endpoint.Endpoint, 0, len(changes.UpdateNew))
+		for i, newEp := range changes.UpdateNew {
+			oldEp := changes.UpdateOld[i]
+			if newEp.Targets.Same(oldEp.Targets) &&
+				newEp.RecordType == oldEp.RecordType &&
+				newEp.SetIdentifier == oldEp.SetIdentifier &&
+				newEp.RecordTTL == oldEp.RecordTTL &&
+				reflect.DeepEqual(newEp.ProviderSpecific, oldEp.ProviderSpecific) {
+				filteredOld = append(filteredOld, oldEp)
+				filteredNew = append(filteredNew, newEp)
+			}
+		}
+		changes.UpdateOld = filteredOld
+		changes.UpdateNew = filteredNew
+	}
 	return g.Registry.ApplyChanges(ctx, changes)
 }
 

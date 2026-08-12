@@ -148,6 +148,7 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 		recordRegistry = registry.GroupRegistry{
 			Registry: recordRegistry,
 			Group:    dnsRecord.GetGroup(),
+			IsActive: dnsRecord.IsActive(),
 		}
 	}
 
@@ -195,8 +196,10 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	if err = recordPlan.Error(); err != nil {
 		return false, err
 	}
+
 	dnsRecord.SetStatusDomainOwners(recordPlan.Owners)
 	dnsRecord.SetStatusEndpoints(specEndpoints)
+
 	if recordPlan.Changes.HasChanges() {
 		//ToDo (mnairn) CoreDNS will always think it has changes as long as provider.Records() returns an empty slice
 		// Figure out a better way of doing this that avoids the check for a specific provider here
@@ -206,6 +209,11 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 		return hasChanges, err
 	}
 	return false, nil
+}
+
+// ClampTime clamps desiredTime between minTime and maxTime.
+func (r *BaseDNSRecordReconciler) ClampTime(minTime, maxTime, desiredTime time.Duration) time.Duration {
+	return min(max(minTime, desiredTime), maxTime)
 }
 
 func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client client.Client, previous, current DNSRecordAccessor, err error) (reconcile.Result, error) {
@@ -218,8 +226,8 @@ func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client clien
 }
 
 // updateStatusAndRequeue will update the status of the record if the current and previous status is different
-// and returns a reconcile.result that re-queues at the given time.
-func (r *BaseDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, c client.Client, previous, current DNSRecordAccessor, requeueTime time.Duration) (reconcile.Result, error) {
+// and returns a reconcile.Result that re-queues after the given duration.
+func (r *BaseDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, c client.Client, previous, current DNSRecordAccessor, requeueAfter time.Duration) (reconcile.Result, error) {
 	logger := log.FromContext(ctx)
 	patch := client.MergeFrom(previous.GetDNSRecord())
 	// update the record after setting the status
@@ -231,7 +239,7 @@ func (r *BaseDNSRecordReconciler) updateStatusAndRequeue(ctx context.Context, c 
 			return ctrl.Result{}, updateError
 		}
 	}
-	logger.V(1).Info(fmt.Sprintf("Requeue in %s", requeueTime.String()))
+	logger.V(1).Info(fmt.Sprintf("Requeue in %s", requeueAfter))
 
-	return ctrl.Result{RequeueAfter: requeueTime}, nil
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
