@@ -1,3 +1,14 @@
+# E2E test suite runner. Executes tests against DNS providers based on skip flags.
+#
+# Invoked by:
+#   - ci-e2e-pr.yaml (workflow_call) for PR and merge queue contexts
+#   - push to main/release branches (full suite with cloud providers)
+#   - workflow_dispatch for manual runs with configurable skip flags
+#
+# Cloud provider tests (AWS, GCP, Azure) require repo secrets and are
+# controlled via skipAWS/skipGCP/skipAzure inputs.
+# Local provider tests (CoreDNS, Endpoint) need no secrets and run by default.
+
 name: CI-E2E-0
 
 on:
@@ -46,12 +57,47 @@ on:
         description: Skip tests with endpoints provider
         default: false
         type: boolean
-  merge_group:
-    types: [checks_requested]
-  pull_request_target:
-    types: [opened, reopened, synchronize]
-    branches:
-      - main
+  workflow_call:
+    inputs:
+      testRecordsCount:
+        description: Number of test records to create in each namespace
+        default: 2
+        type: number
+      ginkgoParallel:
+        description: Run tests in parallel
+        default: false
+        type: boolean
+      ginkgoDryRun:
+        description: Run tests with dry run
+        default: false
+        type: boolean
+      ginkgoFlags:
+        description: Flags to pass directly to the ginkgo command
+        default: "-v"
+        type: string
+      skipAWS:
+        description: Skip tests with AWS provider
+        default: false
+        type: boolean
+      skipGCP:
+        description: Skip tests with GCP provider
+        default: false
+        type: boolean
+      skipAzure:
+        description: Skip tests with Azure provider
+        default: false
+        type: boolean
+      skipCoreDNS:
+        description: Skip tests with CoreDNS provider
+        default: false
+        type: boolean
+      skipEndpoint:
+        description: Skip tests with endpoints provider
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
 
 env:
   TEST_NAMESPACE: e2e-test
@@ -61,41 +107,10 @@ env:
   GINKGO_FLAGS: ${{ inputs.ginkgoFlags || '-v' }}
 
 jobs:
-  pre-job:
-    runs-on: ubuntu-latest
-    name: Pre job checks
-    outputs:
-      should_skip_e2e: ${{ steps.skip_check.outputs.should_skip }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
-      - id: skip_check
-        uses: fkirc/skip-duplicate-actions@f75dd6564bb646f95277dc8c3b80612e46a4a1ea # ratchet:fkirc/skip-duplicate-actions@v3.4.1
-        with:
-          cancel_others: false
-          paths_ignore: '["**/*.md", "**/*.adoc", "LICENSE"]'
-          do_not_skip: '["pull_request", "push", "merge_group", "workflow_dispatch", "schedule"]'
   e2e-test-suite:
     name: E2E Test Suite
-    if: needs.pre-job.outputs.should_skip_e2e != 'true'
-    needs: pre-job
     runs-on: ubuntu-latest
     steps:
-      - name: Get User Permission
-        if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'pull_request' }}
-        id: checkAccess
-        uses: actions-cool/check-user-permission@c21884f3dda18dafc2f8b402fe807ccc9ec1aa5e # ratchet:actions-cool/check-user-permission@v2
-        with:
-          require: write
-          username: ${{ github.triggering_actor }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Check User Permission
-        if: ${{ (github.event_name == 'pull_request_target' || github.event_name == 'pull_request' ) && steps.checkAccess.outputs.require-result == 'false' }}
-        run: |
-          echo "${{ github.triggering_actor }} does not have permissions on this repo."
-          echo "Current permission level is ${{ steps.checkAccess.outputs.user-permission }}"
-          echo "Job originally triggered by ${{ github.actor }}"
-          exit 1
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
@@ -104,23 +119,35 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Create AWS provider configuration
+        if: ${{ !inputs.skipAWS }}
         run: |
           make local-setup-aws-clean local-setup-aws-generate AWS_ACCESS_KEY_ID=${{ secrets.E2E_AWS_ACCESS_KEY_ID }} AWS_SECRET_ACCESS_KEY=${{ secrets.E2E_AWS_SECRET_ACCESS_KEY }}
       - name: Create GCP provider configuration
+        if: ${{ !inputs.skipGCP }}
         run: |
           make local-setup-gcp-clean local-setup-gcp-generate GCP_GOOGLE_CREDENTIALS='${{ secrets.E2E_GCP_GOOGLE_CREDENTIALS }}' GCP_PROJECT_ID=${{ secrets.E2E_GCP_PROJECT_ID }}
       - name: Create Azure provider configuration
+        if: ${{ !inputs.skipAzure }}
         run: |
           make local-setup-azure-clean local-setup-azure-generate KUADRANT_AZURE_CREDENTIALS='${{ secrets.E2E_AZURE_CREDENTIALS }}'
       - name: Setup environment
         if: ${{ !inputs.ginkgoDryRun }}
         run: |
           make local-setup DEPLOY=true TEST_NAMESPACE=${{ env.TEST_NAMESPACE }}
-          kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-aws
-          kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-gcp
-          kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-azure
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-coredns
           kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-endpoint
+      - name: Verify AWS cloud provider secrets
+        if: ${{ !inputs.ginkgoDryRun && !inputs.skipAWS }}
+        run: |
+          kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-aws
+      - name: Verify GCP cloud provider secrets
+        if: ${{ !inputs.ginkgoDryRun && !inputs.skipGCP }}
+        run: |
+          kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-gcp
+      - name: Verify Azure cloud provider secrets
+        if: ${{ !inputs.ginkgoDryRun && !inputs.skipAzure }}
+        run: |
+          kubectl -n ${{ env.TEST_NAMESPACE }} get secret/dns-provider-credentials-azure
       - name: Run suite AWS
         if: ${{ !inputs.skipAWS }}
         run: |
@@ -138,7 +165,7 @@ jobs:
           export TEST_DNS_CONCURRENT_RECORDS=${{ env.TEST_RECORDS_COUNT }}
           make test-e2e
       - name: Run suite Azure
-        if: ${{ (github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'release-')) || github.event_name == 'workflow_dispatch') && !inputs.skipAzure }}
+        if: ${{ !inputs.skipAzure }}
         run: |
           export TEST_DNS_PROVIDER_SECRET_NAME=dns-provider-credentials-azure
           export TEST_DNS_ZONE_DOMAIN_NAME=e2e.azure.hcpapps.net
@@ -181,14 +208,3 @@ jobs:
         run: |
           echo "Executed using dry run, exiting as failure"
           exit 1
-  required-checks:
-    name: CI-E2E Required Checks
-    # This check adds a list of checks to one job to simplify adding settings to the repo.
-    # If a new check is added in this file, and it should be retested on entry to the merge queue,
-    # it needs to be added to the list below aka needs: [ existing check 1, existing check 2, new check ].
-    needs: [e2e-test-suite]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
-      - run: echo '${{ toJSON(needs) }}' | jq -e 'all(.[]; .result == "success" or .result == "skipped")'
