@@ -75,6 +75,12 @@ var (
 		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordGroupLabel},
 		nil,
 	)
+	recordGroupActive = prometheus.NewDesc(
+		"dns_record_group_active",
+		"Reports whether each DNSRecord is active (1) or inactive (0)",
+		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordGroupLabel},
+		nil,
+	)
 	multiClusterCount = prometheus.NewDesc(
 		"dns_provider_active_multi_cluster_count",
 		"Reports the number of secrets configured for multi cluster configuration",
@@ -98,6 +104,22 @@ func recordGroupInfoMetric(ch chan<- prometheus.Metric, record v1alpha1.DNSRecor
 		recordGroupInfo,
 		prometheus.GaugeValue,
 		1,
+		record.Name,
+		record.Namespace,
+		string(record.Status.Group),
+	)
+}
+
+func recordGroupActiveMetric(ch chan<- prometheus.Metric, record v1alpha1.DNSRecord) {
+	active := meta.IsStatusConditionTrue(record.Status.Conditions, string(v1alpha1.ConditionTypeActive))
+	var gauge float64
+	if active {
+		gauge = 1
+	}
+	ch <- prometheus.MustNewConstMetric(
+		recordGroupActive,
+		prometheus.GaugeValue,
+		gauge,
 		record.Name,
 		record.Namespace,
 		string(record.Status.Group),
@@ -295,6 +317,7 @@ func (c *LocalCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- authoritativeRecordSpecInfo
 	ch <- recordReady
 	ch <- recordGroupInfo
+	ch <- recordGroupActive
 }
 
 func (c *LocalCollector) Collect(ch chan<- prometheus.Metric) {
@@ -313,6 +336,7 @@ func (c *LocalCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, record := range dnsRecordList.Items {
 		recordReadyMetric(ch, record)
 		recordGroupInfoMetric(ch, record)
+		recordGroupActiveMetric(ch, record)
 		writeCounterMetric(ch, record)
 		if record.IsAuthoritativeRecord() {
 			specString, err := hash.GetCanonicalString(record.Spec)

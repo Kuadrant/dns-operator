@@ -97,3 +97,106 @@ func TestRecordGroupInfoMetric_Ungrouped(t *testing.T) {
 		t.Errorf("expected group to be empty, got %s", got)
 	}
 }
+
+func TestRecordGroupActiveMetric_Active(t *testing.T) {
+	record := v1alpha1.DNSRecord{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "active-record",
+			Namespace: "test-ns",
+		},
+		Status: v1alpha1.DNSRecordStatus{
+			Group: types.Group("us-east"),
+			Conditions: []metav1.Condition{
+				{
+					Type:   string(v1alpha1.ConditionTypeActive),
+					Status: metav1.ConditionTrue,
+				},
+			},
+		},
+	}
+
+	ch := make(chan prometheus.Metric, 1)
+	recordGroupActiveMetric(ch, record)
+	close(ch)
+
+	metrics := collectMetrics(ch)
+	if len(metrics) != 1 {
+		t.Fatalf("expected 1 metric, got %d", len(metrics))
+	}
+
+	m := metrics[0]
+	if got := m.Gauge.GetValue(); got != 1 {
+		t.Errorf("expected gauge value 1, got %f", got)
+	}
+	if got := labelValue(m, "dns_record_name"); got != "active-record" {
+		t.Errorf("expected dns_record_name=active-record, got %s", got)
+	}
+	if got := labelValue(m, "dns_record_namespace"); got != "test-ns" {
+		t.Errorf("expected dns_record_namespace=test-ns, got %s", got)
+	}
+	if got := labelValue(m, "group"); got != "us-east" {
+		t.Errorf("expected group=us-east, got %s", got)
+	}
+}
+
+func TestRecordGroupActiveMetric_Inactive(t *testing.T) {
+	record := v1alpha1.DNSRecord{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "inactive-record",
+			Namespace: "test-ns",
+		},
+		Status: v1alpha1.DNSRecordStatus{
+			Group: types.Group("us-west"),
+			Conditions: []metav1.Condition{
+				{
+					Type:   string(v1alpha1.ConditionTypeActive),
+					Status: metav1.ConditionFalse,
+				},
+			},
+		},
+	}
+
+	ch := make(chan prometheus.Metric, 1)
+	recordGroupActiveMetric(ch, record)
+	close(ch)
+
+	metrics := collectMetrics(ch)
+	if len(metrics) != 1 {
+		t.Fatalf("expected 1 metric, got %d", len(metrics))
+	}
+
+	m := metrics[0]
+	if got := m.Gauge.GetValue(); got != 0 {
+		t.Errorf("expected gauge value 0, got %f", got)
+	}
+	if got := labelValue(m, "group"); got != "us-west" {
+		t.Errorf("expected group=us-west, got %s", got)
+	}
+}
+
+func TestRecordGroupActiveMetric_Ungrouped(t *testing.T) {
+	record := v1alpha1.DNSRecord{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ungrouped-record",
+			Namespace: "default",
+		},
+		Status: v1alpha1.DNSRecordStatus{},
+	}
+
+	ch := make(chan prometheus.Metric, 1)
+	recordGroupActiveMetric(ch, record)
+	close(ch)
+
+	metrics := collectMetrics(ch)
+	if len(metrics) != 1 {
+		t.Fatalf("expected 1 metric, got %d", len(metrics))
+	}
+
+	m := metrics[0]
+	if got := m.Gauge.GetValue(); got != 0 {
+		t.Errorf("expected gauge value 0 for ungrouped record (no Active condition), got %f", got)
+	}
+	if got := labelValue(m, "group"); got != "" {
+		t.Errorf("expected group to be empty, got %s", got)
+	}
+}
