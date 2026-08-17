@@ -24,6 +24,7 @@ const (
 	dnsHealthCheckNameLabel      = "dns_health_check_name"
 	dnsHealthCheckNamespaceLabel = "dns_health_check_namespace"
 	dnsHealthCheckHostLabel      = "dns_health_check_host"
+	dnsRecordGroupLabel          = "group"
 )
 
 var (
@@ -68,6 +69,12 @@ var (
 		[]string{"root_host", "sha", dnsRecordNameLabel, dnsRecordNamespaceLabel},
 		nil,
 	)
+	recordGroupInfo = prometheus.NewDesc(
+		"dns_record_group_info",
+		"Reports the group assignment for each DNSRecord",
+		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordGroupLabel},
+		nil,
+	)
 	multiClusterCount = prometheus.NewDesc(
 		"dns_provider_active_multi_cluster_count",
 		"Reports the number of secrets configured for multi cluster configuration",
@@ -83,6 +90,17 @@ func writeCounterMetric(ch chan<- prometheus.Metric, record v1alpha1.DNSRecord) 
 		float64(record.Status.WriteCounter),
 		record.Name,
 		record.Namespace,
+	)
+}
+
+func recordGroupInfoMetric(ch chan<- prometheus.Metric, record v1alpha1.DNSRecord) {
+	ch <- prometheus.MustNewConstMetric(
+		recordGroupInfo,
+		prometheus.GaugeValue,
+		1,
+		record.Name,
+		record.Namespace,
+		string(record.Status.Group),
 	)
 }
 
@@ -276,6 +294,7 @@ type LocalCollector struct {
 func (c *LocalCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- authoritativeRecordSpecInfo
 	ch <- recordReady
+	ch <- recordGroupInfo
 }
 
 func (c *LocalCollector) Collect(ch chan<- prometheus.Metric) {
@@ -293,6 +312,7 @@ func (c *LocalCollector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, record := range dnsRecordList.Items {
 		recordReadyMetric(ch, record)
+		recordGroupInfoMetric(ch, record)
 		writeCounterMetric(ch, record)
 		if record.IsAuthoritativeRecord() {
 			specString, err := hash.GetCanonicalString(record.Spec)
