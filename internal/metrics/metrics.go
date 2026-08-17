@@ -10,11 +10,44 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/hash"
 )
+
+var inactiveGroupCleanupTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "dns_record_inactive_group_cleanup_total",
+		Help: "Counts cleanup operations that remove DNS records or TXT registry entries from inactive groups",
+	},
+	[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordGroupLabel},
+)
+
+func init() {
+	metrics.Registry.MustRegister(inactiveGroupCleanupTotal)
+}
+
+func IncInactiveGroupCleanup(name, namespace, group string) {
+	inactiveGroupCleanupTotal.With(prometheus.Labels{
+		dnsRecordNameLabel:      name,
+		dnsRecordNamespaceLabel: namespace,
+		dnsRecordGroupLabel:     group,
+	}).Inc()
+}
+
+func ResetInactiveGroupCleanup() {
+	inactiveGroupCleanupTotal.Reset()
+}
+
+func GetInactiveGroupCleanupMetric(name, namespace, group string) (prometheus.Counter, error) {
+	return inactiveGroupCleanupTotal.GetMetricWith(prometheus.Labels{
+		dnsRecordNameLabel:      name,
+		dnsRecordNamespaceLabel: namespace,
+		dnsRecordGroupLabel:     group,
+	})
+}
 
 const (
 	dnsRecordNameLabel           = "dns_record_name"
