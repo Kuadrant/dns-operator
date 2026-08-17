@@ -1,3 +1,5 @@
+//go:build unit
+
 package metrics
 
 import (
@@ -5,6 +7,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -198,5 +201,41 @@ func TestRecordGroupActiveMetric_Ungrouped(t *testing.T) {
 	}
 	if got := labelValue(m, "group"); got != "" {
 		t.Errorf("expected group to be empty, got %s", got)
+	}
+}
+
+func TestIncInactiveGroupCleanup(t *testing.T) {
+	inactiveGroupCleanupTotal.Reset()
+
+	IncInactiveGroupCleanup("test-record", "test-ns", "us-east")
+	IncInactiveGroupCleanup("test-record", "test-ns", "us-east")
+	IncInactiveGroupCleanup("other-record", "test-ns", "us-west")
+
+	m1, err := inactiveGroupCleanupTotal.GetMetricWith(prometheus.Labels{
+		"dns_record_name":      "test-record",
+		"dns_record_namespace": "test-ns",
+		"group":                "us-east",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb1 := &dto.Metric{}
+	_ = m1.Write(pb1)
+	if got := pb1.Counter.GetValue(); got != 2 {
+		t.Errorf("expected counter value 2 for us-east, got %f", got)
+	}
+
+	m2, err := inactiveGroupCleanupTotal.GetMetricWith(prometheus.Labels{
+		"dns_record_name":      "other-record",
+		"dns_record_namespace": "test-ns",
+		"group":                "us-west",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb2 := &dto.Metric{}
+	_ = m2.Write(pb2)
+	if got := pb2.Counter.GetValue(); got != 1 {
+		t.Errorf("expected counter value 1 for us-west, got %f", got)
 	}
 }
