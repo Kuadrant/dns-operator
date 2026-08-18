@@ -79,6 +79,7 @@ jobs:
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: false
         id: go
       - name: Install yq tool
         run: make yq
@@ -130,7 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build-tags: ${{ github.ref_name }}
-      image: ${{ steps.build-catalog-image.outputs.imageid }}
+      image: ${{ env.IMG_REGISTRY_HOST }}/${{ env.IMG_REGISTRY_ORG }}/${{ env.OPERATOR_NAME }}-catalog:${{ github.ref_name }}
     steps:
       - name: Check out code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
@@ -152,9 +153,12 @@ jobs:
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: false
         id: go
       - name: Generate Catalog Content
         run: make catalog
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # ratchet:docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # ratchet:docker/setup-buildx-action@v3
       - name: Login to container registry
