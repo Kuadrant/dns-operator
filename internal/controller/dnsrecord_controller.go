@@ -173,7 +173,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		dnsRecord.SetStatusZoneID("")
 		dnsRecord.SetStatusDomainOwners(nil)
 
-		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, defaultValidationRequeue)
+		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, time.Second)
 	}
 
 	if !controllerutil.ContainsFinalizer(dnsRecord.GetDNSRecord(), DNSRecordFinalizer) {
