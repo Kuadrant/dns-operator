@@ -47,26 +47,6 @@ jobs:
       - name: Run unit tests
         run: make test-unit
 
-  test-ubuntu-24-10-standard:
-    name: GitHub Hosted - ubuntu-24.10 (standard)
-    runs-on: ubuntu-24.10
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Show runner specs
-        run: |
-          echo "=== GitHub Hosted ubuntu-24.10 Standard Runner ==="
-          nproc
-          free -h
-          df -h /
-      - name: Run lint
-        run: make lint
-      - name: Run unit tests
-        run: make test-unit
-
   test-cncf-group-default:
     name: CNCF Group - Default
     runs-on:
