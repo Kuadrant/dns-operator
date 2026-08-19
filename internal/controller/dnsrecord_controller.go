@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -421,7 +423,7 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, min
 	allowInsecureCert = allowInsecureHealthCert
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.DNSRecord{}, builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, deletingPredicate{}))).
+		For(&v1alpha1.DNSRecord{}, builder.WithPredicates(predicate.Or(specOrMetadataChangedPredicate{}, deletingPredicate{}))).
 		Watches(&v1alpha1.DNSHealthCheckProbe{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
 			logger := log.FromContext(ctx)
 			probe, ok := o.(*v1alpha1.DNSHealthCheckProbe)
@@ -471,10 +473,36 @@ func generationChanged(record *v1alpha1.DNSRecord) bool {
 	return record.Generation != record.Status.ObservedGeneration
 }
 
+// specOrMetadataChangedPredicate allows Update events through when the spec
+// (generation) or metadata (finalizers, labels, annotations) changed.
+// Status-only updates are filtered out to prevent tight reconciliation loops.
+type specOrMetadataChangedPredicate struct {
+	predicate.Funcs
+}
+
+func (specOrMetadataChangedPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectOld == nil || e.ObjectNew == nil {
+		return false
+	}
+	if e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration() {
+		return true
+	}
+	if !slices.Equal(e.ObjectOld.GetFinalizers(), e.ObjectNew.GetFinalizers()) {
+		return true
+	}
+	if !maps.Equal(e.ObjectOld.GetLabels(), e.ObjectNew.GetLabels()) {
+		return true
+	}
+	if !maps.Equal(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) {
+		return true
+	}
+	return false
+}
+
 // deletingPredicate allows Update events through when the object has a deletion
 // timestamp set, so the deletion state machine progresses without waiting for
-// scheduled requeues. Combined with predicate.GenerationChangedPredicate via
-// predicate.Or() to also allow spec changes through.
+// scheduled requeues. Combined with specOrMetadataChangedPredicate via
+// predicate.Or() to also allow spec and metadata changes through.
 type deletingPredicate struct {
 	predicate.Funcs
 }
