@@ -57,6 +57,10 @@ on:
         description: Skip tests with endpoints provider
         default: false
         type: boolean
+      runsOn:
+        description: Runner specification for E2E tests
+        default: ubuntu-latest
+        type: string
   workflow_call:
     inputs:
       testRecordsCount:
@@ -95,6 +99,10 @@ on:
         description: Skip tests with endpoints provider
         default: false
         type: boolean
+      runsOn:
+        description: Runner specification for E2E tests
+        default: ubuntu-latest
+        type: string
 
 permissions:
   contents: read
@@ -109,7 +117,7 @@ env:
 jobs:
   e2e-test-suite:
     name: E2E Test Suite
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runsOn || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
         with:

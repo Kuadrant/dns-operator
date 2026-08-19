@@ -116,3 +116,33 @@ jobs:
           df -h /
       - name: Run unit tests
         run: make test-unit
+
+  e2e-tests-ubuntu-latest:
+    name: E2E Tests - ubuntu-latest
+    uses: ./.github/workflows/ci-e2e-0.yaml
+    secrets: inherit
+    with:
+      runsOn: ubuntu-latest
+      skipAWS: true
+      skipGCP: true
+      skipAzure: true
+
+  e2e-tests-ubuntu-24-04:
+    name: E2E Tests - ubuntu-24.04
+    uses: ./.github/workflows/ci-e2e-0.yaml
+    secrets: inherit
+    with:
+      runsOn: ubuntu-24.04
+      skipAWS: true
+      skipGCP: true
+      skipAzure: true
+
+  e2e-tests-cncf:
+    name: E2E Tests - CNCF Group
+    uses: ./.github/workflows/ci-e2e-0.yaml
+    secrets: inherit
+    with:
+      runsOn: '{"group": "Default"}'
+      skipAWS: true
+      skipGCP: true
+      skipAzure: true
