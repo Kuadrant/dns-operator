@@ -32,20 +32,32 @@ jobs:
           paths_ignore: '["**/*.md", "**/*.adoc", "LICENSE"]'
           do_not_skip: '["pull_request", "push", "merge_group", "workflow_dispatch", "schedule"]'
   e2e-pr:
-    name: E2E PR Tests
+    name: E2E ${{ matrix.provider }} Tests
     needs: pre-job
     if: needs.pre-job.outputs.should_skip_e2e != 'true'
+    strategy:
+      matrix:
+        provider: ${{ github.event_name == 'pull_request' && fromJson('["coredns", "endpoint"]') || fromJson('["aws", "gcp", "azure", "coredns", "endpoint"]') }}
     uses: ./.github/workflows/ci-e2e-0.yaml
     secrets: inherit
     with:
-      skipAWS: ${{ github.event_name == 'pull_request' }}
-      skipGCP: ${{ github.event_name == 'pull_request' }}
-      skipAzure: ${{ github.event_name == 'pull_request' }}
+      skipAWS: ${{ matrix.provider != 'aws' }}
+      skipGCP: ${{ matrix.provider != 'gcp' }}
+      skipAzure: ${{ matrix.provider != 'azure' }}
+      skipCoreDNS: ${{ matrix.provider != 'coredns' }}
+      skipEndpoint: ${{ matrix.provider != 'endpoint' }}
   required-checks:
     name: CI-E2E Required Checks
     needs: [pre-job, e2e-pr]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
-      - run: echo '${{ toJSON(needs) }}' | jq -e 'all(.[]; .result == "success" or .result == "skipped")'
+      - run: |
+          if [[ "${{ needs.pre-job.result }}" != "success" && "${{ needs.pre-job.result }}" != "skipped" ]]; then
+            echo "Pre-job failed"
+            exit 1
+          fi
+          if [[ "${{ needs.e2e-pr.result }}" != "success" && "${{ needs.e2e-pr.result }}" != "skipped" ]]; then
+            echo "E2E tests failed"
+            exit 1
+          fi
