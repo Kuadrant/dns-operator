@@ -11,65 +11,125 @@ jobs:
     name: GitHub Hosted - Standard (ubuntu-latest)
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: Show runner specs
         run: |
           echo "=== GitHub Hosted Standard Runner (ubuntu-latest) ==="
           nproc
           free -h
           df -h /
+      - name: Run lint
+        run: make lint
 
   test-ubuntu-24-04-standard:
     name: GitHub Hosted - ubuntu-24.04 (standard)
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: Show runner specs
         run: |
           echo "=== GitHub Hosted ubuntu-24.04 Standard Runner ==="
           nproc
           free -h
           df -h /
-
-  test-github-hosted-4-cores:
-    name: GitHub Hosted - 4 cores
-    runs-on: ubuntu-latest-4-cores
-    steps:
-      - name: Show runner specs
-        run: |
-          echo "=== GitHub Hosted 4-core Runner ==="
-          nproc
-          free -h
-          df -h /
+      - name: Run lint
+        run: make lint
 
   test-github-hosted-8-cores:
     name: GitHub Hosted - 8 cores
     runs-on: ubuntu-latest-8-cores
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: Show runner specs
         run: |
           echo "=== GitHub Hosted 8-core Runner ==="
           nproc
           free -h
           df -h /
+      - name: Run lint
+        run: make lint
 
-  test-github-hosted-16-cores:
-    name: GitHub Hosted - 16 cores
-    runs-on: ubuntu-latest-16-cores
+  test-ubuntu-24-04-8-cores:
+    name: GitHub Hosted - ubuntu-24.04-8-cores
+    runs-on: ubuntu-24.04-8-cores
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: Show runner specs
         run: |
-          echo "=== GitHub Hosted 16-core Runner ==="
+          echo "=== GitHub Hosted ubuntu-24.04 8-core Runner ==="
           nproc
           free -h
           df -h /
+      - name: Run lint
+        run: make lint
+
+  test-ubuntu-24-10-standard:
+    name: GitHub Hosted - ubuntu-24.10 (standard)
+    runs-on: ubuntu-24.10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Show runner specs
+        run: |
+          echo "=== GitHub Hosted ubuntu-24.10 Standard Runner ==="
+          nproc
+          free -h
+          df -h /
+      - name: Run lint
+        run: make lint
+
+  test-ubuntu-24-10-8-cores:
+    name: GitHub Hosted - ubuntu-24.10-8-cores
+    runs-on: ubuntu-24.10-8-cores
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Show runner specs
+        run: |
+          echo "=== GitHub Hosted ubuntu-24.10 8-core Runner ==="
+          nproc
+          free -h
+          df -h /
+      - name: Run lint
+        run: make lint
 
   test-cncf-group-default:
     name: CNCF Group - Default
     runs-on:
       group: Default
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: Show runner specs
         run: |
           echo "=== CNCF Runner Group: Default ==="
           nproc
           free -h
           df -h /
+      - name: Run lint
+        run: make lint
