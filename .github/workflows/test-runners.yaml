@@ -7,6 +7,28 @@ on:
   workflow_dispatch:
 
 jobs:
+  test-github-hosted-standard:
+    name: GitHub Hosted - Standard (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show runner specs
+        run: |
+          echo "=== GitHub Hosted Standard Runner ==="
+          nproc
+          free -h
+          df -h /
+
+  test-github-hosted-4-cores:
+    name: GitHub Hosted - 4 cores
+    runs-on: ubuntu-latest-4-cores
+    steps:
+      - name: Show runner specs
+        run: |
+          echo "=== GitHub Hosted 4-core Runner ==="
+          nproc
+          free -h
+          df -h /
+
   test-github-hosted-8-cores:
     name: GitHub Hosted - 8 cores
     runs-on: ubuntu-latest-8-cores
@@ -14,6 +36,17 @@ jobs:
       - name: Show runner specs
         run: |
           echo "=== GitHub Hosted 8-core Runner ==="
+          nproc
+          free -h
+          df -h /
+
+  test-github-hosted-16-cores:
+    name: GitHub Hosted - 16 cores
+    runs-on: ubuntu-latest-16-cores
+    steps:
+      - name: Show runner specs
+        run: |
+          echo "=== GitHub Hosted 16-core Runner ==="
           nproc
           free -h
           df -h /
