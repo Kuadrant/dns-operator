@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-github-hosted-standard:
-    name: GitHub Hosted - Standard (ubuntu-latest)
+  lint-ubuntu-latest:
+    name: Lint - ubuntu-latest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -18,17 +18,33 @@ jobs:
           cache: false
       - name: Show runner specs
         run: |
-          echo "=== GitHub Hosted Standard Runner (ubuntu-latest) ==="
+          echo "=== ubuntu-latest ==="
           nproc
           free -h
           df -h /
       - name: Run lint
         run: make lint
+
+  unit-tests-ubuntu-latest:
+    name: Unit Tests - ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Show runner specs
+        run: |
+          echo "=== ubuntu-latest ==="
+          nproc
+          free -h
+          df -h /
       - name: Run unit tests
         run: make test-unit
 
-  test-ubuntu-24-04-standard:
-    name: GitHub Hosted - ubuntu-24.04 (standard)
+  lint-ubuntu-24-04:
+    name: Lint - ubuntu-24.04
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -38,17 +54,33 @@ jobs:
           cache: false
       - name: Show runner specs
         run: |
-          echo "=== GitHub Hosted ubuntu-24.04 Standard Runner ==="
+          echo "=== ubuntu-24.04 ==="
           nproc
           free -h
           df -h /
       - name: Run lint
         run: make lint
+
+  unit-tests-ubuntu-24-04:
+    name: Unit Tests - ubuntu-24.04
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Show runner specs
+        run: |
+          echo "=== ubuntu-24.04 ==="
+          nproc
+          free -h
+          df -h /
       - name: Run unit tests
         run: make test-unit
 
-  test-cncf-group-default:
-    name: CNCF Group - Default
+  lint-cncf:
+    name: Lint - CNCF Group
     runs-on:
       group: Default
     steps:
@@ -59,11 +91,28 @@ jobs:
           cache: false
       - name: Show runner specs
         run: |
-          echo "=== CNCF Runner Group: Default ==="
+          echo "=== CNCF Group: Default ==="
           nproc
           free -h
           df -h /
       - name: Run lint
         run: make lint
+
+  unit-tests-cncf:
+    name: Unit Tests - CNCF Group
+    runs-on:
+      group: Default
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Show runner specs
+        run: |
+          echo "=== CNCF Group: Default ==="
+          nproc
+          free -h
+          df -h /
       - name: Run unit tests
         run: make test-unit
