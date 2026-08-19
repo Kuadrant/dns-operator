@@ -1,6 +1,9 @@
 name: Test Runner Configuration
 
 on:
+  push:
+    branches:
+      - gh-runner-test
   workflow_dispatch:
 
 jobs:
