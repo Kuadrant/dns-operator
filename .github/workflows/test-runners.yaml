@@ -1,0 +1,61 @@
+name: Test Runner Configuration
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-github-hosted-8-cores:
+    name: GitHub Hosted - 8 cores
+    runs-on: ubuntu-latest-8-cores
+    steps:
+      - name: Show runner specs
+        run: |
+          echo "=== GitHub Hosted 8-core Runner ==="
+          nproc
+          free -h
+          df -h /
+
+  test-cncf-group-default:
+    name: CNCF Group - Default
+    runs-on:
+      group: Default
+    steps:
+      - name: Show runner specs
+        run: |
+          echo "=== CNCF Runner Group: Default ==="
+          nproc
+          free -h
+          df -h /
+
+  test-cncf-label-8-32:
+    name: CNCF Label - 8-32
+    runs-on: [self-hosted, cncf-ubuntu-8-32]
+    steps:
+      - name: Show runner specs
+        run: |
+          echo "=== CNCF Runner Label: cncf-ubuntu-8-32 ==="
+          nproc
+          free -h
+          df -h /
+
+  test-cncf-label-16-64:
+    name: CNCF Label - 16-64
+    runs-on: [self-hosted, cncf-ubuntu-16-64]
+    steps:
+      - name: Show runner specs
+        run: |
+          echo "=== CNCF Runner Label: cncf-ubuntu-16-64 ==="
+          nproc
+          free -h
+          df -h /
+
+  test-cncf-label-32-128:
+    name: CNCF Label - 32-128
+    runs-on: [self-hosted, cncf-ubuntu-32-128]
+    steps:
+      - name: Show runner specs
+        run: |
+          echo "=== CNCF Runner Label: cncf-ubuntu-32-128 ==="
+          nproc
+          free -h
+          df -h /
