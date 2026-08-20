@@ -49,12 +49,12 @@ func generateGroupTXTRecordTargets(groups ...string) string {
 	groups = slices.Compact(groups)
 
 	if len(groups) == 0 || groups[0] == "" {
-		return fmt.Sprintf("\"%s\"", target)
+		return target
 	}
 
 	target += TXTRecordKeysSeparator + TXTRecordGroupKey + "=" + strings.Join(groups, GroupSeparator)
 
-	return fmt.Sprintf("\"%s\"", target)
+	return target
 }
 
 func EnsureGroupIsActive(groupName string, existingRecord *endpoint.Endpoint) *endpoint.Endpoint {
@@ -124,7 +124,7 @@ func compileTXTRecordTarget(activeGroups []string) string {
 	}
 	version := fmt.Sprintf("version=%s", TXTRecordVersion)
 
-	return fmt.Sprintf("\"%s%s\"", version, groups)
+	return fmt.Sprintf("%s%s", version, groups)
 }
 
 // GetDomainRegexp creates regexp to filter zones

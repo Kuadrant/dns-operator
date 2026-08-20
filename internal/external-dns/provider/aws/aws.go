@@ -405,7 +405,11 @@ func (p *AWSProvider) records(ctx context.Context, zones map[string]types.Hosted
 				if len(r.ResourceRecords) > 0 {
 					targets := make([]string, len(r.ResourceRecords))
 					for idx, rr := range r.ResourceRecords {
-						targets[idx] = aws.ToString(rr.Value)
+						val := aws.ToString(rr.Value)
+						if r.Type == types.RRTypeTxt {
+							val = stripTXTQuotes(val)
+						}
+						targets[idx] = val
 					}
 
 					ep := endpoint.NewEndpointWithTTL(wildcardUnescape(aws.ToString(r.Name)), string(r.Type), ttl, targets...)
@@ -740,6 +744,9 @@ func (p *AWSProvider) newChange(action types.ChangeAction, ep *endpoint.Endpoint
 		}
 		change.ResourceRecordSet.ResourceRecords = make([]types.ResourceRecord, len(ep.Targets))
 		for idx, val := range ep.Targets {
+			if change.ResourceRecordSet.Type == types.RRTypeTxt {
+				val = quoteTXTRecord(val)
+			}
 			change.ResourceRecordSet.ResourceRecords[idx] = types.ResourceRecord{
 				Value: aws.String(val),
 			}
@@ -1063,4 +1070,18 @@ func zoneTypeString(z *types.HostedZone) string {
 		return "public"
 	}
 	return "private"
+}
+
+func quoteTXTRecord(val string) string {
+	if strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"") {
+		return val
+	}
+	return "\"" + val + "\""
+}
+
+func stripTXTQuotes(val string) string {
+	if strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"") {
+		return val[1 : len(val)-1]
+	}
+	return val
 }
