@@ -76,6 +76,7 @@ import (
 	"sigs.k8s.io/external-dns/plan"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
 	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
@@ -398,7 +399,7 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c
 	if err != nil {
 		return err
 	}
-	registryMap := externaldnsregistry.TxtRecordsToRegistryMap(allZoneEndpoints, txtRegistryPrefix, txtRegistrySuffix, txtRegistryWildcardReplacement, []byte(txtRegistryEncryptAESKey))
+	registryMap := externaldnsregistry.TxtRecordsToRegistryMap(allZoneEndpoints, common.TxtRegistryPrefix, common.TxtRegistrySuffix, common.TxtRegistryWildcardReplacement, []byte(common.TxtRegistryEncryptAESKey))
 	changes := &plan.Changes{}
 
 	// work out required changes to clean out inactive groups managed DNS Records (not including TXT records)
@@ -420,13 +421,13 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c
 			continue
 		}
 
-		// inactive targets is the targets of all inactive groups
 		inactiveTargets := registryHost.GetOtherGroupsTargets(activeGroups)
+		activeTargets := registryHost.GetGroupsTargets(activeGroups)
+		ungroupedTargets := registryHost.GetUngroupedTargets()
 
-		// remove all inactive targets from endpoint
 		newTargets := []string{}
 		for _, t := range endpoint.Targets {
-			if !slices.Contains(inactiveTargets, t) {
+			if !slices.Contains(inactiveTargets, t) || slices.Contains(activeTargets, t) || slices.Contains(ungroupedTargets, t) {
 				newTargets = append(newTargets, t)
 			}
 		}
@@ -466,7 +467,7 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c
 		labels := make(map[string]string)
 		for _, target := range e.Targets {
 			var labelsFromTarget endpoint.Labels
-			_, _, labelsFromTarget, err = registry.NewLabelsFromString(target, []byte(txtRegistryEncryptAESKey))
+			_, _, labelsFromTarget, err = registry.NewLabelsFromString(target, []byte(common.TxtRegistryEncryptAESKey))
 			if err != nil {
 				logger.V(1).Info("failed to parse labels from TXT target", "target", target, "error", err)
 				continue

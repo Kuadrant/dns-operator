@@ -143,7 +143,7 @@ func (h *RegistryHost) HasGroup(group types.Group) bool {
 func (h *RegistryHost) GetUngroupedTargets() []string {
 	targets := map[string]struct{}{}
 	for _, o := range h.UngroupedOwners {
-		for _, t := range strings.Split(o.Labels["targets"], ",") {
+		for _, t := range strings.Split(o.Labels["targets"], ";") {
 			if t != "" {
 				targets[t] = struct{}{}
 			}
@@ -188,7 +188,7 @@ func (g *RegistryGroup) GetOwnerIDs() []string {
 func (g *RegistryGroup) GetTargets() []string {
 	targets := map[string]struct{}{}
 	for _, o := range g.Owners {
-		for _, t := range strings.Split(o.Labels["targets"], ",") {
+		for _, t := range strings.Split(o.Labels["targets"], ";") {
 			if t != "" {
 				targets[t] = struct{}{}
 			}

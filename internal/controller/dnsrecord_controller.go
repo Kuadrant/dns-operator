@@ -52,12 +52,8 @@ const (
 	DelegationRolePrimary   = "primary"
 	DelegationRoleSecondary = "secondary"
 
-	txtRegistryPrefix              = "kuadrant-"
-	txtRegistrySuffix              = ""
-	txtRegistryWildcardReplacement = "wildcard"
-	txtRegistryEncryptEnabled      = false
-	txtRegistryEncryptAESKey       = ""
-	txtRegistryCacheInterval       = time.Duration(0)
+	txtRegistryEncryptEnabled = false
+	txtRegistryCacheInterval  = time.Duration(0)
 )
 
 var (
