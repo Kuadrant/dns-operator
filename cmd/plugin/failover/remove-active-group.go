@@ -87,7 +87,7 @@ func removeActiveGroup(_ *cobra.Command, args []string) error {
 
 	for _, zone := range allZones {
 		providerForZone, err := common.GetProviderForConfig(ctx, resourceRef, provider.Config{
-			DomainFilter: externaldnsendpoint.NewRegexDomainFilter(domainRegexp, nil),
+			DomainFilter: externaldnsendpoint.NewDomainFilter([]string{domain}),
 			ZoneIDFilter: externaldnsprovider.NewZoneIDFilter([]string{zone.ID}),
 		})
 		if err != nil {

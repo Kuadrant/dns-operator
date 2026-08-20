@@ -106,7 +106,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 		var endpoints []*externaldnsendpoint.Endpoint
 
 		providerForZone, err = common.GetProviderForConfig(ctx, resourceRef, provider.Config{
-			DomainFilter: externaldnsendpoint.NewRegexDomainFilter(domainRegexp, nil),
+			DomainFilter: externaldnsendpoint.NewDomainFilter([]string{domain}),
 			ZoneIDFilter: externaldnsprovider.ZoneIDFilter{
 				ZoneIDs: []string{zone.ID},
 			},
@@ -118,7 +118,7 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 
 		endpoints, err = providerForZone.Records(ctx)
 		if err != nil {
-			log.Error(err, "failed tp get endpoints")
+			log.Error(err, "failed to get endpoints")
 			continue
 		}
 
