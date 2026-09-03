@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -118,7 +119,8 @@ func removeActiveGroup(_ *cobra.Command, args []string) error {
 			continue
 		}
 
-		if !strings.Contains(groupTXTRecord.Targets[0], groupName) {
+		existingGroups, _ := GetActiveGroupsFromTarget(groupTXTRecord.Targets[0])
+		if !slices.Contains(existingGroups, groupName) {
 			log.V(1).Info(fmt.Sprintf("TXT record does not contain group %s. Groups: %s. Skipping", groupTXTRecord.Targets[0], groupName))
 			continue
 		}

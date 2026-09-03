@@ -3,7 +3,7 @@ package failover
 import (
 	"context"
 	"fmt"
-	"strings"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -132,12 +132,14 @@ func addActiveGroup(_ *cobra.Command, args []string) error {
 				break
 			}
 		}
-		if groupTXTRecord != nil && strings.Contains(groupTXTRecord.Targets[0], groupName) {
-			log.Info("Found existing TXT record for domain that already contains group name.", "zone DNS Name", zone.DNSName, "record", groupName)
-			output.Formatter.Print("Nothing to do")
-			log.V(1).Info(fmt.Sprintf("existing record name: %s, targets: %s", groupRecordName, groupTXTRecord.Targets))
-			continue
-
+		if groupTXTRecord != nil {
+			existingGroups, _ := GetActiveGroupsFromTarget(groupTXTRecord.Targets[0])
+			if slices.Contains(existingGroups, groupName) {
+				log.Info("Found existing TXT record for domain that already contains group name.", "zone DNS Name", zone.DNSName, "record", groupName)
+				output.Formatter.Print("Nothing to do")
+				log.V(1).Info(fmt.Sprintf("existing record name: %s, targets: %s", groupRecordName, groupTXTRecord.Targets))
+				continue
+			}
 		}
 
 		log.Info(fmt.Sprintf("Setting group %s as active group", groupName))
