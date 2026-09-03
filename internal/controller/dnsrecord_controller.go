@@ -51,12 +51,8 @@ const (
 
 	validationRequeueVariance = 0.5
 
-	txtRegistryPrefix              = "kuadrant-"
-	txtRegistrySuffix              = ""
-	txtRegistryWildcardReplacement = "wildcard"
-	txtRegistryEncryptEnabled      = false
-	txtRegistryEncryptAESKey       = ""
-	txtRegistryCacheInterval       = time.Duration(0)
+	txtRegistryEncryptEnabled = false
+	txtRegistryCacheInterval  = time.Duration(0)
 )
 
 var (
