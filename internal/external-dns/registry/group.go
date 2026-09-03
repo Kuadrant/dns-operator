@@ -143,7 +143,7 @@ func (h *RegistryHost) HasGroup(group types.Group) bool {
 func (h *RegistryHost) GetUngroupedTargets() []string {
 	targets := map[string]struct{}{}
 	for _, o := range h.UngroupedOwners {
-		for _, t := range strings.Split(o.Labels["targets"], ",") {
+		for _, t := range strings.Split(o.Labels["targets"], ";") {
 			if t != "" {
 				targets[t] = struct{}{}
 			}
@@ -181,6 +181,24 @@ func (h *RegistryHost) GetOtherGroupsTargets(groups types.Groups) []string {
 	return slices.Collect(maps.Keys(targets))
 }
 
+// FilterActiveTargets returns only the targets that should remain published given
+// the set of active groups. A target is kept if it is NOT exclusively owned by
+// inactive groups — i.e. it is either not an inactive-group target at all, or it
+// is also claimed by an active group or an ungrouped owner.
+func (h *RegistryHost) FilterActiveTargets(targets []string, activeGroups types.Groups) []string {
+	inactiveTargets := h.GetOtherGroupsTargets(activeGroups)
+	activeTargets := h.GetGroupsTargets(activeGroups)
+	ungroupedTargets := h.GetUngroupedTargets()
+
+	var filtered []string
+	for _, t := range targets {
+		if !slices.Contains(inactiveTargets, t) || slices.Contains(activeTargets, t) || slices.Contains(ungroupedTargets, t) {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
+}
+
 func (g *RegistryGroup) GetOwnerIDs() []string {
 	return slices.Collect(maps.Keys(g.Owners))
 }
@@ -188,7 +206,7 @@ func (g *RegistryGroup) GetOwnerIDs() []string {
 func (g *RegistryGroup) GetTargets() []string {
 	targets := map[string]struct{}{}
 	for _, o := range g.Owners {
-		for _, t := range strings.Split(o.Labels["targets"], ",") {
+		for _, t := range strings.Split(o.Labels["targets"], ";") {
 			if t != "" {
 				targets[t] = struct{}{}
 			}

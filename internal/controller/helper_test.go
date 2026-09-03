@@ -20,6 +20,7 @@ import (
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
+	"github.com/kuadrant/dns-operator/internal/common"
 	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	inmemoryprovider "github.com/kuadrant/dns-operator/internal/provider/inmemory"
@@ -175,7 +176,7 @@ func readAuthoritativeRegistryMap(ctx context.Context, k8sClient client.Client, 
 	for _, record := range authRecordList.Items {
 		endpoints = append(endpoints, record.Spec.Endpoints...)
 	}
-	return externaldnsregistry.TxtRecordsToRegistryMap(endpoints, txtRegistryPrefix, txtRegistrySuffix, txtRegistryWildcardReplacement, []byte(txtRegistryEncryptAESKey))
+	return externaldnsregistry.TxtRecordsToRegistryMap(endpoints, common.TxtRegistryPrefix, common.TxtRegistrySuffix, common.TxtRegistryWildcardReplacement, []byte(common.TxtRegistryEncryptAESKey))
 }
 
 // filterDNSEndpoints returns only A, AAAA, and CNAME endpoints from a record list.
