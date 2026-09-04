@@ -32,7 +32,7 @@ func TestGenerateGroupTXTRecord(t *testing.T) {
 			},
 			want: &endpoint.Endpoint{
 				DNSName: TXTRecordPrefix + "cat.com",
-				Targets: endpoint.Targets{fmt.Sprintf("\"version=%s%s%s=group1\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey)},
+				Targets: endpoint.Targets{fmt.Sprintf("version=%s%s%s=group1", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey)},
 			},
 		},
 		{
@@ -43,7 +43,7 @@ func TestGenerateGroupTXTRecord(t *testing.T) {
 			},
 			want: &endpoint.Endpoint{
 				DNSName: TXTRecordPrefix + "cat.com",
-				Targets: endpoint.Targets{fmt.Sprintf("\"version=%s%s%s=group1%sgroup2\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator)},
+				Targets: endpoint.Targets{fmt.Sprintf("version=%s%s%s=group1%sgroup2", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator)},
 			},
 		},
 		{
@@ -54,7 +54,7 @@ func TestGenerateGroupTXTRecord(t *testing.T) {
 			},
 			want: &endpoint.Endpoint{
 				DNSName: TXTRecordPrefix + "cat.com",
-				Targets: endpoint.Targets{fmt.Sprintf("\"version=%s\"", TXTRecordVersion)},
+				Targets: endpoint.Targets{fmt.Sprintf("version=%s", TXTRecordVersion)},
 			},
 		},
 		{
@@ -65,7 +65,7 @@ func TestGenerateGroupTXTRecord(t *testing.T) {
 			},
 			want: &endpoint.Endpoint{
 				DNSName: TXTRecordPrefix + "cat.com",
-				Targets: endpoint.Targets{fmt.Sprintf("\"version=%s%s%s=group1%sgroup2%sgroup3\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator, GroupSeparator)},
+				Targets: endpoint.Targets{fmt.Sprintf("version=%s%s%s=group1%sgroup2%sgroup3", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator, GroupSeparator)},
 			},
 		},
 		{
@@ -76,7 +76,7 @@ func TestGenerateGroupTXTRecord(t *testing.T) {
 			},
 			want: &endpoint.Endpoint{
 				DNSName: TXTRecordPrefix + "cat.com",
-				Targets: endpoint.Targets{fmt.Sprintf("\"version=%s\"", TXTRecordVersion)},
+				Targets: endpoint.Targets{fmt.Sprintf("version=%s", TXTRecordVersion)},
 			},
 		},
 	}
@@ -158,25 +158,31 @@ func TestGetActiveGroupsFromTarget(t *testing.T) {
 	}{
 		{
 			name:             "gets a single group",
-			target:           fmt.Sprintf("\"version=%s%s%s=group1\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
+			target:           fmt.Sprintf("version=%s%s%s=group1", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
 			want:             []string{"group1"},
 			isCurrentVersion: true,
 		},
 		{
 			name:             "gets multiple groups",
-			target:           fmt.Sprintf("\"version=%s%s%s=group1%sgroup2%sgroup3\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator, GroupSeparator),
+			target:           fmt.Sprintf("version=%s%s%s=group1%sgroup2%sgroup3", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator, GroupSeparator),
 			want:             []string{"group1", "group2", "group3"},
 			isCurrentVersion: true,
 		},
 		{
 			name:             "gets no groups",
-			target:           fmt.Sprintf("\"version=%s\"", TXTRecordVersion),
+			target:           fmt.Sprintf("version=%s", TXTRecordVersion),
 			want:             []string{},
 			isCurrentVersion: true,
 		},
 		{
+			name:             "gets a single group with quotes",
+			target:           fmt.Sprintf("\"version=%s%s%s=group1\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
+			want:             []string{"group1"},
+			isCurrentVersion: true,
+		},
+		{
 			name:             "reports legacy version",
-			target:           fmt.Sprintf("\"version=%s%s%s=group1\"", "legacyVersion", TXTRecordKeysSeparator, TXTRecordGroupKey),
+			target:           fmt.Sprintf("version=%s%s%s=group1", "legacyVersion", TXTRecordKeysSeparator, TXTRecordGroupKey),
 			want:             []string{},
 			isCurrentVersion: false,
 		},
@@ -205,27 +211,27 @@ func TestRemoveGroupFromActiveGroups(t *testing.T) {
 		{
 			name:   "removes a group from multiple groups",
 			group:  "group1",
-			target: fmt.Sprintf("\"version=%s%s%s=group1%sgroup2\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator),
-			want:   fmt.Sprintf("\"version=%s%s%s=group2\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
+			target: fmt.Sprintf("version=%s%s%s=group1%sgroup2", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator),
+			want:   fmt.Sprintf("version=%s%s%s=group2", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
 		},
 		{
 			name:   "removes a group from a single group",
 			group:  "group1",
-			target: fmt.Sprintf("\"version=%s%s%s=group1\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
-			want:   fmt.Sprintf("\"version=%s\"", TXTRecordVersion),
+			target: fmt.Sprintf("version=%s%s%s=group1", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
+			want:   fmt.Sprintf("version=%s", TXTRecordVersion),
 		},
 		{
 			// this should never happen but testing for it just in case
 			name:   "removes non existent group",
 			group:  "group1",
-			target: fmt.Sprintf("\"version=%s%s%s=group2\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
-			want:   fmt.Sprintf("\"version=%s%s%s=group2\"", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
+			target: fmt.Sprintf("version=%s%s%s=group2", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
+			want:   fmt.Sprintf("version=%s%s%s=group2", TXTRecordVersion, TXTRecordKeysSeparator, TXTRecordGroupKey),
 		},
 		{
 			name:   "ignores legacy records",
 			group:  "group1",
-			target: fmt.Sprintf("\"version=%s%s%s=group1%sgroup2\"", "legacyVersion", TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator),
-			want:   fmt.Sprintf("\"version=%s%s%s=group1%sgroup2\"", "legacyVersion", TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator),
+			target: fmt.Sprintf("version=%s%s%s=group1%sgroup2", "legacyVersion", TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator),
+			want:   fmt.Sprintf("version=%s%s%s=group1%sgroup2", "legacyVersion", TXTRecordKeysSeparator, TXTRecordGroupKey, GroupSeparator),
 		},
 	}
 	for _, tt := range tests {
