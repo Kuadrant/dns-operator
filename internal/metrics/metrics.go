@@ -10,11 +10,44 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common/hash"
 )
+
+var inactiveGroupCleanupTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "dns_record_inactive_group_cleanup_total",
+		Help: "Counts cleanup operations that remove DNS records or TXT registry entries from inactive groups",
+	},
+	[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordGroupLabel},
+)
+
+func init() {
+	metrics.Registry.MustRegister(inactiveGroupCleanupTotal)
+}
+
+func IncInactiveGroupCleanup(name, namespace, group string) {
+	inactiveGroupCleanupTotal.With(prometheus.Labels{
+		dnsRecordNameLabel:      name,
+		dnsRecordNamespaceLabel: namespace,
+		dnsRecordGroupLabel:     group,
+	}).Inc()
+}
+
+func ResetInactiveGroupCleanup() {
+	inactiveGroupCleanupTotal.Reset()
+}
+
+func GetInactiveGroupCleanupMetric(name, namespace, group string) (prometheus.Counter, error) {
+	return inactiveGroupCleanupTotal.GetMetricWith(prometheus.Labels{
+		dnsRecordNameLabel:      name,
+		dnsRecordNamespaceLabel: namespace,
+		dnsRecordGroupLabel:     group,
+	})
+}
 
 const (
 	dnsRecordNameLabel           = "dns_record_name"
@@ -24,6 +57,7 @@ const (
 	dnsHealthCheckNameLabel      = "dns_health_check_name"
 	dnsHealthCheckNamespaceLabel = "dns_health_check_namespace"
 	dnsHealthCheckHostLabel      = "dns_health_check_host"
+	dnsRecordGroupLabel          = "group"
 )
 
 var (
@@ -68,6 +102,18 @@ var (
 		[]string{"root_host", "sha", dnsRecordNameLabel, dnsRecordNamespaceLabel},
 		nil,
 	)
+	recordGroupInfo = prometheus.NewDesc(
+		"dns_record_group_info",
+		"Reports the group assignment for each DNSRecord",
+		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordGroupLabel},
+		nil,
+	)
+	recordGroupActive = prometheus.NewDesc(
+		"dns_record_group_active",
+		"Reports whether each DNSRecord is active (1) or inactive (0)",
+		[]string{dnsRecordNameLabel, dnsRecordNamespaceLabel, dnsRecordGroupLabel},
+		nil,
+	)
 	multiClusterCount = prometheus.NewDesc(
 		"dns_provider_active_multi_cluster_count",
 		"Reports the number of secrets configured for multi cluster configuration",
@@ -83,6 +129,33 @@ func writeCounterMetric(ch chan<- prometheus.Metric, record v1alpha1.DNSRecord) 
 		float64(record.Status.WriteCounter),
 		record.Name,
 		record.Namespace,
+	)
+}
+
+func recordGroupInfoMetric(ch chan<- prometheus.Metric, record v1alpha1.DNSRecord) {
+	ch <- prometheus.MustNewConstMetric(
+		recordGroupInfo,
+		prometheus.GaugeValue,
+		1,
+		record.Name,
+		record.Namespace,
+		string(record.Status.Group),
+	)
+}
+
+func recordGroupActiveMetric(ch chan<- prometheus.Metric, record v1alpha1.DNSRecord) {
+	active := meta.IsStatusConditionTrue(record.Status.Conditions, string(v1alpha1.ConditionTypeActive))
+	var gauge float64
+	if active {
+		gauge = 1
+	}
+	ch <- prometheus.MustNewConstMetric(
+		recordGroupActive,
+		prometheus.GaugeValue,
+		gauge,
+		record.Name,
+		record.Namespace,
+		string(record.Status.Group),
 	)
 }
 
@@ -276,6 +349,8 @@ type LocalCollector struct {
 func (c *LocalCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- authoritativeRecordSpecInfo
 	ch <- recordReady
+	ch <- recordGroupInfo
+	ch <- recordGroupActive
 }
 
 func (c *LocalCollector) Collect(ch chan<- prometheus.Metric) {
@@ -293,6 +368,8 @@ func (c *LocalCollector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, record := range dnsRecordList.Items {
 		recordReadyMetric(ch, record)
+		recordGroupInfoMetric(ch, record)
+		recordGroupActiveMetric(ch, record)
 		writeCounterMetric(ch, record)
 		if record.IsAuthoritativeRecord() {
 			specString, err := hash.GetCanonicalString(record.Spec)

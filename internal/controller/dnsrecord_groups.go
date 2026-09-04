@@ -80,6 +80,7 @@ import (
 	externaldnsplan "github.com/kuadrant/dns-operator/internal/external-dns/plan"
 	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	externaldnsregistry "github.com/kuadrant/dns-operator/internal/external-dns/registry"
+	"github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/provider"
 	"github.com/kuadrant/dns-operator/types"
 )
@@ -436,6 +437,7 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c
 		}
 	}
 
+	hadCleanup := false
 	if changes.HasChanges() {
 		// changes against provider directly, as using the registry here
 		// would interfere with this controllers registry entries incorrectly.
@@ -444,6 +446,7 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c
 			logger.Error(err, "error unpublishing inactive group records")
 			return err
 		}
+		hadCleanup = true
 	}
 
 	// Clean out all TXT records that are registry entries for inactive groups,
@@ -474,7 +477,18 @@ func (r *BaseDNSRecordReconciler) unpublishInactiveGroups(ctx context.Context, c
 
 	if changes.HasChanges() {
 		err = dnsProvider.ApplyChanges(ctx, changes)
-		return err
+		if err != nil {
+			return err
+		}
+		hadCleanup = true
+	}
+
+	if hadCleanup {
+		metrics.IncInactiveGroupCleanup(
+			dnsRecord.GetDNSRecord().Name,
+			dnsRecord.GetDNSRecord().Namespace,
+			string(dnsRecord.GetGroup()),
+		)
 	}
 
 	return nil
