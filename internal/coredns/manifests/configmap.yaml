@@ -1,0 +1,25 @@
+apiVersion: v1
+data:
+  Corefile: |
+    . {
+        debug
+        errors
+        log
+        health {
+            lameduck 5s
+        }
+        ready
+        metadata
+        transfer {
+            to *
+        }
+        kuadrant
+        prometheus 0.0.0.0:9153
+    }
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/instance: kuadrant
+    app.kubernetes.io/name: coredns
+  name: kuadrant-coredns
+  namespace: kuadrant-coredns
