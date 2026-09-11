@@ -48,6 +48,7 @@ import (
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/controller"
+	corednsDeployment "github.com/kuadrant/dns-operator/internal/coredns"
 	dnsMetrics "github.com/kuadrant/dns-operator/internal/metrics"
 	"github.com/kuadrant/dns-operator/internal/probes"
 	"github.com/kuadrant/dns-operator/internal/provider"
@@ -85,6 +86,7 @@ var (
 	group                  types.Group
 	logMode                string
 	logLevel               string
+	deployCoreDNS          bool
 
 	// represents both flag and envar key
 	metricsAddrKey            = variableKey("metrics-bind-address")
@@ -103,6 +105,7 @@ var (
 	groupKey                  = variableKey("group")
 	logModeKey                = variableKey("log-mode")
 	logLevelKey               = variableKey("log-level")
+	deployCoreDNSKey          = variableKey("deploy-coredns")
 )
 
 const (
@@ -152,6 +155,7 @@ func main() {
 	flag.Var(newDelegationRoleValue(controller.DelegationRolePrimary, &delegationRole), delegationRoleKey.Flag(), "The delegation role for this controller. Must be one of 'primary'(default), or 'secondary'")
 
 	flag.Var(&group, groupKey.Flag(), "Set Group for dns-operator")
+	flag.BoolVar(&deployCoreDNS, deployCoreDNSKey.Flag(), false, "Deploy CoreDNS resources at startup.")
 
 	flag.Parse()
 
@@ -339,6 +343,15 @@ func main() {
 		}
 	}
 
+	if deployCoreDNS {
+		setupLog.Info("CoreDNS deployment enabled")
+		corednsDeployer := corednsDeployment.NewDeployer(dynamicClient, mgr.GetRESTMapper(), ctrl.Log.WithName("coredns"))
+		if err := mgr.Add(corednsDeployer); err != nil {
+			setupLog.Error(err, "unable to add CoreDNS deployer to manager")
+			os.Exit(1)
+		}
+	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -435,6 +448,12 @@ func overrideControllerFlags() {
 		case logLevelKey.Envar():
 			logLevel = v
 			setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", logLevelKey.Flag(), v))
+		case deployCoreDNSKey.Envar():
+			value, parseErr := strconv.ParseBool(v)
+			if parseErr == nil {
+				deployCoreDNS = value
+				setupLog.Info(fmt.Sprintf("overriding %s flag with \"%s\" value", deployCoreDNSKey.Flag(), v))
+			}
 		}
 	}
 }
