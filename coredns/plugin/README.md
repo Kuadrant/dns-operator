@@ -32,6 +32,7 @@ it specifies all the zones the plugin should be authoritative for.
 kuadrant [ZONES...] {
     kubeconfig KUBECONFIG [CONTEXT]
     rname EMAIL
+    nullmail
 }
 ```
 
@@ -41,6 +42,13 @@ kuadrant [ZONES...] {
   will be converted to DNS mailbox format (e.g., `admin.example.com.`). According to [RFC 1035](https://www.rfc-editor.org/rfc/rfc1035.html) and [RFC 2142](https://www.rfc-editor.org/rfc/rfc2142.html), any dots in the
   local part (before @) will be escaped with backslash (e.g., `dns.admin@example.com` becomes `dns\.admin.example.com.`).
   If not specified, defaults to `hostmaster.{zone}`.
+* `nullmail` publishes deny-all mail-policy records for the zone (SPF, DKIM, DMARC) and drops MX.
+  Opt-in; default is off when omitted. When set, the plugin always serves:
+  - apex TXT `v=spf1 -all`
+  - `*._domainkey` TXT `v=DKIM1; p=`
+  - `_dmarc` TXT `v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s`
+  DNSRecord SPF/DKIM/DMARC values are overwritten and a warning is logged.
+  Non-SPF apex TXT (site-verification) is kept. To send mail from the zone, omit `nullmail`.
 
 For enabling zone transfers look at the *transfer* plugin.
 
@@ -120,6 +128,12 @@ spec:
       targets:
         - 2.2.2.2
 ```
+
+### Example 3: Mail spoofing protection
+
+Lock down a zone that does not send mail. The nullmail directive is off unless present. It publishes deny-all SPF, DKIM, and DMARC and drops MX. DNSRecord mail-policy TXT is overwritten; non-SPF apex TXT is kept. See coredns/examples/Corefile.nullmail and coredns/examples/dnsrecord-mail-txt-k-example-com.yaml.
+
+Background: https://www.cloudflare.com/learning/dns/dns-records/protect-domains-without-email/ and https://www.gov.uk/guidance/protect-domains-that-dont-send-email
 
 ## Development
 

@@ -53,17 +53,26 @@ func parse(c *caddy.Controller) (*Kuadrant, error) {
 		for c.NextBlock() {
 			key := c.Val()
 			args := c.RemainingArgs()
-			if len(args) == 0 {
-				return k, c.ArgErr()
-			}
 			switch key {
 			case "kubeconfig":
+				if len(args) == 0 {
+					return k, c.ArgErr()
+				}
 				k.ConfigFile = args[0]
 				if len(args) == 2 {
 					k.ConfigContext = args[1]
 				}
 			case "rname":
+				if len(args) == 0 {
+					return k, c.ArgErr()
+				}
 				rname = args[0]
+			case "nullmail":
+				// Bare flag; default is off when the directive is omitted.
+				if len(args) != 0 {
+					return k, c.ArgErr()
+				}
+				k.NullMail = true
 			default:
 				return k, c.Errf("Unknown property '%s'", c.Val())
 			}
@@ -71,7 +80,10 @@ func parse(c *caddy.Controller) (*Kuadrant, error) {
 
 		// Create zones with rname after parsing config
 		for i := range origins {
-			z[origins[i]] = NewZone(origins[i], rname)
+			nz := NewZone(origins[i], rname)
+			nz.nullmail = k.NullMail
+			applyMailProtection(nz)
+			z[origins[i]] = nz
 			names = append(names, origins[i])
 		}
 	}
