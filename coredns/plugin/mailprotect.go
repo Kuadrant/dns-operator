@@ -104,7 +104,8 @@ func newTXT(name, value string) *dns.TXT {
 }
 
 func isSPF(txt *dns.TXT) bool {
-	return strings.HasPrefix(txtValue(txt), spfRecordPrefix)
+	v := strings.ToLower(strings.TrimSpace(txtValue(txt)))
+	return v == spfRecordPrefix || strings.HasPrefix(v, spfRecordPrefix+" ")
 }
 
 func txtValue(txt *dns.TXT) string {

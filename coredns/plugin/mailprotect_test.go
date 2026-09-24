@@ -110,6 +110,19 @@ func TestMailProtection_WildcardDKIM(t *testing.T) {
 	assert.Equal(t, []string{txtDKIMEmpty}, txtStrings(mustLookup(t, z, "selector1._domainkey.example.com", dns.TypeTXT)))
 }
 
+func TestMailProtection_ReplacesCaseInsensitiveSPF(t *testing.T) {
+	z := NewZone("example.com", "")
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "example.com", Targets: []string{"google-site-verification=abc123"}, RecordType: endpoint.RecordTypeTXT, RecordTTL: 60}))
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "example.com", Targets: []string{"V=SPF1 include:_spf.google.com ~all"}, RecordType: endpoint.RecordTypeTXT, RecordTTL: 60}))
+	z.nullmail = true
+	applyMailProtection(z)
+	got := txtStrings(mustLookup(t, z, "example.com", dns.TypeTXT))
+	assert.Contains(t, got, "google-site-verification=abc123")
+	assert.Contains(t, got, txtSPFDenyAll)
+	assert.NotContains(t, got, "V=SPF1 include:_spf.google.com ~all")
+	assert.NotContains(t, got, "v=spf1 include:_spf.google.com ~all")
+}
+
 func TestMailProtection_KeepsVerificationAndReplacesSPF(t *testing.T) {
 	z := NewZone("example.com", "")
 	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "example.com", Targets: []string{"google-site-verification=abc123"}, RecordType: endpoint.RecordTypeTXT, RecordTTL: 60}))
