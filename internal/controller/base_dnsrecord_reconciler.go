@@ -209,6 +209,11 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	return false, nil
 }
 
+// ClampTime clamps desiredTime between minTime and maxTime.
+func (r *BaseDNSRecordReconciler) ClampTime(minTime, maxTime, desiredTime time.Duration) time.Duration {
+	return min(max(minTime, desiredTime), maxTime)
+}
+
 func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client client.Client, previous, current DNSRecordAccessor, err error) (reconcile.Result, error) {
 	result, uErr := r.updateStatusAndRequeue(ctx, client, previous, current, 0)
 
