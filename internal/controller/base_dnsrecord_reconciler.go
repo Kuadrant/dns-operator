@@ -20,6 +20,7 @@ import (
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 	externaldnsregistry "sigs.k8s.io/external-dns/registry"
 
+	"github.com/kuadrant/dns-operator/internal/common"
 	"github.com/kuadrant/dns-operator/internal/external-dns/plan"
 	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
 	"github.com/kuadrant/dns-operator/internal/provider"
@@ -137,9 +138,9 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 	var excludeDNSRecordTypes []string
 
 	var recordRegistry externaldnsregistry.Registry
-	recordRegistry, err := registry.NewTXTRegistry(ctx, dnsProvider, txtRegistryPrefix, txtRegistrySuffix,
-		dnsRecord.GetOwnerID(), txtRegistryCacheInterval, txtRegistryWildcardReplacement, managedDNSRecordTypes,
-		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(txtRegistryEncryptAESKey))
+	recordRegistry, err := registry.NewTXTRegistry(ctx, dnsProvider, common.TxtRegistryPrefix, common.TxtRegistrySuffix,
+		dnsRecord.GetOwnerID(), txtRegistryCacheInterval, common.TxtRegistryWildcardReplacement, managedDNSRecordTypes,
+		excludeDNSRecordTypes, txtRegistryEncryptEnabled, []byte(common.TxtRegistryEncryptAESKey))
 	if err != nil {
 		return false, err
 	}
@@ -206,6 +207,11 @@ func (r *BaseDNSRecordReconciler) applyChanges(ctx context.Context, dnsRecord DN
 		return hasChanges, err
 	}
 	return false, nil
+}
+
+// ClampTime clamps desiredTime between minTime and maxTime.
+func (r *BaseDNSRecordReconciler) ClampTime(minTime, maxTime, desiredTime time.Duration) time.Duration {
+	return min(max(minTime, desiredTime), maxTime)
 }
 
 func (r *BaseDNSRecordReconciler) updateStatus(ctx context.Context, client client.Client, previous, current DNSRecordAccessor, err error) (reconcile.Result, error) {

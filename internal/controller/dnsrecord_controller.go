@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,10 +32,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/kuadrant/dns-operator/api/v1alpha1"
@@ -49,12 +54,8 @@ const (
 
 	validationRequeueVariance = 0.5
 
-	txtRegistryPrefix              = "kuadrant-"
-	txtRegistrySuffix              = ""
-	txtRegistryWildcardReplacement = "wildcard"
-	txtRegistryEncryptEnabled      = false
-	txtRegistryEncryptAESKey       = ""
-	txtRegistryCacheInterval       = time.Duration(0)
+	txtRegistryEncryptEnabled = false
+	txtRegistryCacheInterval  = time.Duration(0)
 )
 
 var (
@@ -461,7 +462,7 @@ func (r *DNSRecordReconciler) SetupWithManager(mgr ctrl.Manager, maxRequeue, val
 	allowInsecureCert = allowInsecureHealthCert
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.DNSRecord{}).
+		For(&v1alpha1.DNSRecord{}, builder.WithPredicates(predicate.Or(specOrMetadataChangedPredicate{}, deletingPredicate{}))).
 		Watches(&v1alpha1.DNSHealthCheckProbe{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
 			logger := log.FromContext(ctx)
 			probe, ok := o.(*v1alpha1.DNSHealthCheckProbe)
@@ -558,6 +559,47 @@ func recordReceivedPrematurely(record DNSRecordAccessor) (bool, time.Duration) {
 
 func generationChanged(record *v1alpha1.DNSRecord) bool {
 	return record.Generation != record.Status.ObservedGeneration
+}
+
+// specOrMetadataChangedPredicate allows Update events through when the spec
+// (generation) or metadata (finalizers, labels, annotations) changed.
+// Status-only updates are filtered out to prevent tight reconciliation loops.
+type specOrMetadataChangedPredicate struct {
+	predicate.Funcs
+}
+
+func (specOrMetadataChangedPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectOld == nil || e.ObjectNew == nil {
+		return false
+	}
+	if e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration() {
+		return true
+	}
+	if !slices.Equal(e.ObjectOld.GetFinalizers(), e.ObjectNew.GetFinalizers()) {
+		return true
+	}
+	if !maps.Equal(e.ObjectOld.GetLabels(), e.ObjectNew.GetLabels()) {
+		return true
+	}
+	if !maps.Equal(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) {
+		return true
+	}
+	return false
+}
+
+// deletingPredicate allows Update events through when the object has a deletion
+// timestamp set, so the deletion state machine progresses without waiting for
+// scheduled requeues. Combined with specOrMetadataChangedPredicate via
+// predicate.Or() to also allow spec and metadata changes through.
+type deletingPredicate struct {
+	predicate.Funcs
+}
+
+func (deletingPredicate) Update(e event.UpdateEvent) bool {
+	if e.ObjectNew == nil {
+		return false
+	}
+	return !e.ObjectNew.GetDeletionTimestamp().IsZero()
 }
 
 // exponentialRequeueTime consumes the current time and doubles it until it reaches defaultRequeueTime
