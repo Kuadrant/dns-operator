@@ -405,7 +405,12 @@ func (p *AWSProvider) records(ctx context.Context, zones map[string]types.Hosted
 				if len(r.ResourceRecords) > 0 {
 					targets := make([]string, len(r.ResourceRecords))
 					for idx, rr := range r.ResourceRecords {
-						targets[idx] = aws.ToString(rr.Value)
+						val := aws.ToString(rr.Value)
+						if r.Type == types.RRTypeTxt {
+							// route53 stores TXT values quoted
+							val = strings.Trim(val, "\"")
+						}
+						targets[idx] = val
 					}
 
 					ep := endpoint.NewEndpointWithTTL(wildcardUnescape(aws.ToString(r.Name)), string(r.Type), ttl, targets...)
@@ -740,6 +745,10 @@ func (p *AWSProvider) newChange(action types.ChangeAction, ep *endpoint.Endpoint
 		}
 		change.ResourceRecordSet.ResourceRecords = make([]types.ResourceRecord, len(ep.Targets))
 		for idx, val := range ep.Targets {
+			if change.ResourceRecordSet.Type == types.RRTypeTxt {
+				// route53 requires TXT values to be quoted
+				val = "\"" + strings.Trim(val, "\"") + "\""
+			}
 			change.ResourceRecordSet.ResourceRecords[idx] = types.ResourceRecord{
 				Value: aws.String(val),
 			}
