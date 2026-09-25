@@ -192,9 +192,5 @@ It is possible to have more than one active group at a time.
 This allows finer control over the networking design, and relicences of the infrastructure.
 
 When a dns-operator is configured with a group it is possible to change the group that dns-operator is a part of.
-All the dnsrecords, and TXT related to does records will be updated to use the new group.
-Changing the group from an active group to an inactive group at controller level is currently unsupported.
-See known issues for more details.
-
-## Known Issues
-- [DNS Operator - always write groupID to provider](https://github.com/Kuadrant/dns-operator/issues/637)
+All the dnsrecords, and TXT related to those records will be updated to use the new group.
+Inactive controllers now correctly write their groupID to the provider registry, so transitions between active and inactive states are handled automatically.

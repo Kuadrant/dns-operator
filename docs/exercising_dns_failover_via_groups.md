@@ -109,7 +109,13 @@ In order to remove groups via the CLI three pieces of information is required.
 
 **Note:** An active connection to the cluster with the `<providerRef>` is assumed.
 
-With this information removing the new group can be done using the following command.
+Before removing a group, you can preview the impact using `--dry-run`. This shows which DNS endpoints would be affected without making any changes:
+
+```sh
+kubectl-kuadrant_dns remove-active-group GROUP_ID --domain <domain> --providerRef <providerRef> --dry-run
+```
+
+When you are satisfied with the preview, proceed with the removal:
 
 ```sh
 kubectl-kuadrant_dns remove-active-group GROUP_ID --domain <domain> --providerRef <providerRef>
@@ -126,8 +132,11 @@ The dns-operator does not watch for changes in the active-groups TXT records.
 During the scheduled reconciles of the dns-operator, the dns-operator evaluates the active-groups TXT record, acting as required.
 In turn, this means fail-over will not be instant, and requires some time to complete.
 
-In dev preview this delay can be up to 15 minutes by default.
-This value can be modified by setting `--max-requeue-time` argument on the dns-operator deployment, or `MAX_REQUEUE_TIME` in the `dns-operator-controller-env` configmap.
+For active records, the reconciliation interval ramps up naturally from a minimum of 5 seconds to a maximum of 15 minutes based on how long the record has been in a steady state. Records that have recently changed are reconciled more frequently. The maximum interval can be modified by setting `--max-requeue-time` on the dns-operator deployment, or `MAX_REQUEUE_TIME` in the `dns-operator-controller-env` configmap.
+
+Records in an inactive group are reconciled every 15 seconds, allowing them to detect group activation changes quickly.
+
+Group status changes (such as updating the active-groups TXT record) propagate on the next reconciliation cycle. Spec changes to DNSRecord resources trigger immediate reconciliation.
 
 ### Confirming fail-over successful
 To confirm the fail-over has been successful the dnsrecords on the cluster_B can be monitored for a ready status.

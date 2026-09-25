@@ -56,3 +56,11 @@ You can specify `*.<domain>` to match all zones that end with `<domain>`.
 For each zone that has a group in the `kuadrant-active-groups.<domain>` TXT record it will display all endpoints that 
 are associated with the group. Then it will prompt with a confirmation of a deletion unless `-y`/`--assumeyes` flag was provided; 
 in that case it will proceed.
+
+Use `--dry-run` to preview the impact of removing a group without making any changes.
+This shows which DNS endpoints would be affected (deleted or modified) and what would happen to the active groups TXT record.
+This is useful for verifying the scope of a failover operation before committing to it.
+
+```sh
+kubectl-kuadrant_dns remove-active-group GROUP_ID --domain <domain> --providerRef <providerRef> --dry-run
+```
