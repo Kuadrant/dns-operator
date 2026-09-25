@@ -6,4 +6,4 @@ spec:
   source: dns-operator-catalog
   sourceNamespace: dns-operator-system
   name: dns-operator
-  channel: "alpha"
+  channel: "stable"
