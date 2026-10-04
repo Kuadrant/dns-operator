@@ -155,8 +155,11 @@ func TestMailProtection_DropsMX(t *testing.T) {
 	require.NoError(t, z.Insert(&dns.MX{Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeMX, Class: dns.ClassINET, Ttl: 60}, Preference: 10, Mx: "mail.example.com."}))
 	z.nullmail = true
 	applyMailProtection(z)
-	ans, _ := lookupRRs(t, z, "example.com", dns.TypeMX)
-	assert.Empty(t, ans)
+	ans := mustLookup(t, z, "example.com", dns.TypeMX)
+	require.Len(t, ans, 1)
+	mx := ans[0].(*dns.MX)
+	assert.Equal(t, uint16(0), mx.Preference)
+	assert.Equal(t, ".", mx.Mx)
 }
 
 func TestMailProtection_SimulatedRefreshAfterCRs(t *testing.T) {
@@ -178,4 +181,95 @@ func TestMailProtection_SimulatedRefreshAfterCRs(t *testing.T) {
 	ans, res := lookupRRs(t, live, "api.example.com", dns.TypeA)
 	require.Equal(t, Success, res)
 	require.Equal(t, "1.1.1.1", ans[0].(*dns.A).A.String())
+}
+
+func TestMailProtection_ExactDKIMSelectorCannotBypass(t *testing.T) {
+	z := NewZone("example.com", "")
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "selector1._domainkey.example.com", Targets: []string{"v=DKIM1; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ"}, RecordType: endpoint.RecordTypeTXT, RecordTTL: 60}))
+	z.nullmail = true
+	applyMailProtection(z)
+	got := txtStrings(mustLookup(t, z, "selector1._domainkey.example.com", dns.TypeTXT))
+	assert.Equal(t, []string{txtDKIMEmpty}, got)
+	assert.NotContains(t, got, "v=DKIM1; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ")
+}
+
+func TestMailProtection_MultiLabelDKIMCannotBypass(t *testing.T) {
+	z := NewZone("example.com", "")
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "a.b._domainkey.example.com", Targets: []string{"v=DKIM1; p=AAAA"}, RecordType: endpoint.RecordTypeTXT, RecordTTL: 60}))
+	z.nullmail = true
+	applyMailProtection(z)
+	assert.Equal(t, []string{txtDKIMEmpty}, txtStrings(mustLookup(t, z, "a.b._domainkey.example.com", dns.TypeTXT)))
+}
+
+func TestMailProtection_DKIMCNAMECannotBypass(t *testing.T) {
+	z := NewZone("example.com", "")
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "selector1._domainkey.example.com", Targets: []string{"keys.attacker.test"}, RecordType: endpoint.RecordTypeCNAME, RecordTTL: 60}))
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "keys.attacker.test", Targets: []string{"v=DKIM1; p=AAAA"}, RecordType: endpoint.RecordTypeTXT, RecordTTL: 60}))
+	z.nullmail = true
+	applyMailProtection(z)
+	got := txtStrings(mustLookup(t, z, "selector1._domainkey.example.com", dns.TypeTXT))
+	assert.Equal(t, []string{txtDKIMEmpty}, got)
+}
+
+func TestMailProtection_SubdomainDMARCCannotBypass(t *testing.T) {
+	z := NewZone("example.com", "")
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "_dmarc.app.example.com", Targets: []string{"v=DMARC1; p=none"}, RecordType: endpoint.RecordTypeTXT, RecordTTL: 60}))
+	z.nullmail = true
+	applyMailProtection(z)
+	assert.Equal(t, []string{txtDMARCReject}, txtStrings(mustLookup(t, z, "_dmarc.app.example.com", dns.TypeTXT)))
+	assert.Equal(t, []string{txtDMARCReject}, txtStrings(mustLookup(t, z, "_dmarc.example.com", dns.TypeTXT)))
+}
+
+func TestMailProtection_SubdomainSPFCannotBypass(t *testing.T) {
+	z := NewZone("example.com", "")
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "app.example.com", Targets: []string{"v=spf1 +all"}, RecordType: endpoint.RecordTypeTXT, RecordTTL: 60}))
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "app.example.com", Targets: []string{"google-site-verification=keepme"}, RecordType: endpoint.RecordTypeTXT, RecordTTL: 60}))
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "app.example.com", Targets: []string{"1.2.3.4"}, RecordType: endpoint.RecordTypeA, RecordTTL: 60}))
+	z.nullmail = true
+	applyMailProtection(z)
+	got := txtStrings(mustLookup(t, z, "app.example.com", dns.TypeTXT))
+	assert.Contains(t, got, txtSPFDenyAll)
+	assert.Contains(t, got, "google-site-verification=keepme")
+	assert.NotContains(t, got, "v=spf1 +all")
+	ans := mustLookup(t, z, "app.example.com", dns.TypeA)
+	require.Equal(t, "1.2.3.4", ans[0].(*dns.A).A.String())
+}
+
+func TestMailProtection_SubdomainMXReplacedWithNullMX(t *testing.T) {
+	z := NewZone("example.com", "")
+	require.NoError(t, z.Insert(&dns.MX{Hdr: dns.RR_Header{Name: "mail.example.com.", Rrtype: dns.TypeMX, Class: dns.ClassINET, Ttl: 60}, Preference: 10, Mx: "mx.mail.example.com."}))
+	z.nullmail = true
+	applyMailProtection(z)
+	ans := mustLookup(t, z, "mail.example.com", dns.TypeMX)
+	require.Len(t, ans, 1)
+	mx := ans[0].(*dns.MX)
+	assert.Equal(t, uint16(0), mx.Preference)
+	assert.Equal(t, ".", mx.Mx)
+}
+
+func TestMailProtection_LeavesUnrelatedRecords(t *testing.T) {
+	z := NewZone("example.com", "")
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "www.example.com", Targets: []string{"app.example.com"}, RecordType: endpoint.RecordTypeCNAME, RecordTTL: 60}))
+	require.NoError(t, z.InsertEndpoint(&endpoint.Endpoint{DNSName: "app.example.com", Targets: []string{"hello"}, RecordType: endpoint.RecordTypeTXT, RecordTTL: 60}))
+	z.nullmail = true
+	applyMailProtection(z)
+	cname := mustLookup(t, z, "www.example.com", dns.TypeCNAME)
+	assert.Equal(t, "app.example.com.", cname[0].(*dns.CNAME).Target)
+	assert.Equal(t, []string{"hello"}, txtStrings(mustLookup(t, z, "app.example.com", dns.TypeTXT)))
+}
+
+func TestParse_NullMailDoesNotLeakAcrossStanzas(t *testing.T) {
+	c := caddy.NewTestController("dns", "kuadrant example.com {\n nullmail\n}\nkuadrant other.com {\n}\n")
+	k, err := parse(c)
+	require.NoError(t, err)
+	on, ok := k.Zones.Z["example.com."]
+	require.True(t, ok)
+	off, ok := k.Zones.Z["other.com."]
+	require.True(t, ok)
+	assert.True(t, on.nullmail)
+	assert.False(t, off.nullmail)
+	assert.Equal(t, []string{txtSPFDenyAll}, txtStrings(mustLookup(t, on, "example.com", dns.TypeTXT)))
+	ans, res := lookupRRs(t, off, "other.com", dns.TypeTXT)
+	assert.Empty(t, txtStrings(ans))
+	assert.NotEqual(t, Success, res)
 }

@@ -49,6 +49,9 @@ func parse(c *caddy.Controller) (*Kuadrant, error) {
 
 	for c.Next() {
 		origins := plugin.OriginsFromArgsOrServerBlock(c.RemainingArgs(), c.ServerBlockKeys)
+		// Scoped to this stanza. k.NullMail must not leak into a later kuadrant
+		// directive consumed by the same parse call.
+		nullmail := false
 
 		for c.NextBlock() {
 			key := c.Val()
@@ -72,7 +75,7 @@ func parse(c *caddy.Controller) (*Kuadrant, error) {
 				if len(args) != 0 {
 					return k, c.ArgErr()
 				}
-				k.NullMail = true
+				nullmail = true
 			default:
 				return k, c.Errf("Unknown property '%s'", c.Val())
 			}
@@ -81,11 +84,12 @@ func parse(c *caddy.Controller) (*Kuadrant, error) {
 		// Create zones with rname after parsing config
 		for i := range origins {
 			nz := NewZone(origins[i], rname)
-			nz.nullmail = k.NullMail
+			nz.nullmail = nullmail
 			applyMailProtection(nz)
 			z[origins[i]] = nz
 			names = append(names, origins[i])
 		}
+		k.NullMail = nullmail
 	}
 
 	k.Zones = Zones{Z: z, Names: names}

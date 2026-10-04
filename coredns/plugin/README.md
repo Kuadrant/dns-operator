@@ -42,13 +42,13 @@ kuadrant [ZONES...] {
   will be converted to DNS mailbox format (e.g., `admin.example.com.`). According to [RFC 1035](https://www.rfc-editor.org/rfc/rfc1035.html) and [RFC 2142](https://www.rfc-editor.org/rfc/rfc2142.html), any dots in the
   local part (before @) will be escaped with backslash (e.g., `dns.admin@example.com` becomes `dns\.admin.example.com.`).
   If not specified, defaults to `hostmaster.{zone}`.
-* `nullmail` publishes deny-all mail-policy records for the zone (SPF, DKIM, DMARC) and drops MX.
+* `nullmail` publishes deny-all mail-policy records for the zone (SPF, DKIM, DMARC) and refuses MX.
   Opt-in; default is off when omitted. When set, the plugin always serves:
   - apex TXT `v=spf1 -all`
   - `*._domainkey` TXT `v=DKIM1; p=`
   - `_dmarc` TXT `v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s`
-  DNSRecord SPF/DKIM/DMARC values are overwritten and a warning is logged.
-  Non-SPF apex TXT (site-verification) is kept. To send mail from the zone, omit `nullmail`.
+  - apex MX `0 .` (RFC 7505 null MX, so an apex A/AAAA is not an implicit exchanger)
+  Enforcement is zone-wide. A DNSRecord cannot override it with an exact DKIM selector, a multi-label `_domainkey` name, a subdomain `_dmarc` or SPF TXT, or a CNAME/NS at those policy names: those are replaced or dropped and a warning is logged. Non-SPF TXT (site-verification) is kept. To send mail from the zone, omit `nullmail`.
 
 For enabling zone transfers look at the *transfer* plugin.
 

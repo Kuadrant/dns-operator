@@ -118,7 +118,7 @@ k.example.com {
 }
 ```
 
-**Mail spoofing protection (nullmail):** Opt-in Corefile directive. When present, the zone publishes deny-all SPF (v=spf1 -all), DKIM (*._domainkey v=DKIM1; p=), and DMARC (p=reject; sp=reject; adkim=s; aspf=s), and drops MX. Default is off. User DNSRecord mail-policy values are overwritten; non-SPF apex TXT is kept. Details and examples: coredns/plugin/README.md and coredns/examples/Corefile.nullmail.
+**Mail spoofing protection (nullmail):** Opt-in Corefile directive. When present, the zone publishes deny-all SPF (v=spf1 -all), DKIM (*._domainkey v=DKIM1; p=), and DMARC (p=reject; sp=reject; adkim=s; aspf=s), and a null MX (0 .). Default is off. Enforcement is zone-wide: exact DKIM selectors, subdomain _dmarc/SPF, and CNAME/NS at those policy names are overwritten or dropped. Non-SPF TXT is kept. Details and examples: coredns/plugin/README.md and coredns/examples/Corefile.nullmail.
 
 ### Result
 
