@@ -1,0 +1,34 @@
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: apex-txt
+  labels:
+    kuadrant.io/coredns-zone-name: k.example.com
+spec:
+  rootHost: k.example.com
+  endpoints:
+    - dnsName: k.example.com
+      recordTTL: 60
+      recordType: TXT
+      targets:
+        - google-site-verification=abc123
+    - dnsName: k.example.com
+      recordTTL: 60
+      recordType: TXT
+      targets:
+        - v=spf1 include:_spf.google.com ~all
+---
+apiVersion: kuadrant.io/v1alpha1
+kind: DNSRecord
+metadata:
+  name: dmarc-none
+  labels:
+    kuadrant.io/coredns-zone-name: k.example.com
+spec:
+  rootHost: k.example.com
+  endpoints:
+    - dnsName: _dmarc.k.example.com
+      recordTTL: 60
+      recordType: TXT
+      targets:
+        - v=DMARC1; p=none
