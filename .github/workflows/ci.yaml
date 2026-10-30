@@ -38,7 +38,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
       - uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # ratchet:golangci/golangci-lint-action@v8
         with:
@@ -56,7 +57,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
         id: go
       - name: Run make verify-code
@@ -73,7 +75,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
         id: go
       - name: Run make verify-manifests
@@ -90,7 +93,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
         id: go
       - name: Run make verify-bundle
@@ -107,7 +111,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
         id: go
       - name: Run make helm-build
@@ -124,7 +129,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
         id: go
       - name: Run make verify-imports
@@ -141,7 +147,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
         id: go
       - name: Verify generate command
@@ -158,7 +165,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
         id: go
       - name: Verify generate command
@@ -175,7 +183,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
       - name: Run make verify-ratchet
         run: |
@@ -189,7 +198,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
       - name: Run suite
         run: |
@@ -203,7 +213,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
       - name: Run suite
         run: |
@@ -217,7 +228,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: '1.26'
+          check-latest: true
           cache: false
       - name: Run suite
         run: |
