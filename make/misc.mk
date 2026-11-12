@@ -21,8 +21,8 @@ install-observability: ## Install the kuadrant observability stack
 
 .PHONY: install-coredns
 install-coredns: COREDNS_KUSTOMIZATION=config/coredns
-install-coredns: kustomize ## Install CoreDNS
-	${KUSTOMIZE} build --enable-helm ${COREDNS_KUSTOMIZATION} | kubectl apply -f -
+install-coredns: kustomize helm ## Install CoreDNS
+	${KUSTOMIZE} build --enable-helm --helm-command ${HELM} ${COREDNS_KUSTOMIZATION} | kubectl apply -f -
 	kubectl wait --timeout=90s --for=condition=Ready=True pods -A -l app.kubernetes.io/name=coredns
 
 .PHONY: install-coredns-unmonitored

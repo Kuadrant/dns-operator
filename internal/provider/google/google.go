@@ -147,6 +147,8 @@ func NewProviderFromSecret(ctx context.Context, s *corev1.Secret, c provider.Con
 
 	project := string(s.Data[v1alpha1.GoogleProjectIDKey])
 
+	provider.ApplySecretZoneFilters(s, &c)
+
 	googleConfig := externaldnsgoogle.GoogleConfig{
 		Project:             project,
 		DomainFilter:        c.DomainFilter,

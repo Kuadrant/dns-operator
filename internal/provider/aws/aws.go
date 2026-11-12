@@ -90,6 +90,8 @@ func NewProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Config)
 
 	route53Client := route53.NewFromConfig(cfg)
 
+	provider.ApplySecretZoneFilters(s, &c)
+
 	awsConfig := externaldnsprovideraws.AWSConfig{
 		DomainFilter:         c.DomainFilter,
 		ZoneIDFilter:         c.ZoneIDFilter,

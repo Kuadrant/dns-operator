@@ -6,6 +6,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	externaldnsprovider "sigs.k8s.io/external-dns/provider"
+
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
 func TestSanitizeError(t *testing.T) {
@@ -327,6 +333,74 @@ func Test_findDNSZoneForHost(t *testing.T) {
 				if gotSubdomain != tt.wantSubdomain {
 					t.Errorf("findDNSZoneForHost() gotSubdomain = %v, want %v", gotSubdomain, tt.wantSubdomain)
 				}
+			}
+		})
+	}
+}
+
+func TestApplySecretZoneFilters(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		secretData           map[string][]byte
+		inputConfig          Config
+		wantZoneIDConfigured bool
+		wantZoneIDMatch      string
+	}{
+		{
+			name:                 "empty secret data does not modify config",
+			secretData:           map[string][]byte{},
+			inputConfig:          Config{},
+			wantZoneIDConfigured: false,
+		},
+		{
+			name: "ZONE_ID_FILTER sets ZoneIDFilter",
+			secretData: map[string][]byte{
+				v1alpha1.ZoneIDFilterKey: []byte("/hostedzone/Z1234567890"),
+			},
+			inputConfig:          Config{},
+			wantZoneIDConfigured: true,
+			wantZoneIDMatch:      "/hostedzone/Z1234567890",
+		},
+		{
+			name: "ZONE_ID_FILTER does not override existing ZoneIDFilter",
+			secretData: map[string][]byte{
+				v1alpha1.ZoneIDFilterKey: []byte("/hostedzone/ZSECRET"),
+			},
+			inputConfig: Config{
+				ZoneIDFilter: externaldnsprovider.NewZoneIDFilter([]string{"/hostedzone/ZEXISTING"}),
+			},
+			wantZoneIDConfigured: true,
+			wantZoneIDMatch:      "/hostedzone/ZEXISTING",
+		},
+		{
+			name: "ZONE_ID_FILTER with whitespace is trimmed",
+			secretData: map[string][]byte{
+				v1alpha1.ZoneIDFilterKey: []byte("  /hostedzone/Z1234567890  "),
+			},
+			inputConfig:          Config{},
+			wantZoneIDConfigured: true,
+			wantZoneIDMatch:      "/hostedzone/Z1234567890",
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			secret := &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-secret"},
+				Data:       tt.secretData,
+			}
+			c := tt.inputConfig
+			ApplySecretZoneFilters(secret, &c)
+
+			if tt.wantZoneIDConfigured {
+				if !c.ZoneIDFilter.IsConfigured() {
+					t.Error("ZoneIDFilter.IsConfigured() = false, want true")
+				}
+				if tt.wantZoneIDMatch != "" && !c.ZoneIDFilter.Match(tt.wantZoneIDMatch) {
+					t.Errorf("ZoneIDFilter.Match(%q) = false, want true", tt.wantZoneIDMatch)
+				}
+			} else if c.ZoneIDFilter.IsConfigured() {
+				t.Error("ZoneIDFilter.IsConfigured() = true, want false")
 			}
 		})
 	}
