@@ -246,7 +246,7 @@ local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependenci
 .PHONY: local-setup-cluster-dns-providers
 local-setup-cluster-dns-providers: DEPLOYMENT_SCOPE=cluster
 local-setup-cluster-dns-providers: TEST_NAMESPACE=dnstest
-local-setup-cluster-dns-providers:
+local-setup-cluster-dns-providers: helm
 	@echo "local-setup: creating dns providers KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOYMENT_SCOPE=${DEPLOYMENT_SCOPE} TEST_NAMESPACE=${TEST_NAMESPACE}"
 	$(KUBECTL) config use-context kind-$(KIND_CLUSTER_NAME)
 	@if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
@@ -254,7 +254,7 @@ local-setup-cluster-dns-providers:
 		$(MAKE) -s local-setup-dns-providers TARGET_NAMESPACE=${TEST_NAMESPACE} ;\
 	else\
 		$(MAKE) -s generate-common-dns-provider-kustomization ;\
-		$(KUSTOMIZE) build --enable-helm $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f - ;\
+		$(KUSTOMIZE) build --enable-helm --helm-command $(HELM) $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f - ;\
 	fi ;\
 
 	@echo "local-setup: Check dns providers"
@@ -386,8 +386,8 @@ deploy: manifests set-image-refs ## Deploy controller to the K8s cluster specifi
 	$(KUSTOMIZE) build ${DEPLOY_KUSTOMIZATION} | $(KUBECTL) apply -f -
 
 .PHONY: deploy-namespaced
-deploy-namespaced: manifests set-image-refs remove-cluster-overlay generate-cluster-overlay ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build --enable-helm $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f -
+deploy-namespaced: manifests set-image-refs remove-cluster-overlay generate-cluster-overlay helm ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+	$(KUSTOMIZE) build --enable-helm --helm-command $(HELM) $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
