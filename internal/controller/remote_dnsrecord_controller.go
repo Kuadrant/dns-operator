@@ -153,7 +153,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 		if dnsRecord.HasDNSZoneAssigned() {
 			// Create a dns provider with config calculated for the dnsRecord dns record status (Last successful)
-			dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
+			dnsProvider, err := r.getDNSProvider(ctx, dnsRecord, true)
 			if err != nil {
 				logger.Error(err, "Failed to load DNS Provider")
 				dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
@@ -211,7 +211,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 	}
 
 	// Create a dns provider for the dnsRecord record, must have an owner and zone assigned or will throw an error
-	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
+	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord, false)
 	if err != nil {
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			"DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))

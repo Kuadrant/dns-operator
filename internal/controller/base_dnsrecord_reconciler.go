@@ -70,11 +70,14 @@ func (r *BaseDNSRecordReconciler) setLogger(ctx context.Context, logger logr.Log
 	return log.IntoContext(ctx, logger), logger
 }
 
-// getDNSProvider returns a Provider configured for the given DNSRecord
+// getDNSProvider returns a Provider configured for the given DNSRecord.
 // If no zone/id/domain has been assigned to the given record, an error is thrown.
 // If no owner has been assigned to the given record, an error is thrown.
 // If the provider can't be initialised, an error is thrown.
-func (r *BaseDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord DNSRecordAccessor) (provider.Provider, error) {
+// When skipSecretZoneFilter is true, the provider secret's ZONE_ID_FILTER will
+// not override the zone ID from the record status. This is used during deletion
+// to ensure cleanup targets the zone where records were originally published.
+func (r *BaseDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord DNSRecordAccessor, skipSecretZoneFilter bool) (provider.Provider, error) {
 	var err error
 	if !dnsRecord.HasOwnerIDAssigned() {
 		err = errors.Join(fmt.Errorf("has no ownerID assigned"))
@@ -86,10 +89,11 @@ func (r *BaseDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord 
 		return nil, err
 	}
 	providerConfig := provider.Config{
-		HostDomainFilter: externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetRootHost()}),
-		DomainFilter:     externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetZoneDomainName()}),
-		ZoneTypeFilter:   externaldnsprovider.NewZoneTypeFilter(""),
-		ZoneIDFilter:     externaldnsprovider.NewZoneIDFilter([]string{dnsRecord.GetZoneID()}),
+		HostDomainFilter:     externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetRootHost()}),
+		DomainFilter:         externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetZoneDomainName()}),
+		ZoneTypeFilter:       externaldnsprovider.NewZoneTypeFilter(""),
+		ZoneIDFilter:         externaldnsprovider.NewZoneIDFilter([]string{dnsRecord.GetZoneID()}),
+		SkipSecretZoneFilter: skipSecretZoneFilter,
 	}
 	return r.ProviderFactory.ProviderFor(ctx, dnsRecord.GetDNSRecord(), providerConfig)
 }

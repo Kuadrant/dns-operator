@@ -362,7 +362,7 @@ func TestApplySecretZoneFilters(t *testing.T) {
 			wantZoneIDMatch:      "/hostedzone/Z1234567890",
 		},
 		{
-			name: "ZONE_ID_FILTER does not override existing ZoneIDFilter",
+			name: "ZONE_ID_FILTER overrides existing ZoneIDFilter",
 			secretData: map[string][]byte{
 				v1alpha1.ZoneIDFilterKey: []byte("/hostedzone/ZSECRET"),
 			},
@@ -370,7 +370,7 @@ func TestApplySecretZoneFilters(t *testing.T) {
 				ZoneIDFilter: externaldnsprovider.NewZoneIDFilter([]string{"/hostedzone/ZEXISTING"}),
 			},
 			wantZoneIDConfigured: true,
-			wantZoneIDMatch:      "/hostedzone/ZEXISTING",
+			wantZoneIDMatch:      "/hostedzone/ZSECRET",
 		},
 		{
 			name: "ZONE_ID_FILTER with whitespace is trimmed",
@@ -380,6 +380,18 @@ func TestApplySecretZoneFilters(t *testing.T) {
 			inputConfig:          Config{},
 			wantZoneIDConfigured: true,
 			wantZoneIDMatch:      "/hostedzone/Z1234567890",
+		},
+		{
+			name: "SkipSecretZoneFilter preserves existing ZoneIDFilter",
+			secretData: map[string][]byte{
+				v1alpha1.ZoneIDFilterKey: []byte("/hostedzone/ZSECRET"),
+			},
+			inputConfig: Config{
+				ZoneIDFilter:         externaldnsprovider.NewZoneIDFilter([]string{"/hostedzone/ZEXISTING"}),
+				SkipSecretZoneFilter: true,
+			},
+			wantZoneIDConfigured: true,
+			wantZoneIDMatch:      "/hostedzone/ZEXISTING",
 		},
 	}
 

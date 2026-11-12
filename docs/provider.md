@@ -27,18 +27,19 @@ kubectl create secret generic my-aws-credentials \
   --from-literal=AWS_SECRET_ACCESS_KEY=XXX
 ```
 
-| Key                      | Example Value           | Description                                           |
-|--------------------------|-------------------------|-------------------------------------------------------|
-| `AWS_REGION`             | `eu-west-1`             | AWS Region                                            |
-| `AWS_ACCESS_KEY_ID`      | `XXXX`                  | AWS Access Key ID (see note on permissions below)     |
-| `AWS_SECRET_ACCESS_KEY`  | `XXXX`                  | AWS Secret Access Key                                 |
+| Key                      | Example Value                      | Description                                                              |
+|--------------------------|------------------------------------|--------------------------------------------------------------------------|
+| `AWS_REGION`             | `eu-west-1`                        | AWS Region                                                               |
+| `AWS_ACCESS_KEY_ID`      | `XXXX`                             | AWS Access Key ID (see note on permissions below)                        |
+| `AWS_SECRET_ACCESS_KEY`  | `XXXX`                             | AWS Secret Access Key                                                    |
+| `ZONE_ID_FILTER`         | `/hostedzone/Z08187901Y93585DDGM6K`| (Optional) Restrict to a specific hosted zone ID (see [Zone Filtering](#zone-filtering)) |
 
 #### AWS IAM Permissions Required 
 We have tested using the available policy `AmazonRoute53FullAccess` however it should also be possible to restrict the credential down to a particular zone. More info can be found in the AWS docs:
 
 [https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/access-control-managing-permissions.html](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/access-control-managing-permissions.html)
 
-By default, Kuadrant will list the available zones and find the matching zone based on the listener host in the gateway listener. If it finds more than one matching zone for a given listener host, it will not update any of those zones. 
+By default, Kuadrant will list the available zones and find the matching zone based on the listener host in the gateway listener. If it finds more than one matching zone for a given listener host, it will not update any of those zones. To resolve this ambiguity, use `ZONE_ID_FILTER` in your provider secret to select the intended zone (see [Zone Filtering](#zone-filtering)).
 When providing a credential you should limit that credential down to just have write access to the zones you want Kuadrant to manage. Below is an example of a an AWS policy for doing this type of thing:
 
 ```
@@ -99,10 +100,11 @@ kubectl create secret generic my-test-gcp-credentials \
   --from-file=GOOGLE=$HOME/.config/gcloud/application_default_credentials.json
 ```
 
-| Env Var      | Example Value                                                                                  | Description                                                                                                           |
-|--------------|------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| `GOOGLE`     | `{"client_id": "***","client_secret": "***","refresh_token": "***","type": "authorized_user"}` | This is the JSON created from either the credential created by the `gcloud` CLI, or the JSON from the Service account |
-| `PROJECT_ID` | `my_project_id`                                                                                | ID to the Google project                                                                                              |
+| Key              | Example Value                                                                                  | Description                                                                                                           |
+|------------------|------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `GOOGLE`         | `{"client_id": "***","client_secret": "***","refresh_token": "***","type": "authorized_user"}` | This is the JSON created from either the credential created by the `gcloud` CLI, or the JSON from the Service account |
+| `PROJECT_ID`     | `my_project_id`                                                                                | ID to the Google project                                                                                              |
+| `ZONE_ID_FILTER` | `1234567890`                                                                                   | (Optional) Restrict to a specific zone by numeric ID (see [Zone Filtering](#zone-filtering))                          |
 
 
 #### Google Cloud DNS Access permissions required
@@ -210,3 +212,50 @@ kubectl label secret my-coredns-credentials \
   -n kuadrant-dns-system \
   kuadrant.io/default-provider=true
 ```
+
+## Zone Filtering
+
+By default, Kuadrant lists all zones visible to the provider credentials and selects the best match for a given hostname. If multiple zones share the same domain name, zone selection is ambiguous and the operator reports a `DNSProviderError` with `multiple zones found for host`.
+
+This commonly occurs with **split-horizon DNS** setups — for example, AWS Route 53 environments with both a public and a private hosted zone for the same domain.
+
+To resolve this, add the optional `ZONE_ID_FILTER` key to your provider secret. This restricts zone discovery to the specified zone ID, removing the ambiguity.
+
+### AWS Route 53 Example
+
+Find your hosted zone ID:
+
+```bash
+aws route53 list-hosted-zones --query "HostedZones[?Name=='example.com.'].[Id,Name,Config.PrivateZone]" --output table
+```
+
+Add `ZONE_ID_FILTER` to your provider secret to select the public zone:
+
+```bash
+kubectl create secret generic my-aws-credentials \
+  --namespace=kuadrant-dns-system \
+  --type=kuadrant.io/aws \
+  --from-literal=AWS_ACCESS_KEY_ID=XXXX \
+  --from-literal=AWS_SECRET_ACCESS_KEY=XXXX \
+  --from-literal=AWS_REGION=eu-west-1 \
+  --from-literal=ZONE_ID_FILTER=/hostedzone/Z08187901Y93585DDGM6K
+```
+
+### Google Cloud DNS Example
+
+For Google Cloud DNS, `ZONE_ID_FILTER` matches against both the numeric zone ID and the managed zone name. Use the numeric ID to avoid suffix collisions between similarly named zones (e.g. `my-zone` would also match `prod-my-zone`):
+
+```bash
+gcloud dns managed-zones list --filter="dnsName=example.com." --format="table(id,name,dnsName,visibility)"
+```
+
+```bash
+kubectl create secret generic my-gcp-credentials \
+  --namespace=kuadrant-dns-system \
+  --type=kuadrant.io/gcp \
+  --from-literal=PROJECT_ID=my-project \
+  --from-file=GOOGLE=credentials.json \
+  --from-literal=ZONE_ID_FILTER=1234567890
+```
+
+**Note:** Setting `ZONE_ID_FILTER` restricts the provider to a single zone. All DNSRecords using this provider secret will be scoped to that zone. If you need to manage records across multiple zones, use separate provider secrets.

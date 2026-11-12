@@ -96,12 +96,18 @@ type Config struct {
 	ZoneTypeFilter externaldnsprovider.ZoneTypeFilter
 	// only consider hosted zones ending with this zone id
 	ZoneIDFilter externaldnsprovider.ZoneIDFilter
+	// when true, ApplySecretZoneFilters will not override ZoneIDFilter
+	SkipSecretZoneFilter bool
 }
 
 // ApplySecretZoneFilters reads the optional ZONE_ID_FILTER key from the provider
-// secret and applies it to the config when the config doesn't already specify one.
+// secret and applies it to the config, overriding any existing ZoneIDFilter.
+// Skipped when Config.SkipSecretZoneFilter is true (e.g. during deletion).
 func ApplySecretZoneFilters(s *v1.Secret, c *Config) {
-	if zoneID := strings.TrimSpace(string(s.Data[v1alpha1.ZoneIDFilterKey])); zoneID != "" && !c.ZoneIDFilter.IsConfigured() {
+	if c.SkipSecretZoneFilter {
+		return
+	}
+	if zoneID := strings.TrimSpace(string(s.Data[v1alpha1.ZoneIDFilterKey])); zoneID != "" {
 		c.ZoneIDFilter = externaldnsprovider.NewZoneIDFilter([]string{zoneID})
 	}
 }

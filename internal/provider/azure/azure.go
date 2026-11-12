@@ -62,8 +62,6 @@ func NewAzureProviderFromSecret(ctx context.Context, s *v1.Secret, c provider.Co
 		WithValues("tenantId", azureConfig.TenantID, "resourceGroup", azureConfig.ResourceGroup)
 	ctx = crlog.IntoContext(ctx, logger)
 
-	provider.ApplySecretZoneFilters(s, &c)
-
 	azureConfig.DomainFilter = c.DomainFilter
 	azureConfig.ZoneNameFilter = c.DomainFilter
 	azureConfig.IDFilter = c.ZoneIDFilter

@@ -39,6 +39,10 @@ const (
 	// hosted zones share the same domain name.
 	ZoneIDFilterKey = "ZONE_ID_FILTER"
 
+	// ZoneIDFilterAnnotation records the ZONE_ID_FILTER value that was active
+	// when the zone was assigned. Used to detect changes that could orphan records.
+	ZoneIDFilterAnnotation = "kuadrant.io/zone-id-filter"
+
 	// SecretTypeKuadrantGCP contains data needed for gcp(google cloud dns) authentication and configuration.
 	//
 	// Required fields:
