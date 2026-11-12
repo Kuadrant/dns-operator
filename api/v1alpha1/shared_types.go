@@ -33,6 +33,12 @@ const (
 	// AWSRegionKey is the key of the optional region for SecretTypeKuadrantAWS provider secrets
 	AWSRegionKey = "AWS_REGION"
 
+	// ZoneIDFilterKey is the key of the optional zone ID filter for provider secrets.
+	// When set, only the zone with this specific ID is considered during zone
+	// discovery. This disambiguates split-horizon DNS setups where multiple
+	// hosted zones share the same domain name.
+	ZoneIDFilterKey = "ZONE_ID_FILTER"
+
 	// SecretTypeKuadrantGCP contains data needed for gcp(google cloud dns) authentication and configuration.
 	//
 	// Required fields:

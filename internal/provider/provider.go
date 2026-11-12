@@ -10,9 +10,12 @@ import (
 
 	"golang.org/x/net/publicsuffix"
 
+	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	externaldnsendpoint "sigs.k8s.io/external-dns/endpoint"
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
+
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
 )
 
 type DNSProviderName string
@@ -93,6 +96,14 @@ type Config struct {
 	ZoneTypeFilter externaldnsprovider.ZoneTypeFilter
 	// only consider hosted zones ending with this zone id
 	ZoneIDFilter externaldnsprovider.ZoneIDFilter
+}
+
+// ApplySecretZoneFilters reads the optional ZONE_ID_FILTER key from the provider
+// secret and applies it to the config when the config doesn't already specify one.
+func ApplySecretZoneFilters(s *v1.Secret, c *Config) {
+	if zoneID := strings.TrimSpace(string(s.Data[v1alpha1.ZoneIDFilterKey])); zoneID != "" && !c.ZoneIDFilter.IsConfigured() {
+		c.ZoneIDFilter = externaldnsprovider.NewZoneIDFilter([]string{zoneID})
+	}
 }
 
 type ProviderSpecificLabels struct {
