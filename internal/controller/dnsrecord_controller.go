@@ -73,37 +73,6 @@ type DNSRecordReconciler struct {
 
 var _ reconcile.TypedReconciler[reconcile.Request] = &DNSRecordReconciler{}
 
-func (r *DNSRecordReconciler) getProviderSecretZoneIDFilter(ctx context.Context, dnsRecord DNSRecordAccessor) (string, error) {
-	secretName := dnsRecord.GetProviderRef().Name
-	if secretName == "" {
-		return "", nil
-	}
-	pSecret := &v1.Secret{}
-	if err := r.Client.Get(ctx, client.ObjectKey{
-		Namespace: dnsRecord.GetNamespace(),
-		Name:      secretName,
-	}, pSecret); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(pSecret.Data[v1alpha1.ZoneIDFilterKey])), nil
-}
-
-func (r *DNSRecordReconciler) validateZoneIDFilter(ctx context.Context, dnsRecord DNSRecordAccessor) error {
-	annotations := dnsRecord.GetDNSRecord().GetAnnotations()
-	savedFilter, exists := annotations[v1alpha1.ZoneIDFilterAnnotation]
-	if !exists {
-		return nil
-	}
-	currentFilter, err := r.getProviderSecretZoneIDFilter(ctx, dnsRecord)
-	if err != nil {
-		return err
-	}
-	if savedFilter != currentFilter {
-		return fmt.Errorf("ZONE_ID_FILTER in provider secret changed from %q to %q since zone was assigned; delete the DNSRecord and recreate it to use the new filter", savedFilter, currentFilter)
-	}
-	return nil
-}
-
 func postReconcile(ctx context.Context, name, ns string, startTime time.Time) {
 	log.FromContext(ctx).Info(fmt.Sprintf("Reconciled DNSRecord %s from namespace %s in %s", name, ns, time.Since(startTime)))
 }
@@ -315,17 +284,6 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if !dnsRecord.HasDNSZoneAssigned() {
 		logger.Info(fmt.Sprintf("provider zone not assigned for root host %s, finding suitable zone", dnsRecord.GetRootHost()))
 
-		// Capture the ZONE_ID_FILTER before discovery so the annotation records
-		// the exact value used, not a potentially newer one from a concurrent update.
-		var discoveryZoneFilter string
-		if !dnsRecord.IsDelegating() {
-			filter, err := r.getProviderSecretZoneIDFilter(ctx, dnsRecord)
-			if err != nil {
-				return r.updateStatus(ctx, previous, dnsRecord, false, err)
-			}
-			discoveryZoneFilter = filter
-		}
-
 		// Create a dns provider with no config to list all potential zones available from the configured provider
 		p, err := r.ProviderFactory.ProviderFor(ctx, dnsRecord.GetDNSRecord(), provider.Config{})
 		if err != nil {
@@ -345,33 +303,28 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		dnsRecord.SetStatusZoneID(z.ID)
 		dnsRecord.SetStatusZoneDomainName(z.DNSName)
 
-		// Record the ZONE_ID_FILTER that was active during zone discovery
-		if !dnsRecord.IsDelegating() {
-			annotations := dnsRecord.GetDNSRecord().GetAnnotations()
-			if annotations == nil {
-				annotations = map[string]string{}
-			}
-			annotations[v1alpha1.ZoneIDFilterAnnotation] = discoveryZoneFilter
-			dnsRecord.GetDNSRecord().SetAnnotations(annotations)
-		}
-
 		//Update logger and context so it includes updated zone metadata
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 	}
 
 	dnsRecord = r.applyGroupAdapter(ctx, r.Client, dnsRecord)
 
-	// Validate ZONE_ID_FILTER hasn't changed since zone was assigned
-	if !dnsRecord.IsDelegating() {
-		if err := r.validateZoneIDFilter(ctx, dnsRecord); err != nil {
-			dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
-				string(v1alpha1.ConditionReasonProviderError), err.Error())
-			return r.updateStatus(ctx, previous, dnsRecord, false, err)
-		}
+	// Check the provider secret's ZONE_ID_FILTER still selects the zone this record is
+	// publishing to. If it doesn't, keep publishing to the assigned zone instead of
+	// letting the filter move the record to a zone its endpoints were never published in.
+	selectsAssignedZone, zoneIDFilter, err := r.secretZoneFilterSelectsAssignedZone(ctx, r.Client, dnsRecord)
+	if err != nil {
+		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+			string(v1alpha1.ConditionReasonProviderError), fmt.Sprintf("The dns provider secret could not be read: %v", err))
+		return r.updateStatus(ctx, previous, dnsRecord, false, err)
+	}
+	if !selectsAssignedZone {
+		logger.Info("ZONE_ID_FILTER does not select the zone assigned to this record, continuing to publish to the assigned zone. Delete and recreate the DNSRecord to move it to the filtered zone",
+			"zoneIDFilter", zoneIDFilter)
 	}
 
 	// Create a dns provider for the current record, must have an owner and zone assigned or will throw an error
-	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord, false)
+	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord, !selectsAssignedZone)
 	if err != nil {
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			string(v1alpha1.ConditionReasonProviderError), fmt.Sprintf("The dns provider could not be loaded: %v", err))
@@ -390,8 +343,18 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
 	}
 
-	// Ensure provider labels are added
-	if !dnsRecord.IsDelegating() && common.MergeLabels(dnsRecord.GetDNSRecord(), dnsProvider.Labels()) {
+	// Record the ZONE_ID_FILTER this record is publishing under. Not recorded for a
+	// record publishing to a zone the current filter doesn't select, since that record
+	// is still publishing under whatever filter was in place when its zone was assigned.
+	annotationChanged := false
+	if !dnsRecord.IsDelegating() && selectsAssignedZone {
+		annotationChanged = common.SetAnnotation(dnsRecord.GetDNSRecord(), v1alpha1.ZoneIDFilterAnnotation, zoneIDFilter)
+	}
+
+	// Ensure provider labels and the zone filter annotation are added.
+	// MergeLabels mutates the record, so it must be evaluated before annotationChanged.
+	if !dnsRecord.IsDelegating() &&
+		(common.MergeLabels(dnsRecord.GetDNSRecord(), dnsProvider.Labels()) || annotationChanged) {
 		logger.Info("Adding provider labels")
 		err = r.Update(ctx, dnsRecord.GetDNSRecord())
 		if err != nil {

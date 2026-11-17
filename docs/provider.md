@@ -259,3 +259,5 @@ kubectl create secret generic my-gcp-credentials \
 ```
 
 **Note:** Setting `ZONE_ID_FILTER` restricts the provider to a single zone. All DNSRecords using this provider secret will be scoped to that zone. If you need to manage records across multiple zones, use separate provider secrets.
+
+**Note:** Changing `ZONE_ID_FILTER` never moves endpoints that are already published. A DNSRecord that was assigned to a zone the new filter does not select keeps publishing to the zone it was assigned to, and the operator logs that the filter was ignored for that record. Delete and recreate the DNSRecord if you want it reassigned to the filtered zone.

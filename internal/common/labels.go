@@ -23,3 +23,21 @@ func MergeLabels(object metav1.Object, labels map[string]string) bool {
 	object.SetLabels(objLabels)
 	return updated
 }
+
+// SetAnnotation sets the given annotation on an object and reports whether the
+// object was changed as a result
+func SetAnnotation(object metav1.Object, key, value string) bool {
+	annotations := object.GetAnnotations()
+
+	if annotations[key] == value {
+		return false
+	}
+
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	annotations[key] = value
+
+	object.SetAnnotations(annotations)
+	return true
+}
