@@ -139,7 +139,7 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		if dnsRecord.HasDNSZoneAssigned() {
 			// Create a dns provider with config calculated for the current dns record status (Last successful)
-			dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
+			dnsProvider, err := r.getDNSProvider(ctx, dnsRecord, true)
 			if err != nil {
 				logger.Error(err, "Failed to load DNS Provider")
 				dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
@@ -309,8 +309,22 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	dnsRecord = r.applyGroupAdapter(ctx, r.Client, dnsRecord)
 
+	// Check the provider secret's ZONE_ID_FILTER still selects the zone this record is
+	// publishing to. If it doesn't, keep publishing to the assigned zone instead of
+	// letting the filter move the record to a zone its endpoints were never published in.
+	selectsAssignedZone, zoneIDFilter, err := r.secretZoneFilterSelectsAssignedZone(ctx, r.Client, dnsRecord)
+	if err != nil {
+		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+			string(v1alpha1.ConditionReasonProviderError), fmt.Sprintf("The dns provider secret could not be read: %v", err))
+		return r.updateStatus(ctx, previous, dnsRecord, false, err)
+	}
+	if !selectsAssignedZone {
+		logger.Info("ZONE_ID_FILTER does not select the zone assigned to this record, continuing to publish to the assigned zone. Delete and recreate the DNSRecord to move it to the filtered zone",
+			"zoneIDFilter", zoneIDFilter)
+	}
+
 	// Create a dns provider for the current record, must have an owner and zone assigned or will throw an error
-	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
+	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord, !selectsAssignedZone)
 	if err != nil {
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			string(v1alpha1.ConditionReasonProviderError), fmt.Sprintf("The dns provider could not be loaded: %v", err))
@@ -329,8 +343,18 @@ func (r *DNSRecordReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.updateStatusAndRequeue(ctx, r.Client, previous, dnsRecord, InactiveGroupRequeueTime)
 	}
 
-	// Ensure provider labels are added
-	if !dnsRecord.IsDelegating() && common.MergeLabels(dnsRecord.GetDNSRecord(), dnsProvider.Labels()) {
+	// Record the ZONE_ID_FILTER this record is publishing under. Not recorded for a
+	// record publishing to a zone the current filter doesn't select, since that record
+	// is still publishing under whatever filter was in place when its zone was assigned.
+	annotationChanged := false
+	if !dnsRecord.IsDelegating() && selectsAssignedZone {
+		annotationChanged = common.SetAnnotation(dnsRecord.GetDNSRecord(), v1alpha1.ZoneIDFilterAnnotation, zoneIDFilter)
+	}
+
+	// Ensure provider labels and the zone filter annotation are added.
+	// MergeLabels mutates the record, so it must be evaluated before annotationChanged.
+	if !dnsRecord.IsDelegating() &&
+		(common.MergeLabels(dnsRecord.GetDNSRecord(), dnsProvider.Labels()) || annotationChanged) {
 		logger.Info("Adding provider labels")
 		err = r.Update(ctx, dnsRecord.GetDNSRecord())
 		if err != nil {

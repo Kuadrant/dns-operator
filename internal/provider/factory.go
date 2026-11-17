@@ -145,6 +145,7 @@ func (f *factory) ProviderForSecret(ctx context.Context, pSecret *v1.Secret, pCo
 		if !slices.Contains(f.providers, providerName) {
 			return nil, fmt.Errorf("provider '%s' not enabled", providerName)
 		}
+		ApplySecretZoneFilters(pSecret, &pConfig)
 		logger.V(1).Info(fmt.Sprintf("initializing %s provider with config", providerName), "config", pConfig)
 		switch typedConstructor := constructor.(type) {
 		case ProviderConstructor:
