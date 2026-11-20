@@ -1,6 +1,6 @@
 module geoip
 
-go 1.26.7
+go 1.27.3
 
 require github.com/maxmind/mmdbwriter v1.0.0
 
