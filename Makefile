@@ -502,6 +502,7 @@ $(YQ): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@$(YQ_VERSION)
 
 .PHONY: helm
+ifneq ($(findstring /,$(HELM)),)
 helm: $(HELM) ## Download helm locally if necessary.
 $(HELM):
 	@{ \
@@ -514,6 +515,9 @@ $(HELM):
 	chmod +x $(HELM) ;\
 	rm -rf $${OS}-$${ARCH} helm.tar.gz ;\
 	}
+else
+helm: ## Use helm from PATH ($(HELM)); nothing to download.
+endif
 
 .PHONY: ginkgo
 ginkgo: $(GINKGO) ## Download ginkgo locally if necessary
