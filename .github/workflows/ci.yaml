@@ -15,6 +15,9 @@ on:
     types: [checks_requested]
   workflow_dispatch:
 
+env:
+  GOTOOLCHAIN: go1.27.3+auto # default for all jobs; strict code jobs override
+
 jobs:
   pre-job:
     runs-on: ubuntu-latest
@@ -34,8 +37,6 @@ jobs:
     if: needs.pre-job.outputs.should_skip != 'true'
     needs: pre-job
     runs-on: ubuntu-latest
-    env:
-      GOTOOLCHAIN: go1.27.3+auto
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # ratchet:actions/setup-go@v6
@@ -71,8 +72,6 @@ jobs:
     if: needs.pre-job.outputs.should_skip != 'true'
     needs: pre-job
     runs-on: ubuntu-latest
-    env:
-      GOTOOLCHAIN: go1.27.3+auto
     steps:
       - name: Check out code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
@@ -90,8 +89,6 @@ jobs:
     if: needs.pre-job.outputs.should_skip != 'true'
     needs: pre-job
     runs-on: ubuntu-latest
-    env:
-      GOTOOLCHAIN: go1.27.3+auto
     steps:
       - name: Check out code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
@@ -109,8 +106,6 @@ jobs:
     if: needs.pre-job.outputs.should_skip != 'true'
     needs: pre-job
     runs-on: ubuntu-latest
-    env:
-      GOTOOLCHAIN: go1.27.3+auto
     steps:
       - name: Check out code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
@@ -147,8 +142,6 @@ jobs:
     if: needs.pre-job.outputs.should_skip != 'true'
     needs: pre-job
     runs-on: ubuntu-latest
-    env:
-      GOTOOLCHAIN: go1.27.3+auto
     steps:
       - name: Check out code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
@@ -185,8 +178,6 @@ jobs:
     if: needs.pre-job.outputs.should_skip != 'true'
     needs: pre-job
     runs-on: ubuntu-latest
-    env:
-      GOTOOLCHAIN: go1.27.3+auto
     steps:
       - name: Check out code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # ratchet:actions/checkout@v4
