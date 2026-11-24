@@ -1,6 +1,10 @@
 # Build the manager binary
-FROM registry.access.redhat.com/ubi10/go-toolset:1.27.3 AS builder
-ENV GOTOOLCHAIN=local
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi10/go-toolset:1.27.3 AS builder
+# Red Hat's Go defaults to GOAMD64=v3 and GOPPC64=power9; pin the baselines of
+# the previous golang builder image so the binaries keep running on older hosts.
+ENV GOTOOLCHAIN=local \
+    GOAMD64=v1 \
+    GOPPC64=power8
 ARG TARGETOS
 ARG TARGETARCH
 
