@@ -1576,7 +1576,18 @@ func TestFailGenerateTXT(t *testing.T) {
 }
 
 func TestTXTRegistryApplyChangesEncrypt(t *testing.T) {
-	t.Skip("TODO: Fix Go 1.27 compatibility - test fails with 'record not found' error")
+	// Go 1.27 changed compress/flate output, so a ciphertext hardcoded under an
+	// older toolchain no longer round-trips byte-identically through a
+	// decrypt/re-encrypt cycle. Generate the encrypted target at runtime with a
+	// fixed nonce instead; the point of this test is that the nonce is reused
+	// when deleting records.
+	initialLabels := endpoint.Labels{
+		endpoint.OwnerLabelKey: "owner1",
+		txtVersionKey:          txtFormatVersion,
+		"txt-encryption-nonce": "bqnDtPa1Eo9P4xsu",
+	}
+	encryptedTarget := initialLabels.Serialize(true, true, []byte("12345678901234567890123456789012"))
+
 	p := inmemory.NewInMemoryProvider()
 	p.CreateZone(testZone)
 	ctxEndpoints := []*endpoint.Endpoint{}
@@ -1588,7 +1599,7 @@ func TestTXTRegistryApplyChangesEncrypt(t *testing.T) {
 			// joined target:
 			// key: value
 			// txt-encryption-nonce: bqnDtPa1Eo9P4xsu
-			newEndpointWithOwnedRecord("txt.2tqs20a7-cname-foobar.test-zone.example.org", endpoint.RecordTypeTXT, "foobar.test-zone.example.org", "\"bqnDtPa1Eo9P4xsu1Qo+YZJ1sD+VoEvSVYD/l8sYGtdl25Rg7bffPWJxIS0DextjU93bTH/3eMFc8Gz4KGLPLUnlSkbo/dEDE6LbCZihI+HopxC0m4XA4p0MrQs6D84symwFmBlN\""),
+			newEndpointWithOwnedRecord("txt.2tqs20a7-cname-foobar.test-zone.example.org", endpoint.RecordTypeTXT, "foobar.test-zone.example.org", encryptedTarget),
 		},
 	})
 
@@ -1606,7 +1617,7 @@ func TestTXTRegistryApplyChangesEncrypt(t *testing.T) {
 				"txt-encryption-nonce": "bqnDtPa1Eo9P4xsu",
 			}, "foobar.loadbalancer.com"),
 			// should not be split into two targets - second label is a nonce
-			newEndpointWithOwnedRecord("txt.2tqs20a7-cname-foobar.test-zone.example.org", endpoint.RecordTypeTXT, "foobar.test-zone.example.org", "\"bqnDtPa1Eo9P4xsu1Qo+YZJ1sD+VoEvSVYD/l8sYGtdl25Rg7bffPWJxIS0DextjU93bTH/3eMFc8Gz4KGLPLUnlSkbo/dEDE6LbCZihI+HopxC0m4XA4p0MrQs6D84symwFmBlN\""),
+			newEndpointWithOwnedRecord("txt.2tqs20a7-cname-foobar.test-zone.example.org", endpoint.RecordTypeTXT, "foobar.test-zone.example.org", encryptedTarget),
 		},
 	}
 
