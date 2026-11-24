@@ -1,6 +1,6 @@
 # Build the manager binary
-FROM registry.access.redhat.com/ubi10/go-toolset:1.27 AS builder
-ENV GOTOOLCHAIN=go1.27.3
+FROM registry.access.redhat.com/ubi10/go-toolset:1.27.3 AS builder
+ENV GOTOOLCHAIN=local
 ARG TARGETOS
 ARG TARGETARCH
 
