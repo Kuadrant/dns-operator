@@ -531,9 +531,10 @@ golangci-lint: $(GOLANGCI_LINT_V_BINARY) ## Download golangci-lint locally if ne
 	@ln -sf $(abspath $(GOLANGCI_LINT_V_BINARY)) $(GOLANGCI_LINT)
 else
 golangci-lint: ## Use the custom GOLANGCI_LINT executable; nothing to download.
-	@test -x "$(GOLANGCI_LINT)" || { echo "GOLANGCI_LINT '$(GOLANGCI_LINT)' is not an executable"; exit 1; }
+	@command -v "$(GOLANGCI_LINT)" >/dev/null 2>&1 || { echo "GOLANGCI_LINT '$(GOLANGCI_LINT)' is not an executable"; exit 1; }
 endif
 $(GOLANGCI_LINT_V_BINARY): | $(LOCALBIN)
+	rm -f $(LOCALBIN)/golangci-lint
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$(GOLANGCI_LINT_VERSION)/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
 	@mv $(LOCALBIN)/golangci-lint $(GOLANGCI_LINT_V_BINARY)
 
