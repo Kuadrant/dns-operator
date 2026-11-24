@@ -1635,6 +1635,21 @@ func TestTXTRegistryApplyChangesEncrypt(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestTXTRegistryDecryptLegacyCiphertext keeps the cross-version canary that
+// TestTXTRegistryApplyChangesEncrypt lost when it started generating its
+// fixture at runtime: the ciphertext below was produced by a build with an
+// older compress/flate implementation. Decompression is backward compatible,
+// so records written by older builds must stay decryptable across toolchain
+// changes even though re-encryption is not byte-identical.
+func TestTXTRegistryDecryptLegacyCiphertext(t *testing.T) {
+	const legacyCiphertext = "bqnDtPa1Eo9P4xsu1Qo+YZJ1sD+VoEvSVYD/l8sYGtdl25Rg7bffPWJxIS0DextjU93bTH/3eMFc8Gz4KGLPLUnlSkbo/dEDE6LbCZihI+HopxC0m4XA4p0MrQs6D84symwFmBlN"
+
+	decryptResult, nonce, err := endpoint.DecryptText(legacyCiphertext, []byte("12345678901234567890123456789012"))
+	require.NoError(t, err)
+	assert.Equal(t, "heritage=external-dns,external-dns/owner=owner1,external-dns/version=1", decryptResult)
+	assert.Equal(t, "bqnDtPa1Eo9P4xsu", nonce)
+}
+
 // TestMultiClusterDifferentRecordTypeOwnership validates the registry handles environments where the same zone is managed by
 // external-dns in different clusters and the ingress record type is different. For example one uses A records and the other
 // uses CNAME. In this environment the first cluster that establishes the owner record should maintain ownership even
