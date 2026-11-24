@@ -1,6 +1,8 @@
 module github.com/kuadrant/dns-operator/coredns/plugin
 
-go 1.27.3
+go 1.27.0
+
+toolchain go1.27.3
 
 require (
 	github.com/coredns/caddy v1.1.4-0.20250930002214-15135a999495
