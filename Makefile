@@ -523,10 +523,10 @@ $(GINKGO): | $(LOCALBIN)
 GOLANGCI_LINT_V_BINARY := $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT_V_BINARY) ## Download golangci-lint locally if necessary.
+	@if [ "$(GOLANGCI_LINT)" = "$(LOCALBIN)/golangci-lint" ]; then ln -sf $(GOLANGCI_LINT_V_BINARY) $(GOLANGCI_LINT); fi
 $(GOLANGCI_LINT_V_BINARY): | $(LOCALBIN)
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$(GOLANGCI_LINT_VERSION)/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
 	@mv $(LOCALBIN)/golangci-lint $(GOLANGCI_LINT_V_BINARY)
-	@ln -sf $(GOLANGCI_LINT_V_BINARY) $(GOLANGCI_LINT)
 
 .PHONY: kube-burner
 kube-burner: $(KUBE_BURNER) ## Download kube-burner locally if necessary.
