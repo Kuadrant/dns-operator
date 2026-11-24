@@ -502,7 +502,7 @@ $(YQ): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@$(YQ_VERSION)
 
 .PHONY: helm
-ifneq ($(findstring /,$(HELM)),)
+ifeq ($(HELM),$(LOCALBIN)/helm)
 helm: $(HELM) ## Download helm locally if necessary.
 $(HELM):
 	@{ \
@@ -516,7 +516,8 @@ $(HELM):
 	rm -rf $${OS}-$${ARCH} helm.tar.gz ;\
 	}
 else
-helm: ## Use helm from PATH ($(HELM)); nothing to download.
+helm: ## Use helm from PATH or a custom location ($(HELM)); nothing to download.
+	@command -v "$(HELM)" >/dev/null 2>&1 || { echo "HELM '$(HELM)' is not an executable"; exit 1; }
 endif
 
 .PHONY: ginkgo
