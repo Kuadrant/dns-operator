@@ -38,6 +38,7 @@ type Zone struct {
 	rrData     map[string]rrData
 	RRResolver RRResolver
 	rname      string
+	nullmail   bool
 }
 
 func NewZone(name string, rname string) *Zone {

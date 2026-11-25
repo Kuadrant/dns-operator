@@ -36,6 +36,7 @@ type zoneInformers struct {
 func (zi *zoneInformers) refreshZone() {
 	log.Infof("updating zone %s", zi.zoneOrigin)
 	newZ := NewZone(zi.zoneOrigin, zi.zone.rname)
+	newZ.nullmail = zi.zone.nullmail
 
 	for _, informer := range zi.informers {
 		for _, obj := range informer.GetStore().List() {
@@ -49,6 +50,8 @@ func (zi *zoneInformers) refreshZone() {
 			}
 		}
 	}
+
+	applyMailProtection(newZ)
 
 	zi.zone.RefreshFrom(newZ)
 }

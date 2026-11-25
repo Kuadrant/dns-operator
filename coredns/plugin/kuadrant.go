@@ -25,6 +25,7 @@ type Kuadrant struct {
 	Zones
 	ConfigFile    string
 	ConfigContext string
+	NullMail      bool
 }
 
 func newKuadrant() *Kuadrant {

@@ -1,0 +1,9 @@
+k.example.com {
+   debug
+   errors
+   log
+   kuadrant {
+      kubeconfig /path/to/.kube/config
+      nullmail
+   }
+}
