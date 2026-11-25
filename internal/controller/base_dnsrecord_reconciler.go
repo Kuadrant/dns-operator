@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-logr/logr"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -20,6 +21,7 @@ import (
 	externaldnsprovider "sigs.k8s.io/external-dns/provider"
 	externaldnsregistry "sigs.k8s.io/external-dns/registry"
 
+	"github.com/kuadrant/dns-operator/api/v1alpha1"
 	"github.com/kuadrant/dns-operator/internal/common"
 	"github.com/kuadrant/dns-operator/internal/external-dns/plan"
 	"github.com/kuadrant/dns-operator/internal/external-dns/registry"
@@ -70,11 +72,15 @@ func (r *BaseDNSRecordReconciler) setLogger(ctx context.Context, logger logr.Log
 	return log.IntoContext(ctx, logger), logger
 }
 
-// getDNSProvider returns a Provider configured for the given DNSRecord
+// getDNSProvider returns a Provider configured for the given DNSRecord.
 // If no zone/id/domain has been assigned to the given record, an error is thrown.
 // If no owner has been assigned to the given record, an error is thrown.
 // If the provider can't be initialised, an error is thrown.
-func (r *BaseDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord DNSRecordAccessor) (provider.Provider, error) {
+// When skipSecretZoneFilter is true, the provider secret's ZONE_ID_FILTER will
+// not override the zone ID from the record status. This is used during deletion
+// to ensure cleanup targets the zone where records were originally published, and
+// for records whose assigned zone the secret's filter no longer selects.
+func (r *BaseDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord DNSRecordAccessor, skipSecretZoneFilter bool) (provider.Provider, error) {
 	var err error
 	if !dnsRecord.HasOwnerIDAssigned() {
 		err = errors.Join(fmt.Errorf("has no ownerID assigned"))
@@ -86,12 +92,50 @@ func (r *BaseDNSRecordReconciler) getDNSProvider(ctx context.Context, dnsRecord 
 		return nil, err
 	}
 	providerConfig := provider.Config{
-		HostDomainFilter: externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetRootHost()}),
-		DomainFilter:     externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetZoneDomainName()}),
-		ZoneTypeFilter:   externaldnsprovider.NewZoneTypeFilter(""),
-		ZoneIDFilter:     externaldnsprovider.NewZoneIDFilter([]string{dnsRecord.GetZoneID()}),
+		HostDomainFilter:     externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetRootHost()}),
+		DomainFilter:         externaldnsendpoint.NewDomainFilter([]string{dnsRecord.GetZoneDomainName()}),
+		ZoneTypeFilter:       externaldnsprovider.NewZoneTypeFilter(""),
+		ZoneIDFilter:         externaldnsprovider.NewZoneIDFilter([]string{dnsRecord.GetZoneID()}),
+		SkipSecretZoneFilter: skipSecretZoneFilter,
 	}
 	return r.ProviderFactory.ProviderFor(ctx, dnsRecord.GetDNSRecord(), providerConfig)
+}
+
+// getProviderSecretZoneIDFilter returns the ZONE_ID_FILTER value from the provider
+// secret referenced by the given record, or an empty string when the record has no
+// provider secret assigned or the key is unset.
+//
+// The secret is read using c, which must be a client for the cluster the provider
+// factory reads the secret from i.e. the local cluster.
+func (r *BaseDNSRecordReconciler) getProviderSecretZoneIDFilter(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) (string, error) {
+	secretName := dnsRecord.GetProviderRef().Name
+	if secretName == "" {
+		return "", nil
+	}
+	pSecret := &v1.Secret{}
+	if err := c.Get(ctx, client.ObjectKey{
+		Namespace: dnsRecord.GetNamespace(),
+		Name:      secretName,
+	}, pSecret); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(pSecret.Data[v1alpha1.ZoneIDFilterKey])), nil
+}
+
+// secretZoneFilterSelectsAssignedZone reports whether the provider secret's
+// ZONE_ID_FILTER still selects the zone the given record is publishing to. An unset
+// filter selects every zone. The filter value is returned alongside the result for
+// logging and for recording on the record.
+//
+// A record publishes to the zone in its status, so comparing the filter against that
+// zone answers the question for every record, including ones assigned before the
+// filter was introduced and ones assigned by the remote record reconciler.
+func (r *BaseDNSRecordReconciler) secretZoneFilterSelectsAssignedZone(ctx context.Context, c client.Client, dnsRecord DNSRecordAccessor) (bool, string, error) {
+	filter, err := r.getProviderSecretZoneIDFilter(ctx, c, dnsRecord)
+	if err != nil || filter == "" {
+		return true, filter, err
+	}
+	return externaldnsprovider.NewZoneIDFilter([]string{filter}).Match(dnsRecord.GetZoneID()), filter, nil
 }
 
 // deleteRecord deletes record(s) in the DNSProvider(i.e. route53) zone (dnsRecord.GetZoneID()).

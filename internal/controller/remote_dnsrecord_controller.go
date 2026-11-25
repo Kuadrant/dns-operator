@@ -153,7 +153,7 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 
 		if dnsRecord.HasDNSZoneAssigned() {
 			// Create a dns provider with config calculated for the dnsRecord dns record status (Last successful)
-			dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
+			dnsProvider, err := r.getDNSProvider(ctx, dnsRecord, true)
 			if err != nil {
 				logger.Error(err, "Failed to load DNS Provider")
 				dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse, "DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
@@ -210,8 +210,22 @@ func (r *RemoteDNSRecordReconciler) Reconcile(ctx context.Context, req mcreconci
 		ctx, logger = r.setLogger(ctx, baseLogger, dnsRecord)
 	}
 
+	// Check the provider secret's ZONE_ID_FILTER still selects the zone this record is
+	// publishing to. The provider factory reads the secret from the local cluster, so
+	// the same client is used here.
+	selectsAssignedZone, zoneIDFilter, err := r.secretZoneFilterSelectsAssignedZone(ctx, r.mgr.GetLocalManager().GetClient(), dnsRecord)
+	if err != nil {
+		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
+			"DNSProviderError", fmt.Sprintf("The dns provider secret could not be read: %v", err))
+		return r.updateStatus(ctx, cl.GetClient(), previous, dnsRecord, err)
+	}
+	if !selectsAssignedZone {
+		logger.Info("ZONE_ID_FILTER does not select the zone assigned to this record, continuing to publish to the assigned zone. Delete and recreate the DNSRecord to move it to the filtered zone",
+			"zoneIDFilter", zoneIDFilter)
+	}
+
 	// Create a dns provider for the dnsRecord record, must have an owner and zone assigned or will throw an error
-	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord)
+	dnsProvider, err := r.getDNSProvider(ctx, dnsRecord, !selectsAssignedZone)
 	if err != nil {
 		dnsRecord.SetStatusCondition(string(v1alpha1.ConditionTypeReady), metav1.ConditionFalse,
 			"DNSProviderError", fmt.Sprintf("The dns provider could not be loaded: %v", err))
