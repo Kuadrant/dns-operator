@@ -1,5 +1,12 @@
 # Build the manager binary
-FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.26 AS builder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.27.3 AS builder
+# Red Hat's Go defaults to GOAMD64=v2 (upstream: v1); pin the baselines of the
+# previous golang builder image so the binaries keep running on older hosts.
+# GOPPC64 is power8 by default on ubi9; kept pinned explicitly to guard against
+# future default changes.
+ENV GOTOOLCHAIN=local \
+    GOAMD64=v1 \
+    GOPPC64=power8
 ARG TARGETOS
 ARG TARGETARCH
 

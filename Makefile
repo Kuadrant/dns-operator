@@ -246,7 +246,7 @@ local-setup-cluster: $(KIND) ## Setup local development kind cluster, dependenci
 .PHONY: local-setup-cluster-dns-providers
 local-setup-cluster-dns-providers: DEPLOYMENT_SCOPE=cluster
 local-setup-cluster-dns-providers: TEST_NAMESPACE=dnstest
-local-setup-cluster-dns-providers:
+local-setup-cluster-dns-providers: helm
 	@echo "local-setup: creating dns providers KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME} DEPLOYMENT_SCOPE=${DEPLOYMENT_SCOPE} TEST_NAMESPACE=${TEST_NAMESPACE}"
 	$(KUBECTL) config use-context kind-$(KIND_CLUSTER_NAME)
 	@if [ ${DEPLOYMENT_SCOPE} = "cluster" ]; then\
@@ -254,7 +254,7 @@ local-setup-cluster-dns-providers:
 		$(MAKE) -s local-setup-dns-providers TARGET_NAMESPACE=${TEST_NAMESPACE} ;\
 	else\
 		$(MAKE) -s generate-common-dns-provider-kustomization ;\
-		$(KUSTOMIZE) build --enable-helm $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f - ;\
+		$(KUSTOMIZE) build --enable-helm --helm-command $(HELM) $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f - ;\
 	fi ;\
 
 	@echo "local-setup: Check dns providers"
@@ -386,8 +386,8 @@ deploy: manifests set-image-refs ## Deploy controller to the K8s cluster specifi
 	$(KUSTOMIZE) build ${DEPLOY_KUSTOMIZATION} | $(KUBECTL) apply -f -
 
 .PHONY: deploy-namespaced
-deploy-namespaced: manifests set-image-refs remove-cluster-overlay generate-cluster-overlay ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build --enable-helm $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f -
+deploy-namespaced: manifests set-image-refs remove-cluster-overlay generate-cluster-overlay helm ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+	$(KUSTOMIZE) build --enable-helm --helm-command $(HELM) $(CLUSTER_OVERLAY_DIR)/$(KIND_CLUSTER_NAME) | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
@@ -434,7 +434,7 @@ KIND_VERSION = v0.30.0
 ACT_VERSION = latest
 YQ_VERSION := v4.34.2
 GINKGO_VERSION ?= v2.22.0
-GOLANGCI_LINT_VERSION ?= v2.12.2
+GOLANGCI_LINT_VERSION ?= v2.15.0
 HELM_VERSION = v3.15.0
 KUBE_BURNER_VERSION = v1.11.1
 RATCHET_VERSION ?= v0.11.4
@@ -502,6 +502,7 @@ $(YQ): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/mikefarah/yq/v4@$(YQ_VERSION)
 
 .PHONY: helm
+ifeq ($(HELM),$(LOCALBIN)/helm)
 helm: $(HELM) ## Download helm locally if necessary.
 $(HELM):
 	@{ \
@@ -514,16 +515,29 @@ $(HELM):
 	chmod +x $(HELM) ;\
 	rm -rf $${OS}-$${ARCH} helm.tar.gz ;\
 	}
+else
+helm: ## Use helm from PATH or a custom location ($(HELM)); nothing to download.
+	@command -v "$(HELM)" >/dev/null 2>&1 || { echo "HELM '$(HELM)' is not an executable"; exit 1; }
+endif
 
 .PHONY: ginkgo
 ginkgo: $(GINKGO) ## Download ginkgo locally if necessary
 $(GINKGO): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo@$(GINKGO_VERSION)
 
+GOLANGCI_LINT_V_BINARY := $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 .PHONY: golangci-lint
-golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
-$(GOLANGCI_LINT): | $(LOCALBIN)
+ifeq ($(GOLANGCI_LINT),$(LOCALBIN)/golangci-lint)
+golangci-lint: $(GOLANGCI_LINT_V_BINARY) ## Download golangci-lint locally if necessary.
+	@ln -sf $(abspath $(GOLANGCI_LINT_V_BINARY)) $(GOLANGCI_LINT)
+else
+golangci-lint: ## Use the custom GOLANGCI_LINT executable; nothing to download.
+	@command -v "$(GOLANGCI_LINT)" >/dev/null 2>&1 || { echo "GOLANGCI_LINT '$(GOLANGCI_LINT)' is not an executable"; exit 1; }
+endif
+$(GOLANGCI_LINT_V_BINARY): | $(LOCALBIN)
+	rm -f $(LOCALBIN)/golangci-lint
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$(GOLANGCI_LINT_VERSION)/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+	@mv $(LOCALBIN)/golangci-lint $(GOLANGCI_LINT_V_BINARY)
 
 .PHONY: kube-burner
 kube-burner: $(KUBE_BURNER) ## Download kube-burner locally if necessary.

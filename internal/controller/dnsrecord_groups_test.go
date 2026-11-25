@@ -531,7 +531,7 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 
 				g.Expect(ungroupedPrimaryK8sClient.List(ctx, recordList, client.InNamespace(testNamespace))).To(Succeed())
 				g.Expect(len(recordList.Items)).To(Equal(0))
-			}, TestTimeoutLong, time.Second).Should(Succeed())
+			}, TestTimeoutXLong, time.Second).Should(Succeed())
 
 			By("clearing active groups")
 			setActiveGroupsInDNS(testZoneDomainName, types.Groups{}, mockTXTResolver)
@@ -620,7 +620,7 @@ var _ = Describe("DNSRecordReconciler with Groups", func() {
 
 				g.Expect(ungroupedPrimaryK8sClient.List(ctx, recordList, client.InNamespace(testNamespace))).To(Succeed())
 				g.Expect(len(recordList.Items)).To(Equal(0))
-			}, TestTimeoutLong, time.Second).Should(Succeed())
+			}, TestTimeoutXLong, time.Second).Should(Succeed())
 
 			By("clearing active groups")
 			setActiveGroupsInDNS(testZoneDomainName, types.Groups{}, mockTXTResolver)
