@@ -161,6 +161,10 @@ imports: openshift-goimports ## Run openshift goimports against code.
 	$(OPENSHIFT_GOIMPORTS) -m github.com/kuadrant/dns-operator -i github.com/kuadrant
 	$(OPENSHIFT_GOIMPORTS) -p coredns/plugin -m github.com/kuadrant/coredns-kuadrant -i github.com/kuadrant
 
+.PHONY: ratchet-update-all
+ratchet-update-all: ratchet ## Update all pinned GitHub Actions to latest SHAs.
+	$(RATCHET) update $$(find .github/workflows -name '*.yaml' -o -name '*.yml')
+
 .PHONY: ratchet-pin
 ratchet-pin: ratchet ## Pin GitHub Actions to commit SHAs.
 	$(RATCHET) pin $$(find .github/workflows -name '*.yaml' -o -name '*.yml')
